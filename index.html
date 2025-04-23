@@ -893,17 +893,17 @@
                 const keyPair = ec.keyFromPrivate(childPrivateKey);
                 const publicKey = keyPair.getPublic(true, 'hex');
                 
-                // Generate address (BIP-173 style: SHA256 -> RIPEMD160 -> Witness Program -> Bech32)
+                // Generate address according to BIP-173 SegWit standard
                 const sha256Hash = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(publicKey));
                 const ripemd160Hash = CryptoJS.RIPEMD160(sha256Hash);
-                const hash = ripemd160Hash.toString();
+                const programData = ripemd160Hash.toString();
                 
-                // For Bech32 native SegWit addresses, we need a witness version (0) followed by the program data
-                // The version is not part of the program data but a separate field in createBech32
+                // According to BIP-173, for P2WPKH (witness version 0), the witness program must be exactly 20 bytes
+                // For other witness versions (1-16), the program can be 2-40 bytes
                 const witnessVersion = 0;
                 
-                // Create the address with witness version and program data (hash)
-                const address = createBech32('alpha', witnessVersion, hexToBytes(hash));
+                // Create the standard compliant bech32 address
+                const address = createBech32('alpha', witnessVersion, hexToBytes(programData));
                 
                 // Add to wallet with additional security metadata
                 wallet.addresses.push({
@@ -1373,26 +1373,35 @@ Anyone with your master private key can access all your funds.`;
                 }
             }
             
-            // Bech32 implementation for segwit addresses (BIP-173)
+            // Bech32 implementation for segwit addresses (following BIP-173 standard)
             function createBech32(hrp, witnessVersion, data) {
-                // Ensure witness version is between 0 and 16
+                // BIP-173 constraints:
+                // 1. Witness version must be between 0 and 16
                 if (witnessVersion < 0 || witnessVersion > 16) {
                     throw new Error('Invalid witness version');
                 }
                 
-                // For native SegWit, the witness version goes first, followed by the program data
-                // Create array with witness version as the first element
-                const programData = [witnessVersion];
+                // 2. For version 0, program length must be 20 or 32 bytes
+                if (witnessVersion === 0 && data.length !== 20 && data.length !== 32) {
+                    console.warn(`Warning: For witness version 0, program length should be 20 or 32 bytes, but got ${data.length} bytes`);
+                }
                 
-                // Convert data to 5-bit values and append to program data
+                // 3. For version 1-16, program length must be 2-40 bytes
+                if (witnessVersion > 0 && (data.length < 2 || data.length > 40)) {
+                    throw new Error(`Invalid program length for witness version ${witnessVersion}`);
+                }
+                
+                // 4. Convert 8-bit program data to 5-bit values according to BIP-173
                 const data5bit = convertBits(Array.from(data), 8, 5, true);
-                const values = programData.concat(data5bit);
                 
-                // Create the full payload: HRP + separator + data + checksum
+                // 5. The final data to encode starts with the witness version
+                const values = [witnessVersion].concat(data5bit);
+                
+                // 6. Calculate checksum according to BIP-173
                 const checksum = bech32Checksum(hrp, values);
                 const combined = values.concat(checksum);
                 
-                // Encode
+                // 7. Encode as per BIP-173: hrp + '1' + data + checksum
                 let result = hrp + '1';
                 for (let i = 0; i < combined.length; i++) {
                     result += CHARSET.charAt(combined[i]);
