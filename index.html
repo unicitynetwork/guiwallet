@@ -893,11 +893,17 @@
                 const keyPair = ec.keyFromPrivate(childPrivateKey);
                 const publicKey = keyPair.getPublic(true, 'hex');
                 
-                // Generate address (Bitcoin style: SHA256 -> RIPEMD160 -> Bech32)
+                // Generate address (BIP-173 style: SHA256 -> RIPEMD160 -> Witness Program -> Bech32)
                 const sha256Hash = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(publicKey));
                 const ripemd160Hash = CryptoJS.RIPEMD160(sha256Hash);
                 const hash = ripemd160Hash.toString();
-                const address = createBech32('alpha', hexToBytes(hash));
+                
+                // For Bech32 native SegWit addresses, we need a witness version (0) followed by the program data
+                // The version is not part of the program data but a separate field in createBech32
+                const witnessVersion = 0;
+                
+                // Create the address with witness version and program data (hash)
+                const address = createBech32('alpha', witnessVersion, hexToBytes(hash));
                 
                 // Add to wallet with additional security metadata
                 wallet.addresses.push({
@@ -1367,14 +1373,24 @@ Anyone with your master private key can access all your funds.`;
                 }
             }
             
-            // Bech32 implementation
-            function createBech32(hrp, data) {
-                // Convert data to 5-bit values
+            // Bech32 implementation for segwit addresses (BIP-173)
+            function createBech32(hrp, witnessVersion, data) {
+                // Ensure witness version is between 0 and 16
+                if (witnessVersion < 0 || witnessVersion > 16) {
+                    throw new Error('Invalid witness version');
+                }
+                
+                // For native SegWit, the witness version goes first, followed by the program data
+                // Create array with witness version as the first element
+                const programData = [witnessVersion];
+                
+                // Convert data to 5-bit values and append to program data
                 const data5bit = convertBits(Array.from(data), 8, 5, true);
+                const values = programData.concat(data5bit);
                 
                 // Create the full payload: HRP + separator + data + checksum
-                const checksum = bech32Checksum(hrp, data5bit);
-                const combined = data5bit.concat(checksum);
+                const checksum = bech32Checksum(hrp, values);
+                const combined = values.concat(checksum);
                 
                 // Encode
                 let result = hrp + '1';
