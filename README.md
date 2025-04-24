@@ -2,7 +2,7 @@
 
 A simple, secure, client-side wallet that runs entirely in your browser. The  Wallet is designed for offline use, allowing you to manage private keys and generate addresses without exposing sensitive information to the internet.
 
-![Alpha HTML Wallet](wallet-screenshot.png)
+![Unicity Offline Wallet](wallet-screenshot.png)
 
 ## Features
 
@@ -26,7 +26,7 @@ A simple, secure, client-side wallet that runs entirely in your browser. The  Wa
 
 1. **Setup**:
    - Clone or download this repository
-   - Open `alpha_wallet.html` in a web browser (preferably offline)
+   - Open `offline-wallet.html` in a web browser. You can either save as a file and transfer to an offline computer or open in the github pages https://unicitynetwork.github.io/offlinewallet/ and then go offline. 
 
 2. **Create a Wallet**:
    - Click "Create Wallet" to create a new wallet
@@ -40,9 +40,7 @@ A simple, secure, client-side wallet that runs entirely in your browser. The  Wa
    - Click "Backup Wallet" to download your wallet data as a text file
    - Store this file securely (preferably on an offline device)
 
-5. **Importing to Other Wallets**:
-   - Click "Show" next to the WIF Private Key to view your key in WIF format
-   - This key can be imported into compatible wallets using `importprivkey`
+
 
 ## Technical Details
 
@@ -54,19 +52,45 @@ The wallet implements:
 - AES encryption for wallet protection (with 100,000 PBKDF2 iterations for key derivation)
 - IndexedDB for cross-tab persistent storage
 
-## Import to Alpha Client
+## Import to Alpha Core
 
-To import your key to the Alpha client:
+   - Click on Migrate Wallet and reveal the private key Note this is not the master key but the private key corresponding to the address (derived from the master key)
+   - This key can then be imported into supported online wallets such as Alpha core. There is script provided called `alpha-migration.sh` which will do the automate the migration. 
 
-1. Create a legacy wallet if you don't have one:
-   ```
-   alpha-cli createwallet "legacy-wallet" false false "" false false false 
-   ```
+```bash
+###############################################################################
+# Unicity Offline Wallet Migration Tool
+###############################################################################
+# 
+# DESCRIPTION:
+#   This script helps users migrate funds from an offline Unicity wallet by
+#   importing the private key into an online Alpha node. The script
+#   handles the technical details of importing a private key using descriptors,
+#   allowing users to access funds stored at SegWit (alpha1...) addresses.
+#
+# BACKGROUND:
+#   The offline wallet now shows the direct private key that generates your address,
+#   making migration simpler and more reliable. This script ensures proper import
+#   of this key with the correct descriptor format for compatibility with Alpha nodes.
+#
+# USAGE:
+#   ./alpha-migrate.sh <private_key_wif> <wallet_name>
+#
+# ARGUMENTS:
+#   private_key_wif - The private key in WIF format shown in the offline wallet
+#   wallet_name     - Name of the wallet to create or use for importing
+#
+# EXAMPLES:
+#   ./alpha-migrate.sh KxaRsSTC8uVbh6eJDwiyRu8oGgWpkFVFq7ff6QbaMTJfBHNZTMpV my_wallet
+#
+# NOTES:
+#   - If no funds appear, try rescanning the blockchain
+#   - The script will create a new wallet if the specified name doesn't exist
+#
+###############################################################################
+```
 
-2. Import the WIF private key:
-   ```
-   alpha-cli importprivkey <WIF-key> "Your Wallet Name" true
-   ```  
+Save the above as `alpha-migrate.sh` and make it executable with `chmod +x alpha-migrate.sh`, then run it with your private key and wallet name.
 
 ## Security Recommendations
 
