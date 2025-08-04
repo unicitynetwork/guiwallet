@@ -585,6 +585,71 @@
             </div>
         </div>
         
+        <!-- RPC Connection Section -->
+        <div id="rpc-section" class="card-section">
+            <h2>Blockchain Connection</h2>
+            
+            <div class="info-box">
+                <p>Connect to a Fulcrum-Alpha server to check balances and transactions. This requires a running Fulcrum server with WebSocket support enabled.</p>
+            </div>
+            
+            <div class="input-group">
+                <label for="rpcServer">Fulcrum Server URL:</label>
+                <input type="text" id="rpcServer" placeholder="ws://localhost:50003" value="ws://localhost:50003">
+            </div>
+            
+            <div class="button-container" style="justify-content: flex-start;">
+                <button id="connectRpcBtn" class="button">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                    </svg>
+                    Connect
+                </button>
+                <button id="disconnectRpcBtn" class="button" style="display: none; background-color: #ff006e;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                        <path d="M18 6 6 18"></path>
+                        <path d="m6 6 12 12"></path>
+                    </svg>
+                    Disconnect
+                </button>
+            </div>
+            
+            <div id="connectionStatus" style="margin-top: 20px; display: none;">
+                <div class="info-box" style="background-color: rgba(255, 186, 8, 0.1); border-left: 4px solid #ffba08;">
+                    <p id="connectionStatusText">Connecting...</p>
+                </div>
+            </div>
+            
+            <!-- Balance Display -->
+            <div id="balanceDisplay" style="display: none; margin-top: 30px;">
+                <h3>Balance Information</h3>
+                <div class="info-box" style="background-color: rgba(58, 134, 255, 0.1); border-left: 4px solid var(--primary-color);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <p style="margin: 0; color: #666; font-size: 14px;">Available Balance</p>
+                            <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold;" id="balanceAmount">0.00000000 ALPHA</p>
+                        </div>
+                        <button id="refreshBalanceBtn" class="small-button" title="Refresh balance">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <polyline points="1 20 1 14 7 14"></polyline>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Transaction History -->
+                <div style="margin-top: 20px;">
+                    <h4>Recent Transactions</h4>
+                    <div id="transactionList" style="max-height: 300px; overflow-y: auto; border: 1px solid #e9ecef; border-radius: 8px; padding: 10px;">
+                        <p style="color: #999; text-align: center;">No transactions found</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
     </div>
 
 
@@ -2073,6 +2138,367 @@ Anyone with your master private key can access all your funds.`;
             
             // Load wallet data and do initial check
             loadWalletData();
+            
+            // ===== ELECTRUM RPC CLIENT =====
+            
+            // WebSocket connection for Electrum protocol
+            let electrumSocket = null;
+            let electrumRequestId = 1;
+            let electrumCallbacks = {};
+            let electrumConnected = false;
+            
+            // RPC UI elements
+            const connectRpcBtn = document.getElementById('connectRpcBtn');
+            const disconnectRpcBtn = document.getElementById('disconnectRpcBtn');
+            const rpcServerInput = document.getElementById('rpcServer');
+            const connectionStatusDiv = document.getElementById('connectionStatus');
+            const connectionStatusText = document.getElementById('connectionStatusText');
+            const balanceDisplay = document.getElementById('balanceDisplay');
+            const balanceAmount = document.getElementById('balanceAmount');
+            const transactionList = document.getElementById('transactionList');
+            const refreshBalanceBtn = document.getElementById('refreshBalanceBtn');
+            
+            // Connect to Electrum server
+            function connectToElectrum() {
+                const serverUrl = rpcServerInput.value.trim();
+                
+                if (!serverUrl) {
+                    alert('Please enter a Fulcrum server URL');
+                    return;
+                }
+                
+                // Show connecting status
+                connectionStatusDiv.style.display = 'block';
+                connectionStatusText.textContent = 'Connecting to ' + serverUrl + '...';
+                
+                try {
+                    electrumSocket = new WebSocket(serverUrl);
+                    
+                    electrumSocket.onopen = function() {
+                        electrumConnected = true;
+                        const infoBox = connectionStatusDiv.querySelector('.info-box');
+                        if (infoBox) {
+                            infoBox.style.backgroundColor = 'rgba(6, 214, 160, 0.1)';
+                            infoBox.style.borderLeftColor = 'var(--success-color)';
+                        }
+                        connectionStatusText.textContent = 'Connected to Fulcrum server';
+                        
+                        // Update buttons
+                        connectRpcBtn.style.display = 'none';
+                        disconnectRpcBtn.style.display = 'inline-flex';
+                        rpcServerInput.disabled = true;
+                        
+                        // Show balance display
+                        balanceDisplay.style.display = 'block';
+                        
+                        // Get server version
+                        electrumRequest('server.version', ['Unicity Wallet', '1.4'], function(result) {
+                            console.log('Server version:', result);
+                        });
+                        
+                        // If we have an address, get its balance
+                        if (wallet.addresses && wallet.addresses.length > 0) {
+                            refreshBalance();
+                        }
+                    };
+                    
+                    electrumSocket.onmessage = function(event) {
+                        try {
+                            const response = JSON.parse(event.data);
+                            
+                            if (response.id && electrumCallbacks[response.id]) {
+                                const callback = electrumCallbacks[response.id];
+                                delete electrumCallbacks[response.id];
+                                
+                                if (response.error) {
+                                    console.error('Electrum error:', response.error);
+                                    callback(null, response.error);
+                                } else {
+                                    callback(response.result);
+                                }
+                            }
+                        } catch (err) {
+                            console.error('Error parsing Electrum response:', err);
+                        }
+                    };
+                    
+                    electrumSocket.onerror = function(error) {
+                        console.error('WebSocket error:', error);
+                        const infoBox = connectionStatusDiv.querySelector('.info-box');
+                        if (infoBox) {
+                            infoBox.style.backgroundColor = 'rgba(255, 0, 110, 0.1)';
+                            infoBox.style.borderLeftColor = 'var(--danger-color)';
+                        }
+                        connectionStatusText.textContent = 'Connection error: Check console for details';
+                    };
+                    
+                    electrumSocket.onclose = function() {
+                        electrumConnected = false;
+                        const infoBox = connectionStatusDiv.querySelector('.info-box');
+                        if (infoBox) {
+                            infoBox.style.backgroundColor = 'rgba(255, 186, 8, 0.1)';
+                            infoBox.style.borderLeftColor = '#ffba08';
+                        }
+                        connectionStatusText.textContent = 'Disconnected from server';
+                        
+                        // Update buttons
+                        connectRpcBtn.style.display = 'inline-flex';
+                        disconnectRpcBtn.style.display = 'none';
+                        rpcServerInput.disabled = false;
+                        
+                        // Hide balance display
+                        balanceDisplay.style.display = 'none';
+                    };
+                    
+                } catch (err) {
+                    alert('Failed to connect: ' + err.message);
+                    const infoBox = connectionStatusDiv.querySelector('.info-box');
+                    if (infoBox) {
+                        infoBox.style.backgroundColor = 'rgba(255, 0, 110, 0.1)';
+                        infoBox.style.borderLeftColor = 'var(--danger-color)';
+                    }
+                    connectionStatusText.textContent = 'Failed to connect: ' + err.message;
+                }
+            }
+            
+            // Disconnect from Electrum server
+            function disconnectFromElectrum() {
+                if (electrumSocket) {
+                    electrumSocket.close();
+                    electrumSocket = null;
+                }
+                electrumConnected = false;
+                electrumCallbacks = {};
+            }
+            
+            // Make an Electrum RPC request
+            function electrumRequest(method, params, callback) {
+                if (!electrumConnected || !electrumSocket) {
+                    console.error('Not connected to Electrum server');
+                    if (callback) callback(null, 'Not connected');
+                    return;
+                }
+                
+                const id = electrumRequestId++;
+                const request = {
+                    id: id,
+                    method: method,
+                    params: params || []
+                };
+                
+                if (callback) {
+                    electrumCallbacks[id] = callback;
+                }
+                
+                try {
+                    electrumSocket.send(JSON.stringify(request) + '\n');
+                } catch (err) {
+                    console.error('Error sending request:', err);
+                    if (callback) callback(null, err.message);
+                }
+            }
+            
+            // Convert Bech32 address to script hash for Electrum protocol
+            function addressToScriptHash(address) {
+                try {
+                    // Decode the bech32 address to get the witness program
+                    const decoded = decodeBech32(address);
+                    if (!decoded) {
+                        console.error('Failed to decode address:', address);
+                        return null;
+                    }
+                    
+                    const witnessVersion = decoded.witnessVersion;
+                    const witnessProgram = decoded.data;
+                    
+                    // Create the scriptPubKey for P2WPKH (witness version 0, 20 bytes)
+                    // Format: OP_0 (0x00) + push_20_bytes (0x14) + witness_program
+                    let scriptPubKey = [];
+                    
+                    // Add witness version (OP_0 for version 0, or OP_1-OP_16 for versions 1-16)
+                    if (witnessVersion === 0) {
+                        scriptPubKey.push(0x00);
+                    } else {
+                        scriptPubKey.push(0x50 + witnessVersion); // OP_1 = 0x51, OP_2 = 0x52, etc.
+                    }
+                    
+                    // Add push opcode for the witness program length
+                    scriptPubKey.push(witnessProgram.length);
+                    
+                    // Add the witness program
+                    scriptPubKey = scriptPubKey.concat(witnessProgram);
+                    
+                    // Convert to hex string for hashing
+                    const scriptHex = scriptPubKey.map(b => b.toString(16).padStart(2, '0')).join('');
+                    
+                    // Hash the script with SHA256
+                    const hash = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(scriptHex));
+                    const hashBytes = CryptoJS.enc.Hex.stringify(hash);
+                    
+                    // Reverse the bytes for Electrum (little-endian)
+                    let reversed = '';
+                    for (let i = hashBytes.length - 2; i >= 0; i -= 2) {
+                        reversed += hashBytes.substr(i, 2);
+                    }
+                    
+                    return reversed;
+                } catch (err) {
+                    console.error('Error converting address to script hash:', err);
+                    return null;
+                }
+            }
+            
+            // Decode Bech32 address to get witness version and program
+            function decodeBech32(address) {
+                try {
+                    // Find the separator '1'
+                    const pos = address.lastIndexOf('1');
+                    if (pos < 1) return null;
+                    
+                    const hrp = address.substring(0, pos);
+                    const data = address.substring(pos + 1);
+                    
+                    // Decode the data part
+                    const decoded = [];
+                    for (let i = 0; i < data.length; i++) {
+                        const d = CHARSET.indexOf(data.charAt(i));
+                        if (d === -1) return null;
+                        decoded.push(d);
+                    }
+                    
+                    // Verify checksum (last 6 characters)
+                    if (!verifyBech32Checksum(hrp, decoded)) {
+                        console.error('Invalid bech32 checksum');
+                        return null;
+                    }
+                    
+                    // Remove checksum
+                    const values = decoded.slice(0, -6);
+                    
+                    // First value is witness version
+                    const witnessVersion = values[0];
+                    
+                    // Convert from 5-bit to 8-bit
+                    const witnessProgram = convertBits(values.slice(1), 5, 8, false);
+                    
+                    return {
+                        hrp: hrp,
+                        witnessVersion: witnessVersion,
+                        data: witnessProgram
+                    };
+                } catch (err) {
+                    console.error('Error decoding bech32:', err);
+                    return null;
+                }
+            }
+            
+            // Verify Bech32 checksum
+            function verifyBech32Checksum(hrp, data) {
+                const values = hrpExpand(hrp).concat(data);
+                return bech32Polymod(values) === 1;
+            }
+            
+            // Refresh balance for current address
+            function refreshBalance() {
+                if (!wallet.addresses || wallet.addresses.length === 0) {
+                    balanceAmount.textContent = '0.00000000 ALPHA';
+                    return;
+                }
+                
+                const address = wallet.addresses[0].address;
+                const scriptHash = addressToScriptHash(address);
+                
+                if (!scriptHash) {
+                    balanceAmount.textContent = 'Error: Invalid address format';
+                    console.error('Failed to convert address to script hash');
+                    return;
+                }
+                
+                balanceAmount.textContent = 'Loading...';
+                console.log('Address:', address);
+                console.log('Script hash:', scriptHash);
+                
+                // Get script hash balance (using blockchain.scripthash.get_balance)
+                electrumRequest('blockchain.scripthash.get_balance', [scriptHash], function(result, error) {
+                    if (error) {
+                        balanceAmount.textContent = 'Error loading balance';
+                        console.error('Balance error:', error);
+                        return;
+                    }
+                    
+                    if (result) {
+                        const confirmed = result.confirmed || 0;
+                        const unconfirmed = result.unconfirmed || 0;
+                        const total = confirmed + unconfirmed;
+                        
+                        // Convert from satoshis to ALPHA (1 ALPHA = 100,000,000 satoshis)
+                        const alphaBalance = (total / 100000000).toFixed(8);
+                        balanceAmount.textContent = alphaBalance + ' ALPHA';
+                        
+                        if (unconfirmed > 0) {
+                            const unconfirmedAlpha = (unconfirmed / 100000000).toFixed(8);
+                            balanceAmount.innerHTML += '<br><small style="color: #999;">(' + unconfirmedAlpha + ' unconfirmed)</small>';
+                        }
+                    }
+                });
+                
+                // Get transaction history (using blockchain.scripthash.get_history)
+                electrumRequest('blockchain.scripthash.get_history', [scriptHash], function(result, error) {
+                    if (error) {
+                        transactionList.innerHTML = '<p style="color: #999; text-align: center;">Error loading transactions</p>';
+                        return;
+                    }
+                    
+                    if (result && result.length > 0) {
+                        transactionList.innerHTML = '';
+                        
+                        // Show last 10 transactions
+                        const recentTxs = result.slice(-10).reverse();
+                        
+                        recentTxs.forEach(function(tx) {
+                            const txDiv = document.createElement('div');
+                            txDiv.style.cssText = 'padding: 10px; border-bottom: 1px solid #e9ecef; font-size: 14px;';
+                            
+                            const txId = tx.tx_hash || tx.txid;
+                            const height = tx.height;
+                            
+                            txDiv.innerHTML = `
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <div style="font-family: monospace; font-size: 12px; color: #666;">
+                                            ${txId.substring(0, 8)}...${txId.substring(txId.length - 8)}
+                                        </div>
+                                        <div style="color: #999; font-size: 12px; margin-top: 2px;">
+                                            ${height > 0 ? 'Block ' + height : 'Unconfirmed'}
+                                        </div>
+                                    </div>
+                                    <button class="small-button" onclick="navigator.clipboard.writeText('${txId}').then(() => alert('Transaction ID copied!'));" title="Copy transaction ID">
+                                        Copy
+                                    </button>
+                                </div>
+                            `;
+                            
+                            transactionList.appendChild(txDiv);
+                        });
+                    } else {
+                        transactionList.innerHTML = '<p style="color: #999; text-align: center;">No transactions found</p>';
+                    }
+                });
+            }
+            
+            // Event listeners for RPC buttons
+            connectRpcBtn.onclick = connectToElectrum;
+            disconnectRpcBtn.onclick = disconnectFromElectrum;
+            refreshBalanceBtn.onclick = refreshBalance;
+            
+            // Auto-refresh balance when address is generated
+            const originalGenerateNewAddress = window.generateNewAddress;
+            window.generateNewAddress = function() {
+                originalGenerateNewAddress();
+                if (electrumConnected) {
+                    setTimeout(refreshBalance, 500);
+                }
+            };
         });
     </script>
 </body>
