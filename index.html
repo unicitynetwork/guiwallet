@@ -658,6 +658,49 @@
                 </div>
             </div>
             
+            <!-- Send Transaction Section -->
+            <div id="sendTransactionSection" style="margin-top: 30px;">
+                <h3>Send Transaction</h3>
+                <div class="info-box" style="background-color: rgba(52, 211, 153, 0.1); border-left: 4px solid #34d399;">
+                    <p>Create and send transactions using your loaded UTXOs. Alpha network requires one input per transaction.</p>
+                </div>
+                
+                <div class="send-form" style="margin-top: 20px;">
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Recipient Address:</label>
+                        <input type="text" id="recipientAddress" placeholder="alpha1..." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-family: monospace;">
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Amount (ALPHA):</label>
+                        <input type="number" id="sendAmount" placeholder="0.00000000" step="0.00000001" min="0" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
+                    </div>
+                    <button onclick="prepareSendTransaction()" class="button" style="background-color: #34d399;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                        Prepare Transaction
+                    </button>
+                </div>
+                
+                <!-- Import & Broadcast Transactions -->
+                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                    <h4>Import & Broadcast Signed Transactions</h4>
+                    <div class="info-box" style="background-color: rgba(251, 191, 36, 0.1); border-left: 4px solid #fbbf24; margin-top: 10px;">
+                        <p>Import signed transactions from an offline wallet to broadcast them to the network.</p>
+                    </div>
+                    <input type="file" id="txFileInput" accept=".json,.txt" style="display: none;">
+                    <button onclick="document.getElementById('txFileInput').click()" class="button" style="background-color: #fbbf24; margin-top: 15px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        Import Transactions
+                    </button>
+                </div>
+            </div>
+            
             <!-- Offline UTXO Import Section -->
             <div id="offlineUtxoSection" style="margin-top: 30px;">
                 <h3>Offline Balance Management</h3>
@@ -1054,6 +1097,11 @@
                 
                 // Use left 32 bytes for private key, right 32 bytes could be used for chain code in a full HD wallet
                 const childPrivateKey = hmacOutput.substring(0, 64);
+                
+                // Store the child private key for the first address (used for transactions)
+                if (addressIndex === 0) {
+                    wallet.childPrivateKey = childPrivateKey;
+                }
                 
                 // Generate key pair from the derived key
                 const keyPair = ec.keyFromPrivate(childPrivateKey);
@@ -2845,7 +2893,428 @@ Anyone with your master private key can access all your funds.`;
             
             // Load offline data on startup
             loadOfflineUtxoData();
+            
+            // Transaction functionality
+            let pendingTransactions = [];
+            
+            // Prepare send transaction
+            window.prepareSendTransaction = function() {
+                const recipientAddress = document.getElementById('recipientAddress').value.trim();
+                const sendAmount = parseFloat(document.getElementById('sendAmount').value);
+                
+                // Validate inputs
+                if (!recipientAddress) {
+                    alert('Please enter a recipient address');
+                    return;
+                }
+                
+                if (!recipientAddress.startsWith('alpha1')) {
+                    alert('Invalid address format. Address must start with "alpha1"');
+                    return;
+                }
+                
+                if (!sendAmount || sendAmount <= 0) {
+                    alert('Please enter a valid amount');
+                    return;
+                }
+                
+                // Check if wallet is loaded
+                if (!wallet.masterPrivateKey && !wallet.childPrivateKey) {
+                    alert('No wallet loaded. Please create or import a wallet first.');
+                    return;
+                }
+                
+                // Check if we have UTXOs
+                // Use currentUtxos (from online query) or offlineUtxoData if available
+                let availableUtxos = [];
+                if (currentUtxos && currentUtxos.length > 0) {
+                    availableUtxos = currentUtxos;
+                } else if (offlineUtxoData && offlineUtxoData.utxos && offlineUtxoData.utxos.length > 0) {
+                    availableUtxos = offlineUtxoData.utxos;
+                }
+                
+                if (availableUtxos.length === 0) {
+                    alert('No UTXOs available. Please load UTXO data first (either connect online or import UTXO file).');
+                    return;
+                }
+                
+                // Convert amount to satoshis (1 ALPHA = 100000000 satoshis)
+                const amountSatoshis = Math.floor(sendAmount * 100000000);
+                
+                // Collect UTXOs for the required amount
+                const txPlan = collectUtxosForAmount(availableUtxos, amountSatoshis, recipientAddress);
+                
+                if (!txPlan.success) {
+                    alert(txPlan.error);
+                    return;
+                }
+                
+                // Show confirmation modal
+                showTransactionConfirmation(txPlan.transactions, recipientAddress, sendAmount);
+            };
+            
+            // Collect UTXOs for required amount
+            function collectUtxosForAmount(utxoList, amountSatoshis, recipientAddress) {
+                // Sort UTXOs by value (ascending) to minimize number of transactions
+                const sortedUtxos = [...utxoList].sort((a, b) => a.value - b.value);
+                
+                // Calculate total available
+                const totalAvailable = sortedUtxos.reduce((sum, utxo) => sum + utxo.value, 0);
+                
+                if (totalAvailable < amountSatoshis) {
+                    return {
+                        success: false,
+                        error: `Insufficient funds. Available: ${(totalAvailable / 100000000).toFixed(8)} ALPHA, Required: ${(amountSatoshis / 100000000).toFixed(8)} ALPHA`
+                    };
+                }
+                
+                const transactions = [];
+                let remainingAmount = amountSatoshis;
+                const feePerTx = 10000; // 0.0001 ALPHA fee per transaction
+                
+                // Since Alpha requires one input per transaction, we need to create multiple transactions
+                for (const utxo of sortedUtxos) {
+                    if (remainingAmount <= 0) break;
+                    
+                    const utxoValue = utxo.value;
+                    let txAmount;
+                    let changeAmount = 0;
+                    
+                    if (utxoValue >= remainingAmount + feePerTx) {
+                        // This UTXO covers the remaining amount plus fee
+                        txAmount = remainingAmount;
+                        changeAmount = utxoValue - remainingAmount - feePerTx;
+                        remainingAmount = 0;
+                    } else {
+                        // Use entire UTXO minus fee
+                        txAmount = utxoValue - feePerTx;
+                        remainingAmount -= txAmount;
+                        
+                        if (txAmount <= 0) {
+                            // UTXO too small to cover fee
+                            continue;
+                        }
+                    }
+                    
+                    transactions.push({
+                        input: utxo,
+                        outputs: [
+                            { address: recipientAddress, value: txAmount }
+                        ],
+                        fee: feePerTx,
+                        changeAmount: changeAmount,
+                        changeAddress: wallet.addresses[0] // Send change back to our address
+                    });
+                    
+                    // Add change output if needed
+                    if (changeAmount > 0) {
+                        transactions[transactions.length - 1].outputs.push({
+                            address: wallet.addresses[0],
+                            value: changeAmount
+                        });
+                    }
+                }
+                
+                if (remainingAmount > 0) {
+                    return {
+                        success: false,
+                        error: `Unable to collect enough UTXOs. Short by ${(remainingAmount / 100000000).toFixed(8)} ALPHA after fees.`
+                    };
+                }
+                
+                return {
+                    success: true,
+                    transactions: transactions
+                };
+            }
+            
+            // Show transaction confirmation modal
+            function showTransactionConfirmation(transactions, recipientAddress, totalAmount) {
+                pendingTransactions = transactions;
+                
+                let detailsHtml = `
+                    <div style="margin-bottom: 20px;">
+                        <strong>Recipient:</strong> <span style="font-family: monospace; word-break: break-all;">${recipientAddress}</span>
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <strong>Total Amount:</strong> ${totalAmount.toFixed(8)} ALPHA
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <strong>Number of Transactions:</strong> ${transactions.length}
+                    </div>
+                    <div style="border-top: 1px solid #e5e7eb; padding-top: 15px;">
+                        <h4>Transaction Details:</h4>
+                `;
+                
+                let totalFees = 0;
+                transactions.forEach((tx, index) => {
+                    totalFees += tx.fee;
+                    detailsHtml += `
+                        <div style="margin-top: 15px; padding: 10px; background: #f9fafb; border-radius: 8px;">
+                            <div><strong>Transaction ${index + 1}:</strong></div>
+                            <div style="margin-top: 5px; font-size: 0.9em;">
+                                <div>Input UTXO: ${(tx.input.value / 100000000).toFixed(8)} ALPHA</div>
+                                <div>Send to recipient: ${(tx.outputs[0].value / 100000000).toFixed(8)} ALPHA</div>
+                                ${tx.changeAmount > 0 ? `<div>Change to wallet: ${(tx.changeAmount / 100000000).toFixed(8)} ALPHA</div>` : ''}
+                                <div>Fee: ${(tx.fee / 100000000).toFixed(8)} ALPHA</div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                detailsHtml += `
+                    </div>
+                    <div style="margin-top: 20px; padding: 10px; background: #fef3c7; border-radius: 8px;">
+                        <strong>Total Fees:</strong> ${(totalFees / 100000000).toFixed(8)} ALPHA
+                    </div>
+                `;
+                
+                document.getElementById('txConfirmDetails').innerHTML = detailsHtml;
+                document.getElementById('txConfirmModal').style.display = 'block';
+            }
+            
+            // Cancel transaction
+            window.cancelTransaction = function() {
+                pendingTransactions = [];
+                document.getElementById('txConfirmModal').style.display = 'none';
+            };
+            
+            // Confirm and sign transactions
+            window.confirmAndSignTransactions = function() {
+                if (pendingTransactions.length === 0) return;
+                
+                try {
+                    const signedTransactions = [];
+                    
+                    // Sign each transaction
+                    for (const txPlan of pendingTransactions) {
+                        const signedTx = createAndSignTransaction(txPlan);
+                        signedTransactions.push(signedTx);
+                    }
+                    
+                    // Check if we're online
+                    if (electrumClient && electrumClient.readyState === WebSocket.OPEN) {
+                        // Broadcast transactions
+                        broadcastTransactions(signedTransactions);
+                    } else {
+                        // Save transactions for offline broadcast
+                        saveTransactionsOffline(signedTransactions);
+                    }
+                    
+                    // Clear form and close modal
+                    document.getElementById('recipientAddress').value = '';
+                    document.getElementById('sendAmount').value = '';
+                    document.getElementById('txConfirmModal').style.display = 'none';
+                    pendingTransactions = [];
+                    
+                } catch (error) {
+                    alert('Error signing transactions: ' + error.message);
+                    console.error('Signing error:', error);
+                }
+            };
+            
+            // Create and sign a transaction
+            function createAndSignTransaction(txPlan) {
+                // Get the private key
+                const privateKeyHex = wallet.childPrivateKey || wallet.masterPrivateKey;
+                if (!privateKeyHex) {
+                    throw new Error('No private key available');
+                }
+                
+                // Create raw transaction
+                const rawTx = {
+                    version: 2,
+                    inputs: [{
+                        txid: txPlan.input.tx_hash,
+                        vout: txPlan.input.tx_pos,
+                        scriptSig: '', // Will be filled with signature
+                        sequence: 0xfffffffe
+                    }],
+                    outputs: txPlan.outputs.map(output => ({
+                        value: output.value,
+                        scriptPubKey: createScriptPubKey(output.address)
+                    })),
+                    locktime: 0
+                };
+                
+                // Sign the transaction (simplified - actual implementation would need proper Bitcoin transaction signing)
+                const signature = signTransactionInput(rawTx, 0, privateKeyHex, txPlan.input);
+                rawTx.inputs[0].scriptSig = signature;
+                
+                // Serialize transaction
+                const serializedTx = serializeTransaction(rawTx);
+                
+                return {
+                    raw: serializedTx,
+                    txid: calculateTxId(serializedTx),
+                    details: txPlan
+                };
+            }
+            
+            // Create scriptPubKey for address (P2WPKH for bech32)
+            function createScriptPubKey(address) {
+                const decoded = decodeBech32(address);
+                if (!decoded) throw new Error('Invalid address');
+                
+                // Convert data array to hex string
+                const dataHex = decoded.data.map(byte => byte.toString(16).padStart(2, '0')).join('');
+                
+                // P2WPKH scriptPubKey: OP_0 <20-byte-key-hash>
+                return '0014' + dataHex;
+            }
+            
+            // Sign transaction input (simplified)
+            function signTransactionInput(tx, inputIndex, privateKeyHex, utxo) {
+                // This is a simplified version - actual implementation needs proper sighash calculation
+                const ec = new elliptic.ec('secp256k1');
+                const keyPair = ec.keyFromPrivate(privateKeyHex, 'hex');
+                
+                // Create a simple message to sign (in reality, this would be the sighash)
+                const message = CryptoJS.SHA256(JSON.stringify(tx)).toString();
+                const signature = keyPair.sign(message);
+                
+                // Return witness data for SegWit
+                return {
+                    witness: [
+                        signature.toDER('hex') + '01', // signature with SIGHASH_ALL
+                        keyPair.getPublic(true, 'hex') // compressed public key
+                    ]
+                };
+            }
+            
+            // Serialize transaction (simplified)
+            function serializeTransaction(tx) {
+                // This is a simplified version - actual implementation needs proper Bitcoin serialization
+                return JSON.stringify(tx);
+            }
+            
+            // Calculate transaction ID
+            function calculateTxId(serializedTx) {
+                const hash = CryptoJS.SHA256(CryptoJS.SHA256(serializedTx));
+                return hash.toString();
+            }
+            
+            // Broadcast transactions online
+            function broadcastTransactions(signedTransactions) {
+                let broadcastCount = 0;
+                
+                for (const signedTx of signedTransactions) {
+                    electrumRequest('blockchain.transaction.broadcast', [signedTx.raw], function(result, error) {
+                        if (error) {
+                            console.error('Broadcast error:', error);
+                            alert('Error broadcasting transaction: ' + error);
+                        } else {
+                            broadcastCount++;
+                            console.log('Transaction broadcast:', result);
+                            
+                            if (broadcastCount === signedTransactions.length) {
+                                alert(`Successfully broadcast ${broadcastCount} transaction(s)`);
+                                // Refresh balance
+                                if (wallet.addresses && wallet.addresses.length > 0) {
+                                    queryAddressInfo(wallet.addresses[0]);
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+            
+            // Save transactions for offline broadcast
+            function saveTransactionsOffline(signedTransactions) {
+                const exportData = {
+                    version: '1.0',
+                    timestamp: new Date().toISOString(),
+                    network: 'alpha',
+                    transactions: signedTransactions.map(tx => ({
+                        raw: tx.raw,
+                        txid: tx.txid,
+                        details: {
+                            recipient: tx.details.outputs[0].address,
+                            amount: tx.details.outputs[0].value,
+                            fee: tx.details.fee,
+                            change: tx.details.changeAmount
+                        }
+                    }))
+                };
+                
+                const dataStr = JSON.stringify(exportData, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `alpha-transactions-${Date.now()}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                alert(`Saved ${signedTransactions.length} signed transaction(s) to file. Transfer this file to an online machine to broadcast.`);
+            }
+            
+            // Import and broadcast transactions from file
+            document.getElementById('txFileInput').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    try {
+                        const importedData = JSON.parse(event.target.result);
+                        
+                        if (!importedData.transactions || !Array.isArray(importedData.transactions)) {
+                            alert('Invalid transaction file format');
+                            return;
+                        }
+                        
+                        // Check if we're online
+                        if (!electrumClient || electrumClient.readyState !== WebSocket.OPEN) {
+                            alert('Not connected to network. Please connect first.');
+                            return;
+                        }
+                        
+                        // Show confirmation
+                        const txCount = importedData.transactions.length;
+                        if (confirm(`Import and broadcast ${txCount} transaction(s)?`)) {
+                            const rawTransactions = importedData.transactions.map(tx => ({
+                                raw: tx.raw,
+                                txid: tx.txid
+                            }));
+                            broadcastTransactions(rawTransactions);
+                        }
+                        
+                    } catch (error) {
+                        alert('Error reading transaction file: ' + error.message);
+                        console.error('Import error:', error);
+                    }
+                };
+                
+                reader.readAsText(file);
+                e.target.value = ''; // Clear input for re-use
+            });
+            
+            // Load offline data on startup
+            loadOfflineUtxoData();
         });
     </script>
+
+    <!-- Transaction Confirmation Modal -->
+    <div id="txConfirmModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+        <div style="position: relative; margin: 50px auto; max-width: 600px; max-height: 80vh; overflow-y: auto; background: white; border-radius: 12px; padding: 30px;">
+            <h2 style="margin-bottom: 20px;">Confirm Transaction</h2>
+            <div id="txConfirmDetails" style="margin-bottom: 20px;">
+                <!-- Transaction details will be inserted here -->
+            </div>
+            <div class="button-container" style="justify-content: space-between;">
+                <button onclick="cancelTransaction()" class="button" style="background-color: #ef4444;">
+                    Cancel
+                </button>
+                <button onclick="confirmAndSignTransactions()" class="button" style="background-color: #10b981;">
+                    Confirm & Sign
+                </button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
