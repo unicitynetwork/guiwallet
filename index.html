@@ -696,7 +696,7 @@
                             <polyline points="7 10 12 15 17 10"></polyline>
                             <line x1="12" y1="15" x2="12" y2="3"></line>
                         </svg>
-                        Import Transactions
+                        Import & Broadcast Transactions
                     </button>
                 </div>
             </div>
@@ -3100,9 +3100,18 @@ Anyone with your master private key can access all your funds.`;
                     
                     // Sign each transaction
                     for (const txPlan of pendingTransactions) {
-                        const signedTx = createAndSignTransaction(txPlan);
-                        signedTransactions.push(signedTx);
+                        console.log('Signing transaction plan:', txPlan);
+                        try {
+                            const signedTx = createAndSignTransaction(txPlan);
+                            console.log('Signed transaction:', signedTx);
+                            signedTransactions.push(signedTx);
+                        } catch (txError) {
+                            console.error('Error signing individual transaction:', txError);
+                            throw txError;
+                        }
                     }
+                    
+                    console.log('All transactions signed:', signedTransactions);
                     
                     // Check if we're online (electrumSocket is defined in the connection scope)
                     // For now, we'll check if we can access the Electrum connection
@@ -3130,6 +3139,8 @@ Anyone with your master private key can access all your funds.`;
             
             // Create and sign a transaction
             function createAndSignTransaction(txPlan) {
+                console.log('createAndSignTransaction called with:', txPlan);
+                
                 // Get the private key
                 const privateKeyHex = wallet.childPrivateKey || wallet.masterPrivateKey;
                 if (!privateKeyHex) {
@@ -3143,15 +3154,24 @@ Anyone with your master private key can access all your funds.`;
                 // Build the transaction for SegWit (P2WPKH)
                 const tx = buildSegWitTransaction(txPlan, keyPair, publicKey);
                 
-                return {
+                console.log('buildSegWitTransaction returned:', tx);
+                
+                const result = {
                     raw: tx.hex,
                     txid: tx.txid,
                     details: txPlan
                 };
+                
+                console.log('createAndSignTransaction returning:', result);
+                
+                return result;
             }
             
             // Build a proper SegWit transaction
             function buildSegWitTransaction(txPlan, keyPair, publicKey) {
+                console.log('Building transaction with plan:', txPlan);
+                console.log('Public key:', publicKey);
+                
                 // Transaction components
                 let txHex = '';
                 
@@ -3211,6 +3231,9 @@ Anyone with your master private key can access all your funds.`;
                 const hash2 = CryptoJS.SHA256(hash1);
                 const txid = hash2.toString();
                 
+                console.log('Final transaction hex:', txHex);
+                console.log('Transaction hex length:', txHex.length);
+                
                 return {
                     hex: txHex,
                     txid: txid
@@ -3222,7 +3245,7 @@ Anyone with your master private key can access all your funds.`;
                 // For P2WPKH, witness contains: signature and public key
                 
                 // Create signature hash for witness
-                const sigHash = createSignatureHash(txPlan, partialTx);
+                const sigHash = createSignatureHash(txPlan, partialTx, publicKey);
                 
                 // Sign the hash
                 const signature = keyPair.sign(sigHash);
@@ -3246,7 +3269,7 @@ Anyone with your master private key can access all your funds.`;
             }
             
             // Create signature hash for SegWit
-            function createSignatureHash(txPlan, partialTx) {
+            function createSignatureHash(txPlan, partialTx, publicKey) {
                 // Simplified BIP143 signature hash for P2WPKH
                 let preimage = '';
                 
@@ -3327,10 +3350,23 @@ Anyone with your master private key can access all your funds.`;
                 let broadcastCount = 0;
                 
                 for (const signedTx of signedTransactions) {
+                    // Ensure we have a hex string, not JSON
+                    if (typeof signedTx.raw === 'object') {
+                        console.error('ERROR: Transaction is JSON object, not hex string:', signedTx.raw);
+                        alert('Error: Transaction format is invalid. The transaction must be a hex string, not JSON.');
+                        return;
+                    }
+                    
+                    console.log('Broadcasting transaction:', signedTx.raw);
+                    console.log('Transaction type:', typeof signedTx.raw);
+                    console.log('Transaction length:', signedTx.raw.length);
+                    console.log('Transaction ID:', signedTx.txid);
+                    
                     electrumRequest('blockchain.transaction.broadcast', [signedTx.raw], function(result, error) {
                         if (error) {
                             console.error('Broadcast error:', error);
-                            alert('Error broadcasting transaction: ' + error);
+                            console.error('Failed tx hex:', signedTx.raw);
+                            alert('Error broadcasting transaction: ' + error.message || error);
                         } else {
                             broadcastCount++;
                             console.log('Transaction broadcast:', result);
@@ -3404,10 +3440,30 @@ Anyone with your master private key can access all your funds.`;
                         // Show confirmation
                         const txCount = importedData.transactions.length;
                         if (confirm(`Import and broadcast ${txCount} transaction(s)?`)) {
-                            const rawTransactions = importedData.transactions.map(tx => ({
-                                raw: tx.raw,
-                                txid: tx.txid
-                            }));
+                            const rawTransactions = importedData.transactions.map(tx => {
+                                // Check if raw is a JSON object (old format) or hex string (new format)
+                                if (typeof tx.raw === 'object') {
+                                    alert('Error: This transaction file contains an old format that cannot be broadcast. Please create new transactions.');
+                                    throw new Error('Old transaction format detected');
+                                }
+                                
+                                // Check if it's a JSON string (also old format)
+                                if (typeof tx.raw === 'string' && tx.raw.startsWith('{')) {
+                                    alert('Error: This transaction file contains JSON-formatted transactions from an old version. Please create new transactions with the updated wallet.');
+                                    throw new Error('JSON transaction format detected - need hex format');
+                                }
+                                
+                                // Check if it looks like a hex string
+                                if (typeof tx.raw === 'string' && !tx.raw.match(/^[0-9a-fA-F]+$/)) {
+                                    alert('Error: Transaction is not in valid hexadecimal format.');
+                                    throw new Error('Invalid transaction hex format');
+                                }
+                                
+                                return {
+                                    raw: tx.raw,
+                                    txid: tx.txid
+                                };
+                            });
                             broadcastTransactions(rawTransactions);
                         }
                         
