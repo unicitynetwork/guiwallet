@@ -1018,6 +1018,7 @@
                 wallet.addresses = [];
                 wallet.isEncrypted = false;
                 wallet.encryptedMasterKey = '';
+                wallet.childPrivateKey = null; // Will be set when generating first address
                 
                 masterKeyElement.textContent = wallet.masterPrivateKey;
                 masterKeyElement.classList.add('masked');
@@ -1515,7 +1516,8 @@ Anyone with your master private key can access all your funds.`;
                         masterPrivateKey: '',
                         addresses: [],
                         isEncrypted: false,
-                        encryptedMasterKey: ''
+                        encryptedMasterKey: '',
+                        childPrivateKey: null
                     };
                     
                     // Clear UI for both key displays
@@ -1789,7 +1791,8 @@ Anyone with your master private key can access all your funds.`;
                         masterPrivateKey: masterKey,
                         addresses: [],
                         isEncrypted: isEncrypted,
-                        encryptedMasterKey: encryptedMasterKey
+                        encryptedMasterKey: encryptedMasterKey,
+                        childPrivateKey: null // Will be set when generating first address
                     };
                     
                     // Update UI for both key displays
@@ -2924,6 +2927,12 @@ Anyone with your master private key can access all your funds.`;
                     return;
                 }
                 
+                // Check if we have a wallet address
+                if (!wallet.addresses || wallet.addresses.length === 0) {
+                    alert('No wallet address available. Please generate an address first.');
+                    return;
+                }
+                
                 // Check if we have UTXOs
                 // Use currentUtxos (from online query) or offlineUtxoData if available
                 let availableUtxos = [];
@@ -3153,8 +3162,15 @@ Anyone with your master private key can access all your funds.`;
             
             // Create scriptPubKey for address (P2WPKH for bech32)
             function createScriptPubKey(address) {
+                if (!address || typeof address !== 'string') {
+                    console.error('Invalid address provided to createScriptPubKey:', address);
+                    throw new Error('Invalid address: must be a string');
+                }
+                
                 const decoded = decodeBech32(address);
-                if (!decoded) throw new Error('Invalid address');
+                if (!decoded) {
+                    throw new Error('Invalid bech32 address: ' + address);
+                }
                 
                 // Convert data array to hex string
                 const dataHex = decoded.data.map(byte => byte.toString(16).padStart(2, '0')).join('');
