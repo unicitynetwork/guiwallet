@@ -630,13 +630,22 @@
                             <p style="margin: 0; color: #666; font-size: 14px;">Available Balance</p>
                             <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold;" id="balanceAmount">0.00000000 ALPHA</p>
                         </div>
-                        <button id="refreshBalanceBtn" class="small-button" title="Refresh balance">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="23 4 23 10 17 10"></polyline>
-                                <polyline points="1 20 1 14 7 14"></polyline>
-                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                            </svg>
-                        </button>
+                        <div style="display: flex; gap: 10px;">
+                            <button id="refreshBalanceBtn" class="small-button" title="Refresh balance">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="23 4 23 10 17 10"></polyline>
+                                    <polyline points="1 20 1 14 7 14"></polyline>
+                                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                                </svg>
+                            </button>
+                            <button id="exportUtxoBtn" class="small-button" title="Export UTXO data" style="background-color: #06d6a0;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                    <polyline points="7 10 12 15 17 10"></polyline>
+                                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 
@@ -645,6 +654,50 @@
                     <h4>Recent Transactions</h4>
                     <div id="transactionList" style="max-height: 300px; overflow-y: auto; border: 1px solid #e9ecef; border-radius: 8px; padding: 10px;">
                         <p style="color: #999; text-align: center;">No transactions found</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Offline UTXO Import Section -->
+            <div id="offlineUtxoSection" style="margin-top: 30px;">
+                <h3>Offline Balance Management</h3>
+                <div class="info-box" style="background-color: rgba(131, 56, 236, 0.1); border-left: 4px solid #8338ec;">
+                    <p>Import UTXO data exported from an online session to view balances offline.</p>
+                </div>
+                
+                <div class="button-container" style="justify-content: flex-start; margin-top: 15px;">
+                    <button id="importUtxoBtn" class="button" style="background-color: #8338ec;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                        Import UTXO Data
+                    </button>
+                    <button id="clearUtxoBtn" class="button" style="background-color: #666; display: none;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                        Clear Offline Data
+                    </button>
+                </div>
+                
+                <!-- Hidden file input for import -->
+                <input type="file" id="utxoFileInput" accept=".json,.txt" style="display: none;">
+                
+                <!-- Offline Balance Display -->
+                <div id="offlineBalanceDisplay" style="display: none; margin-top: 20px;">
+                    <div class="info-box" style="background-color: rgba(6, 214, 160, 0.1); border-left: 4px solid var(--success-color);">
+                        <div>
+                            <p style="margin: 0; color: #666; font-size: 14px;">Offline Balance (Imported)</p>
+                            <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold;" id="offlineBalanceAmount">0.00000000 ALPHA</p>
+                            <p style="margin: 5px 0 0 0; color: #999; font-size: 12px;" id="offlineDataTimestamp">Last updated: Never</p>
+                        </div>
+                    </div>
+                    
+                    <div id="offlineUtxoList" style="margin-top: 15px; max-height: 200px; overflow-y: auto; border: 1px solid #e9ecef; border-radius: 8px; padding: 10px;">
+                        <!-- UTXOs will be listed here -->
                     </div>
                 </div>
             </div>
@@ -2499,6 +2552,299 @@ Anyone with your master private key can access all your funds.`;
                     setTimeout(refreshBalance, 500);
                 }
             };
+            
+            // ===== UTXO EXPORT/IMPORT FUNCTIONALITY =====
+            
+            // Store for offline UTXO data
+            let offlineUtxoData = null;
+            let currentUtxos = [];
+            let currentTransactions = [];
+            
+            // Export button element
+            const exportUtxoBtn = document.getElementById('exportUtxoBtn');
+            const importUtxoBtn = document.getElementById('importUtxoBtn');
+            const clearUtxoBtn = document.getElementById('clearUtxoBtn');
+            const utxoFileInput = document.getElementById('utxoFileInput');
+            const offlineBalanceDisplay = document.getElementById('offlineBalanceDisplay');
+            const offlineBalanceAmount = document.getElementById('offlineBalanceAmount');
+            const offlineDataTimestamp = document.getElementById('offlineDataTimestamp');
+            const offlineUtxoList = document.getElementById('offlineUtxoList');
+            
+            // Export UTXO data
+            function exportUtxoData() {
+                if (!wallet.addresses || wallet.addresses.length === 0) {
+                    alert('No wallet address available');
+                    return;
+                }
+                
+                if (!electrumConnected) {
+                    alert('Please connect to Fulcrum server first to fetch UTXO data');
+                    return;
+                }
+                
+                const address = wallet.addresses[0].address;
+                const scriptHash = addressToScriptHash(address);
+                
+                if (!scriptHash) {
+                    alert('Failed to convert address to script hash');
+                    return;
+                }
+                
+                // First get the current block height
+                electrumRequest('blockchain.headers.subscribe', [], function(headerInfo, error) {
+                    if (error) {
+                        console.error('Failed to get block height:', error);
+                        // Continue without block height
+                        fetchAndExportUtxos(null);
+                        return;
+                    }
+                    
+                    const blockHeight = headerInfo ? (headerInfo.height || headerInfo.block_height) : null;
+                    fetchAndExportUtxos(blockHeight);
+                });
+                
+                function fetchAndExportUtxos(blockHeight) {
+                    // Fetch UTXOs
+                    electrumRequest('blockchain.scripthash.listunspent', [scriptHash], function(utxos, error) {
+                        if (error) {
+                            alert('Failed to fetch UTXOs: ' + error.message);
+                            return;
+                        }
+                        
+                        // Create export data with blockchain state info
+                        const exportData = {
+                            version: '1.1',
+                            network: 'alpha',
+                            address: address,
+                            scriptHash: scriptHash,
+                            blockchain: {
+                                height: blockHeight,
+                                timestamp: new Date().toISOString(),
+                                exportDate: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString()
+                            },
+                            utxos: utxos || [],
+                            transactions: currentTransactions.slice(0, 20), // Last 20 transactions
+                            metadata: {
+                                walletVersion: '1.0.0',
+                                exportedFrom: window.location.hostname || 'offline-wallet',
+                                utxoCount: (utxos || []).length,
+                                totalValue: (utxos || []).reduce((sum, utxo) => sum + (utxo.value || 0), 0)
+                            }
+                        };
+                        
+                        // Convert to JSON with nice formatting
+                        const jsonData = JSON.stringify(exportData, null, 2);
+                        
+                        // Create download with block height in filename
+                        const blob = new Blob([jsonData], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        const blockStr = blockHeight ? `_block${blockHeight}` : '';
+                        a.download = `utxo_${address.substring(0, 10)}${blockStr}_${Date.now()}.json`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        
+                        const blockInfo = blockHeight ? ` at block ${blockHeight}` : '';
+                        alert(`UTXO data exported successfully${blockInfo}!`);
+                    });
+                }
+            }
+            
+            // Import UTXO data
+            function importUtxoData() {
+                utxoFileInput.click();
+            }
+            
+            // Handle file selection for import
+            utxoFileInput.onchange = function(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = JSON.parse(e.target.result);
+                        
+                        // Validate data structure (require new format)
+                        if (!data.version || !data.address || !data.utxos || !data.blockchain) {
+                            throw new Error('Invalid UTXO data format. Please export fresh data from an online session.');
+                        }
+                        
+                        // Check if address matches current wallet
+                        if (wallet.addresses && wallet.addresses.length > 0) {
+                            if (data.address !== wallet.addresses[0].address) {
+                                const confirmImport = confirm(
+                                    'Warning: The imported data is for a different address.\n\n' +
+                                    'Imported: ' + data.address + '\n' +
+                                    'Current: ' + wallet.addresses[0].address + '\n\n' +
+                                    'Do you want to continue?'
+                                );
+                                if (!confirmImport) return;
+                            }
+                        }
+                        
+                        // Check data freshness
+                        const exportDate = new Date(data.blockchain.timestamp);
+                        const now = new Date();
+                        const hoursDiff = Math.abs(now - exportDate) / 36e5; // Convert to hours
+                        
+                        if (hoursDiff > 24) {
+                            const daysDiff = Math.floor(hoursDiff / 24);
+                            const confirmStale = confirm(
+                                `Warning: This UTXO data is ${daysDiff} day${daysDiff > 1 ? 's' : ''} old (block ${data.blockchain.height}).\n\n` +
+                                `Exported: ${data.blockchain.exportDate}\n\n` +
+                                'The balance information may be outdated. Continue?'
+                            );
+                            if (!confirmStale) return;
+                        }
+                        
+                        // Store the imported data
+                        offlineUtxoData = data;
+                        localStorage.setItem('offlineUtxoData', JSON.stringify(data));
+                        
+                        // Display the offline balance
+                        displayOfflineBalance();
+                        
+                        alert(`UTXO data imported successfully (block ${data.blockchain.height})!`);
+                    } catch (err) {
+                        alert('Failed to import UTXO data: ' + err.message);
+                    }
+                };
+                reader.readAsText(file);
+                
+                // Reset the input
+                event.target.value = '';
+            };
+            
+            // Display offline balance
+            function displayOfflineBalance() {
+                if (!offlineUtxoData) {
+                    offlineBalanceDisplay.style.display = 'none';
+                    clearUtxoBtn.style.display = 'none';
+                    return;
+                }
+                
+                offlineBalanceDisplay.style.display = 'block';
+                clearUtxoBtn.style.display = 'inline-flex';
+                
+                // Calculate total balance from UTXOs
+                let totalBalance = 0;
+                const utxos = offlineUtxoData.utxos || [];
+                
+                // Always calculate from UTXOs (single source of truth)
+                utxos.forEach(utxo => {
+                    totalBalance += utxo.value || 0;
+                });
+                
+                // Display balance
+                const alphaBalance = (totalBalance / 100000000).toFixed(8);
+                offlineBalanceAmount.textContent = alphaBalance + ' ALPHA';
+                
+                // Display timestamp and block height
+                const timestamp = new Date(offlineUtxoData.blockchain.timestamp);
+                const blockHeight = offlineUtxoData.blockchain.height;
+                offlineDataTimestamp.textContent = `Last updated: ${timestamp.toLocaleString()} • Block #${blockHeight}`;
+                
+                // Display UTXOs
+                offlineUtxoList.innerHTML = '';
+                
+                if (utxos.length === 0) {
+                    offlineUtxoList.innerHTML = '<p style="color: #999; text-align: center;">No UTXOs available</p>';
+                } else {
+                    const utxoHeader = document.createElement('div');
+                    utxoHeader.style.cssText = 'font-weight: bold; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #e9ecef;';
+                    utxoHeader.innerHTML = `${utxos.length} UTXO${utxos.length > 1 ? 's' : ''} available`;
+                    offlineUtxoList.appendChild(utxoHeader);
+                    
+                    utxos.forEach((utxo, index) => {
+                        const utxoDiv = document.createElement('div');
+                        utxoDiv.style.cssText = 'padding: 8px; border-bottom: 1px solid #f0f0f0; font-size: 13px;';
+                        
+                        const txId = utxo.tx_hash || utxo.txid || 'Unknown';
+                        const vout = utxo.tx_pos !== undefined ? utxo.tx_pos : (utxo.vout || 0);
+                        const value = (utxo.value / 100000000).toFixed(8);
+                        const height = utxo.height;
+                        
+                        utxoDiv.innerHTML = `
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div style="font-family: monospace; font-size: 11px; color: #666;">
+                                        ${txId.substring(0, 8)}...${txId.substring(txId.length - 8)}:${vout}
+                                    </div>
+                                    <div style="color: #333; font-weight: bold; margin-top: 2px;">
+                                        ${value} ALPHA
+                                    </div>
+                                    <div style="color: #999; font-size: 11px;">
+                                        ${height > 0 ? 'Block ' + height : 'Unconfirmed'}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        
+                        offlineUtxoList.appendChild(utxoDiv);
+                    });
+                }
+            }
+            
+            // Clear offline UTXO data
+            function clearOfflineUtxoData() {
+                if (confirm('Are you sure you want to clear the offline UTXO data?')) {
+                    offlineUtxoData = null;
+                    localStorage.removeItem('offlineUtxoData');
+                    displayOfflineBalance();
+                    alert('Offline UTXO data cleared');
+                }
+            }
+            
+            // Load offline UTXO data from localStorage on startup
+            function loadOfflineUtxoData() {
+                const stored = localStorage.getItem('offlineUtxoData');
+                if (stored) {
+                    try {
+                        offlineUtxoData = JSON.parse(stored);
+                        displayOfflineBalance();
+                    } catch (err) {
+                        console.error('Failed to load offline UTXO data:', err);
+                    }
+                }
+            }
+            
+            // Update refreshBalance to store current data
+            const originalRefreshBalance = refreshBalance;
+            refreshBalance = function() {
+                originalRefreshBalance();
+                
+                // Also fetch and store current transactions for export
+                if (wallet.addresses && wallet.addresses.length > 0) {
+                    const scriptHash = addressToScriptHash(wallet.addresses[0].address);
+                    if (scriptHash) {
+                        // Store transactions
+                        electrumRequest('blockchain.scripthash.get_history', [scriptHash], function(result) {
+                            if (result) {
+                                currentTransactions = result;
+                            }
+                        });
+                        
+                        // Store UTXOs
+                        electrumRequest('blockchain.scripthash.listunspent', [scriptHash], function(result) {
+                            if (result) {
+                                currentUtxos = result;
+                            }
+                        });
+                    }
+                }
+            };
+            
+            // Event listeners for UTXO buttons
+            exportUtxoBtn.onclick = exportUtxoData;
+            importUtxoBtn.onclick = importUtxoData;
+            clearUtxoBtn.onclick = clearOfflineUtxoData;
+            
+            // Load offline data on startup
+            loadOfflineUtxoData();
         });
     </script>
 </body>
