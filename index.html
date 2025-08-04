@@ -3005,6 +3005,9 @@ Anyone with your master private key can access all your funds.`;
                         }
                     }
                     
+                    // Get the wallet's address string (not the object)
+                    const walletAddress = wallet.addresses[0].address;
+                    
                     transactions.push({
                         input: utxo,
                         outputs: [
@@ -3012,13 +3015,13 @@ Anyone with your master private key can access all your funds.`;
                         ],
                         fee: feePerTx,
                         changeAmount: changeAmount,
-                        changeAddress: wallet.addresses[0] // Send change back to our address
+                        changeAddress: walletAddress // Send change back to our address
                     });
                     
                     // Add change output if needed
                     if (changeAmount > 0) {
                         transactions[transactions.length - 1].outputs.push({
-                            address: wallet.addresses[0],
+                            address: walletAddress,
                             value: changeAmount
                         });
                     }
@@ -3101,8 +3104,11 @@ Anyone with your master private key can access all your funds.`;
                         signedTransactions.push(signedTx);
                     }
                     
-                    // Check if we're online
-                    if (electrumClient && electrumClient.readyState === WebSocket.OPEN) {
+                    // Check if we're online (electrumSocket is defined in the connection scope)
+                    // For now, we'll check if we can access the Electrum connection
+                    const isOnline = (typeof electrumSocket !== 'undefined' && electrumSocket && electrumSocket.readyState === WebSocket.OPEN);
+                    
+                    if (isOnline) {
                         // Broadcast transactions
                         broadcastTransactions(signedTransactions);
                     } else {
@@ -3284,7 +3290,7 @@ Anyone with your master private key can access all your funds.`;
                         }
                         
                         // Check if we're online
-                        if (!electrumClient || electrumClient.readyState !== WebSocket.OPEN) {
+                        if (!electrumSocket || electrumSocket.readyState !== WebSocket.OPEN) {
                             alert('Not connected to network. Please connect first.');
                             return;
                         }
