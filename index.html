@@ -3136,34 +3136,170 @@ Anyone with your master private key can access all your funds.`;
                     throw new Error('No private key available');
                 }
                 
-                // Create raw transaction
-                const rawTx = {
-                    version: 2,
-                    inputs: [{
-                        txid: txPlan.input.tx_hash,
-                        vout: txPlan.input.tx_pos,
-                        scriptSig: '', // Will be filled with signature
-                        sequence: 0xfffffffe
-                    }],
-                    outputs: txPlan.outputs.map(output => ({
-                        value: output.value,
-                        scriptPubKey: createScriptPubKey(output.address)
-                    })),
-                    locktime: 0
-                };
+                const ec = new elliptic.ec('secp256k1');
+                const keyPair = ec.keyFromPrivate(privateKeyHex, 'hex');
+                const publicKey = keyPair.getPublic(true, 'hex'); // compressed
                 
-                // Sign the transaction (simplified - actual implementation would need proper Bitcoin transaction signing)
-                const signature = signTransactionInput(rawTx, 0, privateKeyHex, txPlan.input);
-                rawTx.inputs[0].scriptSig = signature;
-                
-                // Serialize transaction
-                const serializedTx = serializeTransaction(rawTx);
+                // Build the transaction for SegWit (P2WPKH)
+                const tx = buildSegWitTransaction(txPlan, keyPair, publicKey);
                 
                 return {
-                    raw: serializedTx,
-                    txid: calculateTxId(serializedTx),
+                    raw: tx.hex,
+                    txid: tx.txid,
                     details: txPlan
                 };
+            }
+            
+            // Build a proper SegWit transaction
+            function buildSegWitTransaction(txPlan, keyPair, publicKey) {
+                // Transaction components
+                let txHex = '';
+                
+                // Version (4 bytes, little-endian)
+                txHex += '02000000'; // version 2
+                
+                // Marker and flag for SegWit
+                txHex += '00'; // marker
+                txHex += '01'; // flag
+                
+                // Number of inputs (varint)
+                txHex += '01'; // 1 input
+                
+                // Input
+                // Previous tx hash (32 bytes, reversed)
+                const prevTxHash = txPlan.input.tx_hash;
+                const reversedHash = prevTxHash.match(/../g).reverse().join('');
+                txHex += reversedHash;
+                
+                // Previous output index (4 bytes, little-endian)
+                const vout = txPlan.input.tx_pos;
+                txHex += ('00000000' + vout.toString(16)).slice(-8).match(/../g).reverse().join('');
+                
+                // Script length (varint) - 0 for witness transactions
+                txHex += '00';
+                
+                // Sequence (4 bytes)
+                txHex += 'feffffff';
+                
+                // Number of outputs (varint)
+                const outputCount = txPlan.outputs.length;
+                txHex += ('0' + outputCount.toString(16)).slice(-2);
+                
+                // Outputs
+                for (const output of txPlan.outputs) {
+                    // Amount (8 bytes, little-endian)
+                    const amountHex = output.value.toString(16).padStart(16, '0');
+                    txHex += amountHex.match(/../g).reverse().join('');
+                    
+                    // Script pubkey
+                    const scriptPubKey = createScriptPubKey(output.address);
+                    const scriptLength = (scriptPubKey.length / 2).toString(16).padStart(2, '0');
+                    txHex += scriptLength;
+                    txHex += scriptPubKey;
+                }
+                
+                // Witness data
+                const witnessData = createWitnessData(txPlan, txHex, keyPair, publicKey);
+                txHex += witnessData;
+                
+                // Locktime (4 bytes)
+                txHex += '00000000';
+                
+                // Calculate transaction ID (double SHA256 of tx without witness data)
+                const txForId = txHex.replace(/^02000000000101/, '02000000').replace(witnessData, '');
+                const hash1 = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(txForId));
+                const hash2 = CryptoJS.SHA256(hash1);
+                const txid = hash2.toString();
+                
+                return {
+                    hex: txHex,
+                    txid: txid
+                };
+            }
+            
+            // Create witness data for the transaction
+            function createWitnessData(txPlan, partialTx, keyPair, publicKey) {
+                // For P2WPKH, witness contains: signature and public key
+                
+                // Create signature hash for witness
+                const sigHash = createSignatureHash(txPlan, partialTx);
+                
+                // Sign the hash
+                const signature = keyPair.sign(sigHash);
+                const derSig = signature.toDER('hex') + '01'; // SIGHASH_ALL
+                
+                // Build witness
+                let witness = '';
+                witness += '02'; // 2 stack items
+                
+                // Signature
+                const sigLen = (derSig.length / 2).toString(16).padStart(2, '0');
+                witness += sigLen;
+                witness += derSig;
+                
+                // Public key
+                const pubKeyLen = (publicKey.length / 2).toString(16).padStart(2, '0');
+                witness += pubKeyLen;
+                witness += publicKey;
+                
+                return witness;
+            }
+            
+            // Create signature hash for SegWit
+            function createSignatureHash(txPlan, partialTx) {
+                // Simplified BIP143 signature hash for P2WPKH
+                let preimage = '';
+                
+                // nVersion
+                preimage += '02000000';
+                
+                // hashPrevouts (simplified - should be hash of all prevouts)
+                const prevout = txPlan.input.tx_hash + ('00000000' + txPlan.input.tx_pos.toString(16)).slice(-8).match(/../g).reverse().join('');
+                const hashPrevouts = CryptoJS.SHA256(CryptoJS.SHA256(CryptoJS.enc.Hex.parse(prevout))).toString();
+                preimage += hashPrevouts;
+                
+                // hashSequence (simplified)
+                const hashSequence = CryptoJS.SHA256(CryptoJS.SHA256(CryptoJS.enc.Hex.parse('feffffff'))).toString();
+                preimage += hashSequence;
+                
+                // outpoint
+                preimage += txPlan.input.tx_hash.match(/../g).reverse().join('');
+                preimage += ('00000000' + txPlan.input.tx_pos.toString(16)).slice(-8).match(/../g).reverse().join('');
+                
+                // scriptCode (P2PKH-like for P2WPKH)
+                const pubKeyHash = CryptoJS.RIPEMD160(CryptoJS.SHA256(CryptoJS.enc.Hex.parse(publicKey))).toString();
+                preimage += '1976a914' + pubKeyHash + '88ac';
+                
+                // amount
+                const amountHex = txPlan.input.value.toString(16).padStart(16, '0');
+                preimage += amountHex.match(/../g).reverse().join('');
+                
+                // nSequence
+                preimage += 'feffffff';
+                
+                // hashOutputs (hash of all outputs)
+                let outputs = '';
+                for (const output of txPlan.outputs) {
+                    const amountHex = output.value.toString(16).padStart(16, '0');
+                    outputs += amountHex.match(/../g).reverse().join('');
+                    const scriptPubKey = createScriptPubKey(output.address);
+                    outputs += (scriptPubKey.length / 2).toString(16).padStart(2, '0');
+                    outputs += scriptPubKey;
+                }
+                const hashOutputs = CryptoJS.SHA256(CryptoJS.SHA256(CryptoJS.enc.Hex.parse(outputs))).toString();
+                preimage += hashOutputs;
+                
+                // nLocktime
+                preimage += '00000000';
+                
+                // sighash type
+                preimage += '01000000'; // SIGHASH_ALL
+                
+                // Double SHA256
+                const hash1 = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(preimage));
+                const hash2 = CryptoJS.SHA256(hash1);
+                
+                return hash2.toString();
             }
             
             // Create scriptPubKey for address (P2WPKH for bech32)
@@ -3185,36 +3321,6 @@ Anyone with your master private key can access all your funds.`;
                 return '0014' + dataHex;
             }
             
-            // Sign transaction input (simplified)
-            function signTransactionInput(tx, inputIndex, privateKeyHex, utxo) {
-                // This is a simplified version - actual implementation needs proper sighash calculation
-                const ec = new elliptic.ec('secp256k1');
-                const keyPair = ec.keyFromPrivate(privateKeyHex, 'hex');
-                
-                // Create a simple message to sign (in reality, this would be the sighash)
-                const message = CryptoJS.SHA256(JSON.stringify(tx)).toString();
-                const signature = keyPair.sign(message);
-                
-                // Return witness data for SegWit
-                return {
-                    witness: [
-                        signature.toDER('hex') + '01', // signature with SIGHASH_ALL
-                        keyPair.getPublic(true, 'hex') // compressed public key
-                    ]
-                };
-            }
-            
-            // Serialize transaction (simplified)
-            function serializeTransaction(tx) {
-                // This is a simplified version - actual implementation needs proper Bitcoin serialization
-                return JSON.stringify(tx);
-            }
-            
-            // Calculate transaction ID
-            function calculateTxId(serializedTx) {
-                const hash = CryptoJS.SHA256(CryptoJS.SHA256(serializedTx));
-                return hash.toString();
-            }
             
             // Broadcast transactions online
             function broadcastTransactions(signedTransactions) {
