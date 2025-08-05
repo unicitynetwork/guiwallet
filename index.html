@@ -2217,6 +2217,39 @@ Anyone with your master private key can access all your funds.`;
             let electrumRequestId = 1;
             let electrumCallbacks = {};
             let electrumConnected = false;
+            let currentScriptHashSubscription = null;
+            let headerSubscriptionActive = false;
+            
+            // Helper function to subscribe to address changes
+            function subscribeToAddressChanges(address) {
+                if (!electrumConnected || !address) return;
+                
+                const scriptHash = addressToScriptHash(address);
+                if (!scriptHash) return;
+                
+                // Unsubscribe from previous address if any
+                if (currentScriptHashSubscription && currentScriptHashSubscription !== scriptHash) {
+                    electrumRequest('blockchain.scripthash.unsubscribe', [currentScriptHashSubscription], function(result) {
+                        console.log('Unsubscribed from previous address:', result);
+                    });
+                }
+                
+                // Subscribe to new address
+                electrumRequest('blockchain.scripthash.subscribe', [scriptHash], function(result) {
+                    console.log('Subscribed to address changes:', scriptHash, 'status:', result);
+                    currentScriptHashSubscription = scriptHash;
+                });
+            }
+            
+            // Helper function to unsubscribe from current address
+            function unsubscribeFromAddressChanges() {
+                if (currentScriptHashSubscription && electrumConnected) {
+                    electrumRequest('blockchain.scripthash.unsubscribe', [currentScriptHashSubscription], function(result) {
+                        console.log('Unsubscribed from address:', result);
+                        currentScriptHashSubscription = null;
+                    });
+                }
+            }
             
             // RPC UI elements
             const connectRpcBtn = document.getElementById('connectRpcBtn');
@@ -2266,6 +2299,7 @@ Anyone with your master private key can access all your funds.`;
                         // Subscribe to headers for new blocks
                         electrumRequest('blockchain.headers.subscribe', [], function(result) {
                             console.log('Subscribed to block headers:', result);
+                            headerSubscriptionActive = true;
                             if (result && (result.height || result.block_height)) {
                                 currentBlockHeight = result.height || result.block_height;
                                 // Get the actual block header to extract timestamp
@@ -2281,6 +2315,13 @@ Anyone with your master private key can access all your funds.`;
                                 });
                             }
                         });
+                        
+                        // Subscribe to current address if available
+                        const currentAddress = wallet.addresses && wallet.addresses.length > 0 ? 
+                            wallet.addresses[0].address : watchOnlyAddressValue;
+                        if (currentAddress) {
+                            subscribeToAddressChanges(currentAddress);
+                        }
                         
                         // Refresh balance on connect  
                         refreshBalance();
@@ -2306,6 +2347,7 @@ Anyone with your master private key can access all your funds.`;
                         try {
                             const response = JSON.parse(event.data);
                             
+                            // Handle normal responses
                             if (response.id && electrumCallbacks[response.id]) {
                                 const callback = electrumCallbacks[response.id];
                                 delete electrumCallbacks[response.id];
@@ -2315,6 +2357,49 @@ Anyone with your master private key can access all your funds.`;
                                     callback(null, response.error);
                                 } else {
                                     callback(response.result);
+                                }
+                            }
+                            
+                            // Handle subscription notifications (no id field)
+                            else if (response.method && response.params) {
+                                if (response.method === 'blockchain.headers.subscribe') {
+                                    // New block header notification
+                                    const header = response.params[0];
+                                    if (header) {
+                                        const newHeight = header.height || header.block_height;
+                                        console.log('New block detected via subscription:', newHeight);
+                                        
+                                        // Update block height and timestamp
+                                        currentBlockHeight = newHeight;
+                                        const timestampHex = header.hex.substring(136, 144);
+                                        const timestamp = parseInt(timestampHex.match(/../g).reverse().join(''), 16);
+                                        currentBlockTime = new Date(timestamp * 1000);
+                                        
+                                        // Update UI and refresh data
+                                        updateCommonBalance();
+                                        refreshBalance();
+                                        
+                                        // Show notification
+                                        showNotification(
+                                            '🔗 New Block',
+                                            `Block ${newHeight} detected at ${formatBlockTimestamp(currentBlockTime)}`
+                                        );
+                                    }
+                                }
+                                else if (response.method === 'blockchain.scripthash.subscribe') {
+                                    // Address status changed notification
+                                    const scriptHash = response.params[0];
+                                    const status = response.params[1];
+                                    console.log('Address status changed:', scriptHash, status);
+                                    
+                                    // Refresh balance and transactions immediately
+                                    refreshBalance();
+                                    
+                                    // Show notification
+                                    showNotification(
+                                        '📨 Address Activity',
+                                        'New activity detected for your address'
+                                    );
                                 }
                             }
                         } catch (err) {
@@ -2334,6 +2419,8 @@ Anyone with your master private key can access all your funds.`;
                     
                     electrumSocket.onclose = function() {
                         electrumConnected = false;
+                        currentScriptHashSubscription = null;
+                        headerSubscriptionActive = false;
                         updateUtxoListDisplay(); // Update UTXO list display when disconnected
                         updateCommonBalance(); // Update button states
                         const infoBox = connectionStatusDiv.querySelector('.info-box');
@@ -2611,7 +2698,13 @@ Anyone with your master private key can access all your funds.`;
             window.generateNewAddress = function() {
                 originalGenerateNewAddress();
                 if (electrumConnected) {
-                    setTimeout(refreshBalance, 500);
+                    setTimeout(() => {
+                        refreshBalance();
+                        // Subscribe to the new address
+                        if (wallet.addresses && wallet.addresses.length > 0) {
+                            subscribeToAddressChanges(wallet.addresses[0].address);
+                        }
+                    }, 500);
                 }
             };
             
@@ -2650,12 +2743,22 @@ Anyone with your master private key can access all your funds.`;
                     walletInfo.style.display = 'block';
                     watchOnlyMode = false;
                     watchOnlyAddressValue = null;
+                    
+                    // Subscribe to wallet address if connected
+                    if (electrumConnected && wallet.addresses && wallet.addresses.length > 0) {
+                        subscribeToAddressChanges(wallet.addresses[0].address);
+                    }
                 } else {
                     // Not connected and no wallet
                     watchOnlySection.style.display = 'none';
                     walletInfo.style.display = 'none';
                     watchOnlyMode = false;
                     watchOnlyAddressValue = null;
+                    
+                    // Unsubscribe if connected
+                    if (electrumConnected) {
+                        unsubscribeFromAddressChanges();
+                    }
                 }
             }
             
@@ -2672,8 +2775,14 @@ Anyone with your master private key can access all your funds.`;
                         try {
                             const decoded = decodeBech32(address);
                             if (decoded) {
+                                const oldAddress = watchOnlyAddressValue;
                                 watchOnlyAddressValue = address;
                                 refreshWatchOnlyBalance(address);
+                                
+                                // Update subscription if connected
+                                if (electrumConnected && address !== oldAddress) {
+                                    subscribeToAddressChanges(address);
+                                }
                             }
                         } catch (err) {
                             console.log('Invalid address format:', err);
@@ -2690,6 +2799,11 @@ Anyone with your master private key can access all your funds.`;
                     watchOnlyUnconfirmed.textContent = '';
                     currentUtxos = [];
                     updateUtxoListDisplay();
+                    
+                    // Unsubscribe if connected
+                    if (electrumConnected) {
+                        unsubscribeFromAddressChanges();
+                    }
                 }
             });
             
@@ -2740,8 +2854,57 @@ Anyone with your master private key can access all your funds.`;
                 // Also fetch transaction history
                 electrumRequest('blockchain.scripthash.get_history', [scriptHash], function(result) {
                     if (result) {
-                        // Only update if transactions changed
-                        if (hasArrayChanged(currentTransactions, result)) {
+                        // Analyze changes
+                        const changes = analyzeTransactionChanges(currentTransactions, result);
+                        
+                        if (changes.hasChanged) {
+                            // Show notifications for new transactions
+                            changes.newTransactions.forEach(tx => {
+                                const txid = tx.tx_hash || tx.txid;
+                                const shortTxid = txid.substring(0, 8) + '...' + txid.substring(txid.length - 8);
+                                
+                                // Fetch transaction details to determine direction
+                                electrumRequest('blockchain.transaction.get', [txid, true], function(txDetails) {
+                                    let notificationTitle, notificationBody;
+                                    
+                                    if (txDetails && watchOnlyAddressValue) {
+                                        const result = calculateTransactionAmount(txDetails, watchOnlyAddressValue);
+                                        const amount = (Math.abs(result.netAmount) / 100000000).toFixed(8);
+                                        
+                                        if (result.isIncoming) {
+                                            notificationTitle = tx.height === 0 ? 
+                                                '💰 Incoming to Watched Address' : 
+                                                '✅ Incoming Transaction Confirmed';
+                                            notificationBody = `Received ${amount} ALPHA${tx.height > 0 ? ' in block ' + tx.height : ' (unconfirmed)'}`;
+                                        } else {
+                                            notificationTitle = tx.height === 0 ? 
+                                                '📤 Outgoing from Watched Address' : 
+                                                '✅ Outgoing Transaction Confirmed';
+                                            notificationBody = `Sent ${amount} ALPHA${tx.height > 0 ? ' in block ' + tx.height : ' (unconfirmed)'}`;
+                                        }
+                                    } else {
+                                        // Fallback if we can't get details
+                                        notificationTitle = tx.height === 0 ? 
+                                            '⚡ New Transaction (Watched)' : 
+                                            '✓ Transaction Confirmed (Watched)';
+                                        notificationBody = `Transaction ${shortTxid}${tx.height > 0 ? ' in block ' + tx.height : ' detected'}`;
+                                    }
+                                    
+                                    showNotification(notificationTitle, notificationBody);
+                                });
+                            });
+                            
+                            // Show notifications for newly confirmed transactions
+                            changes.confirmedTransactions.forEach(tx => {
+                                const txid = tx.tx_hash || tx.txid;
+                                const shortTxid = txid.substring(0, 8) + '...' + txid.substring(txid.length - 8);
+                                
+                                showNotification(
+                                    '✅ Transaction Confirmed',
+                                    `Transaction ${shortTxid} confirmed in block ${tx.height}`
+                                );
+                            });
+                            
                             currentTransactions = result;
                             updateTransactionHistory();
                         }
@@ -3201,46 +3364,28 @@ Anyone with your master private key can access all your funds.`;
                 return date.toLocaleString(undefined, options);
             }
             
-            // Start polling for new blocks
+            // Start polling for new blocks (reduced frequency since we have subscriptions)
             function startBlockPolling() {
                 // Clear any existing interval
                 if (blockPollInterval) {
                     clearInterval(blockPollInterval);
                 }
                 
-                // Poll every 30 seconds
+                // Only poll as a backup every 5 minutes since we have real-time subscriptions
                 blockPollInterval = setInterval(function() {
                     if (!electrumConnected) {
                         stopBlockPolling();
                         return;
                     }
                     
-                    // Get latest block header
-                    electrumRequest('blockchain.headers.subscribe', [], function(result) {
-                        if (result && (result.height || result.block_height)) {
-                            const newHeight = result.height || result.block_height;
-                            if (newHeight > currentBlockHeight) {
-                                console.log(`New block detected: ${newHeight} (was ${currentBlockHeight})`);
-                                currentBlockHeight = newHeight;
-                                
-                                // Get the actual block header to extract timestamp
-                                electrumRequest('blockchain.block.header', [currentBlockHeight], function(headerHex) {
-                                    if (headerHex) {
-                                        // Parse block header to get timestamp (bytes 68-71)
-                                        const timestampBytes = headerHex.substr(68 * 2, 8).match(/.{2}/g).reverse().join('');
-                                        currentBlockTime = new Date(parseInt(timestampBytes, 16) * 1000);
-                                        console.log(`Block ${currentBlockHeight} timestamp: ${currentBlockTime.toISOString()}`);
-                                    }
-                                    
-                                    // Refresh all data
-                                    refreshBalance();
-                                    updateCommonBalance();
-                                    updateTransactionHistory();
-                                });
-                            }
-                        }
+                    // This is now just a fallback check since we have subscriptions
+                    console.log('Performing periodic connection health check...');
+                    
+                    // Simple ping to keep connection alive
+                    electrumRequest('server.ping', [], function(result) {
+                        console.log('Connection health check:', result !== null ? 'OK' : 'Failed');
                     });
-                }, 30000); // 30 seconds
+                }, 300000); // 5 minutes - just for connection health
             }
             
             // Stop polling for blocks
@@ -3597,30 +3742,98 @@ Anyone with your master private key can access all your funds.`;
                 }
             }
             
-            // Helper to compare arrays for changes
-            function hasArrayChanged(oldArray, newArray) {
-                if (!oldArray || !newArray) return true;
-                if (oldArray.length !== newArray.length) return true;
-                
-                // Create a map of old items for comparison
-                const oldMap = new Map();
-                oldArray.forEach(item => {
-                    const key = (item.tx_hash || item.txid) + ':' + (item.tx_pos !== undefined ? item.tx_pos : item.vout || 0);
-                    oldMap.set(key, item);
-                });
-                
-                // Check if any new item is different
-                for (const newItem of newArray) {
-                    const key = (newItem.tx_hash || newItem.txid) + ':' + (newItem.tx_pos !== undefined ? newItem.tx_pos : newItem.vout || 0);
-                    const oldItem = oldMap.get(key);
-                    if (!oldItem) return true; // New item
-                    
-                    // Check if height changed (confirmation status)
-                    if (oldItem.height !== newItem.height) return true;
-                    if (oldItem.value !== newItem.value) return true;
+            // Request notification permission on page load
+            async function requestNotificationPermission() {
+                if ('Notification' in window && Notification.permission === 'default') {
+                    try {
+                        const permission = await Notification.requestPermission();
+                        console.log('Notification permission:', permission);
+                    } catch (err) {
+                        console.error('Error requesting notification permission:', err);
+                    }
+                }
+            }
+            
+            // Show system notification
+            function showNotification(title, body, icon = null) {
+                if (!('Notification' in window)) {
+                    console.log('This browser does not support notifications');
+                    return;
                 }
                 
-                return false;
+                if (Notification.permission === 'granted') {
+                    const notification = new Notification(title, {
+                        body: body,
+                        icon: icon || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiMzNGQzOTkiIHN0cm9rZS13aWR0aD0iMiI+PHJlY3QgeD0iMyIgeT0iMTEiIHdpZHRoPSIxOCIgaGVpZ2h0PSIxMSIgcng9IjIiIHJ5PSIyIi8+PHBhdGggZD0iTTcgMTFWN2E1IDUgMCAwIDEgMTAgMHY0Ii8+PC9zdmc+',
+                        tag: 'alpha-wallet-' + Date.now(), // Unique tag to prevent duplicate notifications
+                        requireInteraction: false,
+                        silent: false
+                    });
+                    
+                    // Auto-close after 5 seconds
+                    setTimeout(() => notification.close(), 5000);
+                    
+                    // Handle click
+                    notification.onclick = function() {
+                        window.focus();
+                        notification.close();
+                    };
+                }
+            }
+            
+            // Helper to compare arrays for changes and detect specific changes
+            function analyzeTransactionChanges(oldArray, newArray) {
+                const changes = {
+                    hasChanged: false,
+                    newTransactions: [],
+                    confirmedTransactions: []
+                };
+                
+                if (!oldArray || !newArray) {
+                    changes.hasChanged = true;
+                    return changes;
+                }
+                
+                if (oldArray.length !== newArray.length) {
+                    changes.hasChanged = true;
+                }
+                
+                // Create maps for comparison
+                const oldMap = new Map();
+                oldArray.forEach(item => {
+                    const txid = item.tx_hash || item.txid;
+                    oldMap.set(txid, item);
+                });
+                
+                const newMap = new Map();
+                newArray.forEach(item => {
+                    const txid = item.tx_hash || item.txid;
+                    newMap.set(txid, item);
+                });
+                
+                // Check for new transactions
+                newMap.forEach((newItem, txid) => {
+                    if (!oldMap.has(txid)) {
+                        changes.newTransactions.push(newItem);
+                        changes.hasChanged = true;
+                    }
+                });
+                
+                // Check for confirmed transactions (height changed from 0 to positive)
+                newMap.forEach((newItem, txid) => {
+                    const oldItem = oldMap.get(txid);
+                    if (oldItem && oldItem.height === 0 && newItem.height > 0) {
+                        changes.confirmedTransactions.push(newItem);
+                        changes.hasChanged = true;
+                    }
+                });
+                
+                return changes;
+            }
+            
+            // Helper to compare arrays for changes
+            function hasArrayChanged(oldArray, newArray) {
+                return analyzeTransactionChanges(oldArray, newArray).hasChanged;
             }
             
             // Update refreshBalance to store current data
@@ -3635,8 +3848,59 @@ Anyone with your master private key can access all your funds.`;
                         // Store transactions
                         electrumRequest('blockchain.scripthash.get_history', [scriptHash], function(result) {
                             if (result) {
-                                // Only update if transactions changed
-                                if (hasArrayChanged(currentTransactions, result)) {
+                                // Analyze changes
+                                const changes = analyzeTransactionChanges(currentTransactions, result);
+                                
+                                if (changes.hasChanged) {
+                                    // Show notifications for new transactions
+                                    changes.newTransactions.forEach(tx => {
+                                        const txid = tx.tx_hash || tx.txid;
+                                        const shortTxid = txid.substring(0, 8) + '...' + txid.substring(txid.length - 8);
+                                        
+                                        // Fetch transaction details to determine direction
+                                        electrumRequest('blockchain.transaction.get', [txid, true], function(txDetails) {
+                                            let notificationTitle, notificationBody;
+                                            
+                                            if (txDetails) {
+                                                const address = wallet.addresses && wallet.addresses.length > 0 ? 
+                                                    wallet.addresses[0].address : watchOnlyAddressValue;
+                                                const result = calculateTransactionAmount(txDetails, address);
+                                                const amount = (Math.abs(result.netAmount) / 100000000).toFixed(8);
+                                                
+                                                if (result.isIncoming) {
+                                                    notificationTitle = tx.height === 0 ? 
+                                                        '💰 Incoming Transaction' : 
+                                                        '✅ Incoming Transaction Confirmed';
+                                                    notificationBody = `Received ${amount} ALPHA${tx.height > 0 ? ' in block ' + tx.height : ' (unconfirmed)'}`;
+                                                } else {
+                                                    notificationTitle = tx.height === 0 ? 
+                                                        '📤 Outgoing Transaction' : 
+                                                        '✅ Outgoing Transaction Confirmed';
+                                                    notificationBody = `Sent ${amount} ALPHA${tx.height > 0 ? ' in block ' + tx.height : ' (unconfirmed)'}`;
+                                                }
+                                            } else {
+                                                // Fallback if we can't get details
+                                                notificationTitle = tx.height === 0 ? 
+                                                    '⚡ New Transaction' : 
+                                                    '✓ Transaction Confirmed';
+                                                notificationBody = `Transaction ${shortTxid}${tx.height > 0 ? ' in block ' + tx.height : ' detected'}`;
+                                            }
+                                            
+                                            showNotification(notificationTitle, notificationBody);
+                                        });
+                                    });
+                                    
+                                    // Show notifications for newly confirmed transactions
+                                    changes.confirmedTransactions.forEach(tx => {
+                                        const txid = tx.tx_hash || tx.txid;
+                                        const shortTxid = txid.substring(0, 8) + '...' + txid.substring(txid.length - 8);
+                                        
+                                        showNotification(
+                                            '✅ Transaction Confirmed',
+                                            `Transaction ${shortTxid} confirmed in block ${tx.height}`
+                                        );
+                                    });
+                                    
                                     currentTransactions = result;
                                     updateTransactionHistory();
                                 }
@@ -3668,6 +3932,9 @@ Anyone with your master private key can access all your funds.`;
             
             // Initial button state update
             updateCommonBalance();
+            
+            // Request notification permission
+            requestNotificationPermission();
             
             // Transaction functionality
             let pendingTransactions = [];
