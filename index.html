@@ -2916,16 +2916,19 @@ Anyone with your master private key can access all your funds.`;
             function updateWatchOnlyMode() {
                 const hasWallet = wallet.masterPrivateKey || (wallet.addresses && wallet.addresses.length > 0);
                 const shouldShowWatchOnly = !hasWallet && electrumConnected;
+                const wasInWatchOnlyMode = watchOnlyMode;
                 
                 if (shouldShowWatchOnly) {
                     watchOnlySection.style.display = 'block';
                     walletInfo.style.display = 'none';
                     watchOnlyMode = true;
-                    // Clear data when switching to watch-only mode
-                    currentTransactions = [];
-                    currentUtxos = [];
-                    updateTransactionHistory();
-                    updateUtxoListDisplay();
+                    // Only clear data when actually switching TO watch-only mode from wallet mode
+                    if (!wasInWatchOnlyMode) {
+                        currentTransactions = [];
+                        currentUtxos = [];
+                        updateTransactionHistory();
+                        updateUtxoListDisplay();
+                    }
                 } else if (hasWallet) {
                     watchOnlySection.style.display = 'none';
                     walletInfo.style.display = 'block';
@@ -2981,14 +2984,17 @@ Anyone with your master private key can access all your funds.`;
                                 
                                 // Update subscription if connected
                                 if (electrumConnected && address !== oldAddress) {
-                                    subscribeToAddressChanges(address);
                                     // Clear transaction history when address changes
                                     currentTransactions = [];
                                     currentUtxos = [];
+                                    // Update UI to clear the transaction list immediately
+                                    updateTransactionHistory();
+                                    updateUtxoListDisplay();
+                                    
+                                    // Subscribe to the new address
+                                    subscribeToAddressChanges(address);
                                     // Reset initial load flag when address changes
                                     isInitialLoad = true;
-                                    // Update UI to clear the transaction list
-                                    updateTransactionHistory();
                                     setTimeout(() => {
                                         isInitialLoad = false;
                                     }, 2000);
@@ -3038,9 +3044,10 @@ Anyone with your master private key can access all your funds.`;
                 
                 // Fetch UTXOs
                 electrumRequest('blockchain.scripthash.listunspent', [scriptHash], function(result) {
-                    if (result) {
-                        // Only update if UTXOs changed
-                        if (hasArrayChanged(currentUtxos, result)) {
+                    if (result !== null && result !== undefined) {
+                        // Always update if UTXOs changed OR if we cleared them OR if result is empty
+                        const shouldUpdate = hasArrayChanged(currentUtxos, result) || currentUtxos.length === 0 || result.length === 0;
+                        if (shouldUpdate) {
                             currentUtxos = result;
                             
                             // Calculate balances
@@ -3066,16 +3073,20 @@ Anyone with your master private key can access all your funds.`;
                             updateUtxoListDisplay();
                             updateCommonBalance(); // This will update Send button state
                         }
+                        
+                        // Also update UTXO list display after fetching UTXOs
+                        updateUtxoListDisplay();
                     }
                 });
                 
                 // Also fetch transaction history
                 electrumRequest('blockchain.scripthash.get_history', [scriptHash], function(result) {
-                    if (result) {
+                    if (result !== null && result !== undefined) {
                         // Analyze changes
                         const changes = analyzeTransactionChanges(currentTransactions, result);
                         
-                        if (changes.hasChanged) {
+                        if (changes.hasChanged || currentTransactions.length === 0 || result.length === 0) {
+                            // Update if changed OR if we have no transactions (after clearing) OR if result is empty
                             // Only show notifications if not initial load
                             if (!isInitialLoad && changes.newTransactions.length > 0) {
                                 // Only show notifications for truly new unconfirmed transactions
@@ -3383,7 +3394,6 @@ Anyone with your master private key can access all your funds.`;
                 
                 // Debug logging
                 const txid = txDetails.txid || txDetails.id || 'unknown';
-                console.log(`Analyzing transaction ${txid} for address ${ourAddress} (comparing as ${ourAddressLower})`);
                 
                 // Check if sender address was already fetched and passed in
                 if (txDetails._senderAddress) {
@@ -3409,7 +3419,6 @@ Anyone with your master private key can access all your funds.`;
                             // If no address found, try to decode from hex (for SegWit outputs)
                             if (!outputAddress && output.scriptPubKey.hex) {
                                 // Log the scriptPubKey structure for debugging
-                                console.log(`  Output ${index} scriptPubKey:`, JSON.stringify(output.scriptPubKey));
                                 
                                 // Try to decode SegWit address from hex
                                 // SegWit v0 P2WPKH starts with 0014 (OP_0 + 20 bytes)
@@ -3421,13 +3430,11 @@ Anyone with your master private key can access all your funds.`;
                                     }
                                     // Convert to bech32 address
                                     outputAddress = createBech32('alpha', [0].concat(convertBits(witnessProgram, 8, 5, true)));
-                                    console.log(`  Decoded SegWit address from hex: ${outputAddress}`);
                                 }
                             }
                             
                             if (outputAddress) {
                                 const isOurs = outputAddress.toLowerCase() === ourAddressLower;
-                                console.log(`  Output ${index}: ${outputAddress} = ${value/100000000} ALPHA (ours: ${isOurs})`);
                                 
                                 if (isOurs) {
                                     outputAmount += value;
@@ -3437,7 +3444,6 @@ Anyone with your master private key can access all your funds.`;
                                     destinations.push({address: outputAddress, value: value});
                                 }
                             } else {
-                                console.log(`  Output ${index}: Unable to extract address from scriptPubKey:`, output.scriptPubKey);
                             }
                         }
                     });
@@ -3459,7 +3465,6 @@ Anyone with your master private key can access all your funds.`;
                             if (matchingUtxo) {
                                 isOurInput = true;
                                 inputAmount += matchingUtxo.value;
-                                console.log(`  Input ${prevTxid}:${prevVout} is ours (from current UTXOs): ${matchingUtxo.value/100000000} ALPHA`);
                                 return; // Found it, continue to next input
                             }
                         }
@@ -3473,7 +3478,6 @@ Anyone with your master private key can access all your funds.`;
                             if (matchingUtxo) {
                                 isOurInput = true;
                                 inputAmount += matchingUtxo.value;
-                                console.log(`  Input ${prevTxid}:${prevVout} is ours (from offline UTXOs): ${matchingUtxo.value/100000000} ALPHA`);
                                 return; // Found it, continue to next input
                             }
                         }
@@ -3499,9 +3503,6 @@ Anyone with your master private key can access all your funds.`;
                                 if (prevOutputAddress && prevOutputAddress.toLowerCase() === ourAddressLower) {
                                     isOurInput = true;
                                     inputAmount += prevOutput.value * 100000000; // Convert to satoshis
-                                    console.log(`  Input ${prevTxid}:${prevVout} is ours (from cached tx): ${prevOutput.value} ALPHA`);
-                                } else {
-                                    console.log(`  Input ${prevTxid}:${prevVout} is NOT ours (address: ${prevOutputAddress})`);
                                 }
                             }
                         } else if (currentTransactions) {
@@ -3512,7 +3513,6 @@ Anyone with your master private key can access all your funds.`;
                             
                             if (prevTx) {
                                 // Transaction is in our history, but we need to fetch details to check the specific output
-                                console.log(`  Input ${prevTxid}:${prevVout} found in history, but need to fetch details to verify ownership`);
                                 // Note: We can't determine ownership without fetching the transaction
                                 // This will be handled asynchronously later
                             }
@@ -3553,7 +3553,6 @@ Anyone with your master private key can access all your funds.`;
                             sentAmount += dest.value;
                         });
                         netAmount = sentAmount;
-                        console.log('  Warning: Could not determine input amounts for outbound transaction');
                     }
                 } else {
                     // INBOUND transaction
@@ -3568,7 +3567,6 @@ Anyone with your master private key can access all your funds.`;
                     console.error(`  This should not happen - transaction history should only contain our transactions`);
                 }
                 
-                console.log(`  Final: isOurInput=${isOurInput}, outputAmount=${outputAmount/100000000}, inputAmount=${inputAmount/100000000}, isIncoming=${isIncoming}, netAmount=${Math.abs(netAmount)/100000000}`);
                 
                 // Check if sender address was provided via _senderAddress field
                 if (!senderAddress && txDetails._senderAddress) {
@@ -4079,7 +4077,9 @@ Anyone with your master private key can access all your funds.`;
             // Update UTXO list display
             function updateUtxoListDisplay() {
                 const utxoListElement = document.getElementById('currentUtxoList');
-                if (!utxoListElement) return;
+                if (!utxoListElement) {
+                    return;
+                }
                 
                 // Determine which UTXOs to display
                 let utxosToDisplay = [];
@@ -4677,10 +4677,8 @@ Anyone with your master private key can access all your funds.`;
                     
                     // Sign each transaction
                     for (const txPlan of pendingTransactions) {
-                        console.log('Signing transaction plan:', txPlan);
                         try {
                             const signedTx = createAndSignTransaction(txPlan);
-                            console.log('Signed transaction:', signedTx);
                             signedTransactions.push(signedTx);
                         } catch (txError) {
                             console.error('Error signing individual transaction:', txError);
@@ -4688,7 +4686,6 @@ Anyone with your master private key can access all your funds.`;
                         }
                     }
                     
-                    console.log('All transactions signed:', signedTransactions);
                     
                     // Check if we're online (electrumSocket is defined in the connection scope)
                     // For now, we'll check if we can access the Electrum connection
@@ -4716,7 +4713,6 @@ Anyone with your master private key can access all your funds.`;
             
             // Create and sign a transaction
             function createAndSignTransaction(txPlan) {
-                console.log('createAndSignTransaction called with:', txPlan);
                 
                 // Get the private key
                 const privateKeyHex = wallet.childPrivateKey || wallet.masterPrivateKey;
@@ -4724,7 +4720,6 @@ Anyone with your master private key can access all your funds.`;
                     throw new Error('No private key available');
                 }
                 
-                console.log('Using private key (first 10 chars):', privateKeyHex.substring(0, 10) + '...');
                 
                 const ec = new elliptic.ec('secp256k1');
                 const keyPair = ec.keyFromPrivate(privateKeyHex, 'hex');
@@ -4732,14 +4727,11 @@ Anyone with your master private key can access all your funds.`;
                 
                 // Verify the public key matches our wallet address
                 const pubKeyHash = CryptoJS.RIPEMD160(CryptoJS.SHA256(CryptoJS.enc.Hex.parse(publicKey))).toString();
-                console.log('Public key hash:', pubKeyHash);
-                console.log('Wallet address:', wallet.addresses[0].address);
                 
                 // Check if this pubkey hash matches the wallet address
                 const decoded = decodeBech32(wallet.addresses[0].address);
                 if (decoded) {
                     const addressPubKeyHash = decoded.data.map(b => b.toString(16).padStart(2, '0')).join('');
-                    console.log('Address pubkey hash:', addressPubKeyHash);
                     if (pubKeyHash !== addressPubKeyHash) {
                         console.error('WARNING: Public key does not match wallet address!');
                     }
@@ -4748,7 +4740,6 @@ Anyone with your master private key can access all your funds.`;
                 // Build the transaction for SegWit (P2WPKH)
                 const tx = buildSegWitTransaction(txPlan, keyPair, publicKey);
                 
-                console.log('buildSegWitTransaction returned:', tx);
                 
                 const result = {
                     raw: tx.hex,
@@ -4763,8 +4754,6 @@ Anyone with your master private key can access all your funds.`;
             
             // Build a proper SegWit transaction
             function buildSegWitTransaction(txPlan, keyPair, publicKey) {
-                console.log('Building transaction with plan:', txPlan);
-                console.log('Public key:', publicKey);
                 
                 // Transaction components
                 let txHex = '';
@@ -4782,17 +4771,11 @@ Anyone with your master private key can access all your funds.`;
                 // Input
                 // Previous tx hash (32 bytes, reversed for little-endian)
                 const prevTxHash = txPlan.input.tx_hash;
-                console.log('Input tx_hash:', prevTxHash);
-                console.log('Input tx_pos:', txPlan.input.tx_pos);
-                console.log('Input value:', txPlan.input.value);
                 
                 // Log the UTXO we're trying to spend to verify it belongs to us
-                console.log('Spending from our address:', wallet.addresses[0].address);
-                console.log('UTXO details:', txPlan.input);
                 
                 // Verify the UTXO scriptPubKey matches our address
                 const ourScriptPubKey = createScriptPubKey(wallet.addresses[0].address);
-                console.log('Our address scriptPubKey:', ourScriptPubKey);
                 
                 const reversedHash = prevTxHash.match(/../g).reverse().join('');
                 txHex += reversedHash;
@@ -4837,8 +4820,6 @@ Anyone with your master private key can access all your funds.`;
                 const hash2 = CryptoJS.SHA256(hash1);
                 const txid = hash2.toString();
                 
-                console.log('Final transaction hex:', txHex);
-                console.log('Transaction hex length:', txHex.length);
                 
                 return {
                     hex: txHex,
@@ -4853,8 +4834,6 @@ Anyone with your master private key can access all your funds.`;
                 // Create signature hash for witness
                 const sigHash = createSignatureHash(txPlan, partialTx, publicKey);
                 
-                console.log('Signing with private key from public:', publicKey);
-                console.log('Signature hash to sign:', sigHash);
                 
                 // Sign the hash
                 const signature = keyPair.sign(sigHash);
@@ -4863,16 +4842,13 @@ Anyone with your master private key can access all your funds.`;
                 const ec = new elliptic.ec('secp256k1');
                 const halfOrder = ec.curve.n.shrn(1);
                 if (signature.s.cmp(halfOrder) > 0) {
-                    console.log('Adjusting S value for low-S rule');
                     signature.s = ec.curve.n.sub(signature.s);
                 }
                 
                 const derSig = signature.toDER('hex') + '01'; // SIGHASH_ALL
-                console.log('DER signature with SIGHASH_ALL:', derSig);
                 
                 // Verify our own signature to ensure it's valid
                 const verifyResult = keyPair.verify(sigHash, signature);
-                console.log('Signature self-verification:', verifyResult ? 'VALID' : 'INVALID');
                 if (!verifyResult) {
                     console.error('ERROR: Our own signature verification failed!');
                 }
@@ -4948,9 +4924,7 @@ Anyone with your master private key can access all your funds.`;
                     outputs += scriptLength;
                     outputs += scriptPubKey;
                 }
-                console.log('Outputs for hashing:', outputs);
                 const hashOutputs = CryptoJS.SHA256(CryptoJS.SHA256(CryptoJS.enc.Hex.parse(outputs))).toString();
-                console.log('hashOutputs:', hashOutputs);
                 preimage += hashOutputs;
                 
                 // 9. nLocktime (4 bytes, little-endian)
@@ -4959,15 +4933,12 @@ Anyone with your master private key can access all your funds.`;
                 // 10. sighash type (4 bytes, little-endian)
                 preimage += '01000000'; // SIGHASH_ALL
                 
-                console.log('Signature preimage:', preimage);
-                console.log('Preimage length:', preimage.length);
                 
                 // Double SHA256
                 const hash1 = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(preimage));
                 const hash2 = CryptoJS.SHA256(hash1);
                 const sigHash = hash2.toString();
                 
-                console.log('Signature hash:', sigHash);
                 
                 return sigHash;
             }
@@ -5004,10 +4975,6 @@ Anyone with your master private key can access all your funds.`;
                         return;
                     }
                     
-                    console.log('Broadcasting transaction:', signedTx.raw);
-                    console.log('Transaction type:', typeof signedTx.raw);
-                    console.log('Transaction length:', signedTx.raw.length);
-                    console.log('Transaction ID:', signedTx.txid);
                     
                     electrumRequest('blockchain.transaction.broadcast', [signedTx.raw], function(result, error) {
                         if (error) {
