@@ -1644,6 +1644,9 @@ Anyone with your master private key can access all your funds.`;
                     currentTransactions = [];
                     currentUtxos = [];
                     offlineUtxoData = null;
+                    // Reset pagination
+                    currentTransactionPage = 1;
+                    currentUtxoPage = 1;
                     updateTransactionHistory();
                     updateCommonBalance();
                     updateUtxoListDisplay();
@@ -2871,6 +2874,9 @@ Anyone with your master private key can access all your funds.`;
                     // Clear previous address data
                     currentTransactions = [];
                     currentUtxos = [];
+                    // Reset pagination
+                    currentTransactionPage = 1;
+                    currentUtxoPage = 1;
                     updateTransactionHistory();
                     updateUtxoListDisplay();
                     
@@ -2897,6 +2903,11 @@ Anyone with your master private key can access all your funds.`;
             let currentTransactions = [];
             let transactionDetailsCache = {}; // Cache for transaction details
             let isInitialLoad = true;  // Track if this is the first load
+            
+            // Pagination state
+            const ITEMS_PER_PAGE = 20;
+            let currentTransactionPage = 1;
+            let currentUtxoPage = 1;
             let lastUpdateBlockHeight = null;
             let currentBlockHeight = null;
             let currentBlockTime = null;
@@ -2926,6 +2937,9 @@ Anyone with your master private key can access all your funds.`;
                     if (!wasInWatchOnlyMode) {
                         currentTransactions = [];
                         currentUtxos = [];
+                        // Reset pagination
+                        currentTransactionPage = 1;
+                        currentUtxoPage = 1;
                         updateTransactionHistory();
                         updateUtxoListDisplay();
                     }
@@ -2939,6 +2953,9 @@ Anyone with your master private key can access all your funds.`;
                     if (watchOnlyMode) {
                         currentTransactions = [];
                         currentUtxos = [];
+                        // Reset pagination
+                        currentTransactionPage = 1;
+                        currentUtxoPage = 1;
                         updateTransactionHistory();
                         updateUtxoListDisplay();
                     }
@@ -2957,6 +2974,9 @@ Anyone with your master private key can access all your funds.`;
                     // Clear data
                     currentTransactions = [];
                     currentUtxos = [];
+                    // Reset pagination
+                    currentTransactionPage = 1;
+                    currentUtxoPage = 1;
                     
                     // Unsubscribe if connected
                     if (electrumConnected) {
@@ -2987,6 +3007,9 @@ Anyone with your master private key can access all your funds.`;
                                     // Clear transaction history when address changes
                                     currentTransactions = [];
                                     currentUtxos = [];
+                                    // Reset pagination
+                                    currentTransactionPage = 1;
+                                    currentUtxoPage = 1;
                                     // Update UI to clear the transaction list immediately
                                     updateTransactionHistory();
                                     updateUtxoListDisplay();
@@ -3018,6 +3041,9 @@ Anyone with your master private key can access all your funds.`;
                     watchOnlyUnconfirmed.textContent = '';
                     currentUtxos = [];
                     currentTransactions = [];
+                    // Reset pagination
+                    currentTransactionPage = 1;
+                    currentUtxoPage = 1;
                     updateUtxoListDisplay();
                     updateTransactionHistory();
                     
@@ -3082,6 +3108,7 @@ Anyone with your master private key can access all your funds.`;
                 // Also fetch transaction history
                 electrumRequest('blockchain.scripthash.get_history', [scriptHash], function(result) {
                     if (result !== null && result !== undefined) {
+                        console.log('Transaction history fetched:', result.length, 'transactions');
                         // Analyze changes
                         const changes = analyzeTransactionChanges(currentTransactions, result);
                         
@@ -3657,8 +3684,12 @@ Anyone with your master private key can access all your funds.`;
                     return b.height - a.height;
                 });
                 
-                // Display recent transactions
-                const recentTxs = sortedTxs.slice(0, 20);
+                // Calculate pagination
+                const totalPages = Math.ceil(sortedTxs.length / ITEMS_PER_PAGE);
+                const startIndex = (currentTransactionPage - 1) * ITEMS_PER_PAGE;
+                const endIndex = startIndex + ITEMS_PER_PAGE;
+                const pageTxs = sortedTxs.slice(startIndex, endIndex);
+                
                 const currentHeight = currentBlockHeight || 0;
                 const ourAddress = watchOnlyMode && watchOnlyAddressValue ? 
                     watchOnlyAddressValue : 
@@ -3667,21 +3698,61 @@ Anyone with your master private key can access all your funds.`;
                 if (!ourAddress) return;
                 
                 // First, display all transactions with loading state
-                recentTxs.forEach(tx => {
+                pageTxs.forEach(tx => {
                     const confirmations = tx.height > 0 ? Math.max(0, currentHeight - tx.height + 1) : 0;
                     const txElement = formatTransactionDisplay(tx, ourAddress, confirmations, null);
                     historyList.appendChild(txElement);
                 });
                 
+                // Add pagination controls
+                if (totalPages > 1) {
+                    const paginationDiv = document.createElement('div');
+                    paginationDiv.style.cssText = 'display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 15px; padding-top: 15px; border-top: 1px solid #e9ecef;';
+                    
+                    // Previous button
+                    const prevBtn = document.createElement('button');
+                    prevBtn.textContent = '← Previous';
+                    prevBtn.style.cssText = 'padding: 5px 10px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer; font-size: 12px;';
+                    prevBtn.disabled = currentTransactionPage === 1;
+                    prevBtn.onclick = () => {
+                        if (currentTransactionPage > 1) {
+                            currentTransactionPage--;
+                            updateTransactionHistory();
+                        }
+                    };
+                    
+                    // Page info
+                    const pageInfo = document.createElement('span');
+                    pageInfo.textContent = `Page ${currentTransactionPage} of ${totalPages} (${sortedTxs.length} total)`;
+                    pageInfo.style.cssText = 'font-size: 12px; color: #666;';
+                    
+                    // Next button
+                    const nextBtn = document.createElement('button');
+                    nextBtn.textContent = 'Next →';
+                    nextBtn.style.cssText = 'padding: 5px 10px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer; font-size: 12px;';
+                    nextBtn.disabled = currentTransactionPage === totalPages;
+                    nextBtn.onclick = () => {
+                        if (currentTransactionPage < totalPages) {
+                            currentTransactionPage++;
+                            updateTransactionHistory();
+                        }
+                    };
+                    
+                    paginationDiv.appendChild(prevBtn);
+                    paginationDiv.appendChild(pageInfo);
+                    paginationDiv.appendChild(nextBtn);
+                    historyList.appendChild(paginationDiv);
+                }
+                
                 // Collect all transaction IDs we need to fetch
-                const txIdsToFetch = recentTxs.map(tx => tx.tx_hash || tx.txid);
+                const txIdsToFetch = pageTxs.map(tx => tx.tx_hash || tx.txid);
                 
                 // First round: fetch all main transactions
                 fetchAllTransactionDetails(txIdsToFetch, function() {
                     // Now collect all input transactions we need
                     const inputTxIds = new Set();
                     
-                    recentTxs.forEach(tx => {
+                    pageTxs.forEach(tx => {
                         const txid = tx.tx_hash || tx.txid;
                         const txDetails = transactionDetailsCache[txid];
                         if (txDetails && txDetails.vin) {
@@ -3696,7 +3767,7 @@ Anyone with your master private key can access all your funds.`;
                     // Second round: fetch all input transactions
                     fetchAllTransactionDetails(Array.from(inputTxIds), function() {
                         // Now update all transactions with complete details
-                        recentTxs.forEach(tx => {
+                        pageTxs.forEach(tx => {
                             const confirmations = tx.height > 0 ? Math.max(0, currentHeight - tx.height + 1) : 0;
                             const txid = tx.tx_hash || tx.txid;
                             const txDetails = transactionDetailsCache[txid];
@@ -4082,18 +4153,18 @@ Anyone with your master private key can access all your funds.`;
                 }
                 
                 // Determine which UTXOs to display
-                let utxosToDisplay = [];
+                let allUtxos = [];
                 let isOfflineData = false;
                 
                 if (currentUtxos && currentUtxos.length > 0) {
                     // Online UTXOs from Fulcrum
-                    utxosToDisplay = currentUtxos.map(utxo => ({
+                    allUtxos = currentUtxos.map(utxo => ({
                         ...utxo,
                         source: 'online'
                     }));
                 } else if (offlineUtxoData && offlineUtxoData.utxos && offlineUtxoData.utxos.length > 0) {
                     // Offline imported UTXOs
-                    utxosToDisplay = offlineUtxoData.utxos.map(utxo => ({
+                    allUtxos = offlineUtxoData.utxos.map(utxo => ({
                         ...utxo,
                         source: 'offline'
                     }));
@@ -4108,13 +4179,20 @@ Anyone with your master private key can access all your funds.`;
                 // Clear current display
                 utxoListElement.innerHTML = '';
                 
-                if (utxosToDisplay.length === 0) {
+                if (allUtxos.length === 0) {
                     utxoListElement.innerHTML = '<div style="color: #666; font-style: italic; font-size: 11px;">No UTXOs available</div>';
                     return;
                 }
                 
-                // Display each UTXO
-                utxosToDisplay.forEach((utxo, index) => {
+                // Calculate pagination
+                const totalPages = Math.ceil(allUtxos.length / ITEMS_PER_PAGE);
+                const startIndex = (currentUtxoPage - 1) * ITEMS_PER_PAGE;
+                const endIndex = startIndex + ITEMS_PER_PAGE;
+                const pageUtxos = allUtxos.slice(startIndex, endIndex);
+                
+                // Display each UTXO on the current page
+                pageUtxos.forEach((utxo, pageIndex) => {
+                    const globalIndex = startIndex + pageIndex;
                     const utxoDiv = document.createElement('div');
                     utxoDiv.style.cssText = 'padding: 8px; background-color: #f8f9fa; border-radius: 4px; margin-bottom: 6px; font-size: 11px;';
                     
@@ -4137,7 +4215,7 @@ Anyone with your master private key can access all your funds.`;
                                             `${Math.max(0, currentBlockHeight - height + 1)} confirmations` : 
                                             `Block: ${height}`) : 
                                         'Unconfirmed'}
-                                    <span class="utxo-timestamp" data-height="${height}" data-index="${index}"></span>
+                                    <span class="utxo-timestamp" data-height="${height}" data-index="${globalIndex}"></span>
                                 </div>
                             </div>
                         </div>
@@ -4146,13 +4224,54 @@ Anyone with your master private key can access all your funds.`;
                     utxoListElement.appendChild(utxoDiv);
                 });
                 
+                // Add pagination controls if needed
+                if (totalPages > 1) {
+                    const paginationDiv = document.createElement('div');
+                    paginationDiv.style.cssText = 'display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 15px; padding-top: 15px; border-top: 1px solid #e9ecef;';
+                    
+                    // Previous button
+                    const prevBtn = document.createElement('button');
+                    prevBtn.textContent = '← Previous';
+                    prevBtn.style.cssText = 'padding: 5px 10px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer; font-size: 12px;';
+                    prevBtn.disabled = currentUtxoPage === 1;
+                    prevBtn.onclick = () => {
+                        if (currentUtxoPage > 1) {
+                            currentUtxoPage--;
+                            updateUtxoListDisplay();
+                        }
+                    };
+                    
+                    // Page info
+                    const pageInfo = document.createElement('span');
+                    pageInfo.textContent = `Page ${currentUtxoPage} of ${totalPages} (${allUtxos.length} total)`;
+                    pageInfo.style.cssText = 'font-size: 12px; color: #666;';
+                    
+                    // Next button
+                    const nextBtn = document.createElement('button');
+                    nextBtn.textContent = 'Next →';
+                    nextBtn.style.cssText = 'padding: 5px 10px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer; font-size: 12px;';
+                    nextBtn.disabled = currentUtxoPage === totalPages;
+                    nextBtn.onclick = () => {
+                        if (currentUtxoPage < totalPages) {
+                            currentUtxoPage++;
+                            updateUtxoListDisplay();
+                        }
+                    };
+                    
+                    paginationDiv.appendChild(prevBtn);
+                    paginationDiv.appendChild(pageInfo);
+                    paginationDiv.appendChild(nextBtn);
+                    utxoListElement.appendChild(paginationDiv);
+                }
+                
                 // Fetch and display timestamps for all UTXOs with block heights (only when connected)
                 if (electrumConnected) {
-                    utxosToDisplay.forEach((utxo, index) => {
+                    pageUtxos.forEach((utxo, pageIndex) => {
+                        const globalIndex = startIndex + pageIndex;
                         const height = utxo.height || 0;
                         if (height > 0) {
                             getBlockTimestamp(height, function(timestamp) {
-                                const timestampElement = utxoListElement.querySelector(`.utxo-timestamp[data-index="${index}"]`);
+                                const timestampElement = utxoListElement.querySelector(`.utxo-timestamp[data-index="${globalIndex}"]`);
                                 if (timestampElement && timestamp) {
                                     timestampElement.textContent = ` • ${formatBlockTimestamp(timestamp)}`;
                                 }
@@ -4369,6 +4488,7 @@ Anyone with your master private key can access all your funds.`;
                         // Store transactions
                         electrumRequest('blockchain.scripthash.get_history', [scriptHash], function(result) {
                             if (result) {
+                                console.log('Regular wallet transaction history fetched:', result.length, 'transactions');
                                 // Analyze changes
                                 const changes = analyzeTransactionChanges(currentTransactions, result);
                                 
