@@ -606,35 +606,6 @@
                 </div>
             </div>
             
-            <!-- Balance Display -->
-            <div id="balanceDisplay" style="display: none; margin-top: 30px;">
-                <h3>Balance Information</h3>
-                <div class="info-box" style="background-color: rgba(58, 134, 255, 0.1); border-left: 4px solid var(--primary-color);">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <p style="margin: 0; color: #666; font-size: 14px;">Available Balance</p>
-                            <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold;" id="balanceAmount">0.00000000 ALPHA</p>
-                        </div>
-                        <div style="display: flex; gap: 10px;">
-                            <button id="refreshBalanceBtn" class="small-button" title="Refresh balance">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <polyline points="23 4 23 10 17 10"></polyline>
-                                    <polyline points="1 20 1 14 7 14"></polyline>
-                                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                                </svg>
-                            </button>
-                            <button id="exportUtxoBtn" class="small-button" title="Export UTXO data" style="background-color: #06d6a0;">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                    <polyline points="7 10 12 15 17 10"></polyline>
-                                    <line x1="12" y1="15" x2="12" y2="3"></line>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
             <!-- Send Transaction Section -->
             <div id="sendTransactionSection" style="margin-top: 30px;">
                 <h3>Send Transaction</h3>
@@ -946,6 +917,13 @@
                             addAddressToUI(wallet.addresses[0]);
                             // Update balance display
                             updateCommonBalance();
+                            
+                            // If already connected to Fulcrum, refresh balance
+                            if (electrumConnected) {
+                                console.log('Already connected to Fulcrum, refreshing balance...');
+                                refreshBalance();
+                                updateTransactionHistory();
+                            }
                         }
                     } else {
                         // No wallet, disable buttons
@@ -1104,6 +1082,15 @@
                 
                 // Save wallet to local storage
                 saveWalletData();
+                
+                // If already connected to Fulcrum, refresh balance for new address
+                if (electrumConnected) {
+                    console.log('Already connected to Fulcrum, refreshing balance for new address...');
+                    setTimeout(() => {
+                        refreshBalance();
+                        updateTransactionHistory();
+                    }, 500); // Small delay to ensure UI is updated
+                }
             }
             
             // Add address to UI
@@ -1120,6 +1107,15 @@
                 
                 // Update balance display
                 updateCommonBalance();
+                
+                // If already connected to Fulcrum, refresh balance
+                if (electrumConnected && !wallet.addresses.find(a => a.address === addressInfo.address)) {
+                    console.log('New address added and Fulcrum connected, refreshing balance...');
+                    setTimeout(() => {
+                        refreshBalance();
+                        updateTransactionHistory();
+                    }, 500);
+                }
             }
             
             // Generate QR code for wallet address
@@ -1832,6 +1828,15 @@ Anyone with your master private key can access all your funds.`;
                     // Save the restored wallet
                     saveWalletData();
                     
+                    // If already connected to Fulcrum, refresh balance
+                    if (electrumConnected) {
+                        console.log('Wallet restored and Fulcrum connected, refreshing balance...');
+                        setTimeout(() => {
+                            refreshBalance();
+                            updateTransactionHistory();
+                        }, 500);
+                    }
+                    
                     // Close any open sections to maintain a clean UI
                     // document.getElementById('keys-section').style.display = 'none'; // Removed with Security section
                     
@@ -2208,10 +2213,10 @@ Anyone with your master private key can access all your funds.`;
             const rpcServerInput = document.getElementById('rpcServer');
             const connectionStatusDiv = document.getElementById('connectionStatus');
             const connectionStatusText = document.getElementById('connectionStatusText');
-            const balanceDisplay = document.getElementById('balanceDisplay');
-            const balanceAmount = document.getElementById('balanceAmount');
+            // const balanceDisplay = document.getElementById('balanceDisplay'); // Removed duplicate balance display
+            // const balanceAmount = document.getElementById('balanceAmount'); // Removed duplicate balance display
             // const transactionList = document.getElementById('transactionList'); // Removed duplicate transaction display
-            const refreshBalanceBtn = document.getElementById('refreshBalanceBtn');
+            // const refreshBalanceBtn = document.getElementById('refreshBalanceBtn'); // Removed duplicate balance display
             
             // Connect to Electrum server
             function connectToElectrum() {
@@ -2244,7 +2249,7 @@ Anyone with your master private key can access all your funds.`;
                         rpcServerInput.disabled = true;
                         
                         // Show balance display
-                        balanceDisplay.style.display = 'block';
+                        // balanceDisplay.style.display = 'block'; // Removed duplicate balance display
                         
                         // Subscribe to headers for new blocks
                         electrumRequest('blockchain.headers.subscribe', [], function(result) {
@@ -2330,7 +2335,7 @@ Anyone with your master private key can access all your funds.`;
                         rpcServerInput.disabled = false;
                         
                         // Hide balance display
-                        balanceDisplay.style.display = 'none';
+                        // balanceDisplay.style.display = 'none'; // Removed duplicate balance display
                     };
                     
                 } catch (err) {
@@ -2490,7 +2495,7 @@ Anyone with your master private key can access all your funds.`;
             // Refresh balance for current address
             function refreshBalance() {
                 if (!wallet.addresses || wallet.addresses.length === 0) {
-                    balanceAmount.textContent = '0.00000000 ALPHA';
+                    // balanceAmount.textContent = '0.00000000 ALPHA'; // Removed duplicate balance display
                     return;
                 }
                 
@@ -2498,19 +2503,19 @@ Anyone with your master private key can access all your funds.`;
                 const scriptHash = addressToScriptHash(address);
                 
                 if (!scriptHash) {
-                    balanceAmount.textContent = 'Error: Invalid address format';
+                    // balanceAmount.textContent = 'Error: Invalid address format'; // Removed duplicate balance display
                     console.error('Failed to convert address to script hash');
                     return;
                 }
                 
-                balanceAmount.textContent = 'Loading...';
+                // balanceAmount.textContent = 'Loading...'; // Removed duplicate balance display
                 console.log('Address:', address);
                 console.log('Script hash:', scriptHash);
                 
                 // Get script hash balance (using blockchain.scripthash.get_balance)
                 electrumRequest('blockchain.scripthash.get_balance', [scriptHash], function(result, error) {
                     if (error) {
-                        balanceAmount.textContent = 'Error loading balance';
+                        // balanceAmount.textContent = 'Error loading balance'; // Removed duplicate balance display
                         console.error('Balance error:', error);
                         return;
                     }
@@ -2522,11 +2527,11 @@ Anyone with your master private key can access all your funds.`;
                         
                         // Convert from satoshis to ALPHA (1 ALPHA = 100,000,000 satoshis)
                         const alphaBalance = (total / 100000000).toFixed(8);
-                        balanceAmount.textContent = alphaBalance + ' ALPHA';
+                        // balanceAmount.textContent = alphaBalance + ' ALPHA'; // Removed duplicate balance display
                         
                         if (unconfirmed > 0) {
                             const unconfirmedAlpha = (unconfirmed / 100000000).toFixed(8);
-                            balanceAmount.innerHTML += '<br><small style="color: #999;">(' + unconfirmedAlpha + ' unconfirmed)</small>';
+                            // balanceAmount.innerHTML += '<br><small style="color: #999;">(' + unconfirmedAlpha + ' unconfirmed)</small>'; // Removed duplicate balance display
                         }
                     }
                 });
@@ -2578,7 +2583,7 @@ Anyone with your master private key can access all your funds.`;
             // Event listeners for RPC buttons
             connectRpcBtn.onclick = connectToElectrum;
             disconnectRpcBtn.onclick = disconnectFromElectrum;
-            refreshBalanceBtn.onclick = refreshBalance;
+            // refreshBalanceBtn.onclick = refreshBalance; // Removed duplicate balance display
             
             // Auto-refresh balance when address is generated
             const originalGenerateNewAddress = window.generateNewAddress;
@@ -2601,7 +2606,7 @@ Anyone with your master private key can access all your funds.`;
             let blockPollInterval = null;
             
             // Export button element
-            const exportUtxoBtn = document.getElementById('exportUtxoBtn');
+            // const exportUtxoBtn = document.getElementById('exportUtxoBtn'); // Removed duplicate balance display
             const importUtxoBtn = document.getElementById('importUtxoBtn');
             const clearUtxoBtn = document.getElementById('clearUtxoBtn');
             const utxoFileInput = document.getElementById('utxoFileInput');
@@ -3302,7 +3307,7 @@ Anyone with your master private key can access all your funds.`;
             };
             
             // Event listeners for UTXO buttons
-            exportUtxoBtn.onclick = exportUtxoData;
+            // exportUtxoBtn.onclick = exportUtxoData; // Removed duplicate balance display
             importUtxoBtn.onclick = importUtxoData;
             clearUtxoBtn.onclick = clearOfflineUtxoData;
             
