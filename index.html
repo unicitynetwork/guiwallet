@@ -1977,9 +1977,15 @@ Anyone with your master private key can access all your funds.`;
                     // If already connected to Fulcrum, refresh balance
                     if (electrumConnected) {
                         console.log('Wallet restored and Fulcrum connected, refreshing balance...');
+                        // Reset initial load flag when wallet is restored
+                        isInitialLoad = true;
                         setTimeout(() => {
                             refreshBalance();
                             updateTransactionHistory();
+                            // Allow notifications after initial load
+                            setTimeout(() => {
+                                isInitialLoad = false;
+                            }, 2000);
                         }, 500);
                     }
                     
@@ -2463,6 +2469,11 @@ Anyone with your master private key can access all your funds.`;
                         // Refresh balance on connect  
                         refreshBalance();
                         
+                        // After initial load, allow notifications
+                        setTimeout(() => {
+                            isInitialLoad = false;
+                        }, 2000);
+                        
                         // Update import button state
                         updateCommonBalance();
                         
@@ -2559,6 +2570,7 @@ Anyone with your master private key can access all your funds.`;
                         electrumConnected = false;
                         currentScriptHashSubscription = null;
                         headerSubscriptionActive = false;
+                        isInitialLoad = true;  // Reset for next connection
                         updateUtxoListDisplay(); // Update UTXO list display when disconnected
                         updateCommonBalance(); // Update button states
                         const infoBox = connectionStatusDiv.querySelector('.info-box');
@@ -2842,6 +2854,11 @@ Anyone with your master private key can access all your funds.`;
                         // Subscribe to the new address
                         if (wallet.addresses && wallet.addresses.length > 0) {
                             subscribeToAddressChanges(wallet.addresses[0].address);
+                            // Reset initial load flag when address changes
+                            isInitialLoad = true;
+                            setTimeout(() => {
+                                isInitialLoad = false;
+                            }, 2000);
                         }
                     }, 500);
                 }
@@ -2853,6 +2870,7 @@ Anyone with your master private key can access all your funds.`;
             let offlineUtxoData = null;
             let currentUtxos = [];
             let currentTransactions = [];
+            let isInitialLoad = true;  // Track if this is the first load
             let lastUpdateBlockHeight = null;
             let currentBlockHeight = null;
             let currentBlockTime = null;
@@ -2921,6 +2939,11 @@ Anyone with your master private key can access all your funds.`;
                                 // Update subscription if connected
                                 if (electrumConnected && address !== oldAddress) {
                                     subscribeToAddressChanges(address);
+                                    // Reset initial load flag when address changes
+                                    isInitialLoad = true;
+                                    setTimeout(() => {
+                                        isInitialLoad = false;
+                                    }, 2000);
                                 }
                                 
                                 // Show notification
@@ -3003,8 +3026,10 @@ Anyone with your master private key can access all your funds.`;
                         const changes = analyzeTransactionChanges(currentTransactions, result);
                         
                         if (changes.hasChanged) {
-                            // Show notifications for new transactions
-                            changes.newTransactions.forEach(tx => {
+                            // Only show notifications if not initial load
+                            if (!isInitialLoad && changes.newTransactions.length > 0) {
+                                // Show notifications for new transactions
+                                changes.newTransactions.forEach(tx => {
                                 const txid = tx.tx_hash || tx.txid;
                                 const shortTxid = txid.substring(0, 8) + '...' + txid.substring(txid.length - 8);
                                 
@@ -3037,10 +3062,12 @@ Anyone with your master private key can access all your funds.`;
                                     
                                     showNotification(notificationTitle, notificationBody);
                                 });
-                            });
+                                });
+                            }
                             
-                            // Show notifications for newly confirmed transactions
-                            changes.confirmedTransactions.forEach(tx => {
+                            // Show notifications for newly confirmed transactions (always show these)
+                            if (!isInitialLoad && changes.confirmedTransactions.length > 0) {
+                                changes.confirmedTransactions.forEach(tx => {
                                 const txid = tx.tx_hash || tx.txid;
                                 const shortTxid = txid.substring(0, 8) + '...' + txid.substring(txid.length - 8);
                                 
@@ -3048,7 +3075,8 @@ Anyone with your master private key can access all your funds.`;
                                     '✅ Transaction Confirmed',
                                     `Transaction ${shortTxid} confirmed in block ${tx.height}`
                                 );
-                            });
+                                });
+                            }
                             
                             currentTransactions = result;
                             updateTransactionHistory();
@@ -4071,8 +4099,10 @@ Anyone with your master private key can access all your funds.`;
                                 const changes = analyzeTransactionChanges(currentTransactions, result);
                                 
                                 if (changes.hasChanged) {
-                                    // Show notifications for new transactions
-                                    changes.newTransactions.forEach(tx => {
+                                    // Only show notifications if not initial load
+                                    if (!isInitialLoad && changes.newTransactions.length > 0) {
+                                        // Show notifications for new transactions
+                                        changes.newTransactions.forEach(tx => {
                                         const txid = tx.tx_hash || tx.txid;
                                         const shortTxid = txid.substring(0, 8) + '...' + txid.substring(txid.length - 8);
                                         
@@ -4107,10 +4137,12 @@ Anyone with your master private key can access all your funds.`;
                                             
                                             showNotification(notificationTitle, notificationBody);
                                         });
-                                    });
+                                        });
+                                    }
                                     
-                                    // Show notifications for newly confirmed transactions
-                                    changes.confirmedTransactions.forEach(tx => {
+                                    // Show notifications for newly confirmed transactions (always show these)
+                                    if (!isInitialLoad && changes.confirmedTransactions.length > 0) {
+                                        changes.confirmedTransactions.forEach(tx => {
                                         const txid = tx.tx_hash || tx.txid;
                                         const shortTxid = txid.substring(0, 8) + '...' + txid.substring(txid.length - 8);
                                         
@@ -4118,7 +4150,8 @@ Anyone with your master private key can access all your funds.`;
                                             '✅ Transaction Confirmed',
                                             `Transaction ${shortTxid} confirmed in block ${tx.height}`
                                         );
-                                    });
+                                        });
+                                    }
                                     
                                     currentTransactions = result;
                                     updateTransactionHistory();
