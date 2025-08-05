@@ -586,6 +586,22 @@
                 </button>
             </div>
 
+            <!-- Compact Send Transaction -->
+            <div id="sendTransactionSection" style="margin-top: 15px; margin-bottom: 15px;">
+                <div style="display: flex; align-items: center; gap: 6px; padding: 6px 8px; background-color: #f8f9fa; border-radius: 4px;">
+                    <label for="recipientAddress" style="margin: 0; font-weight: 600; white-space: nowrap; font-size: 10px;">Destination:</label>
+                    <input type="text" id="recipientAddress" placeholder="alpha1..." style="flex: 1; padding: 3px 6px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; font-family: monospace;">
+                    <input type="number" id="sendAmount" placeholder="0.00000000" step="0.00000001" min="0" style="width: 100px; padding: 3px 6px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px;">
+                    <button onclick="prepareSendTransaction()" class="wallet-button" style="background-color: #34d399;">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                        Send
+                    </button>
+                </div>
+            </div>
+
             <!-- Transaction History -->
             <div id="transactionHistoryContainer" style="margin-top: 20px; display: none;">
                 <h4 style="margin-bottom: 10px;">Transaction History</h4>
@@ -606,47 +622,21 @@
                 </div>
             </div>
             
-            <!-- Send Transaction Section -->
-            <div id="sendTransactionSection" style="margin-top: 30px;">
-                <h3>Send Transaction</h3>
-                <div class="info-box" style="background-color: rgba(52, 211, 153, 0.1); border-left: 4px solid #34d399;">
-                    <p>Create and send transactions using your loaded UTXOs. Alpha network requires one input per transaction.</p>
+            <!-- Import & Broadcast Transactions Section -->
+            <div style="margin-top: 30px;">
+                <h3>Import & Broadcast Signed Transactions</h3>
+                <div class="info-box" style="background-color: rgba(251, 191, 36, 0.1); border-left: 4px solid #fbbf24; margin-top: 10px;">
+                    <p>Import signed transactions from an offline wallet to broadcast them to the network.</p>
                 </div>
-                
-                <div class="send-form" style="margin-top: 20px;">
-                    <div style="margin-bottom: 15px;">
-                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Recipient Address:</label>
-                        <input type="text" id="recipientAddress" placeholder="alpha1..." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-family: monospace;">
-                    </div>
-                    <div style="margin-bottom: 20px;">
-                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Amount (ALPHA):</label>
-                        <input type="number" id="sendAmount" placeholder="0.00000000" step="0.00000001" min="0" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
-                    </div>
-                    <button onclick="prepareSendTransaction()" class="button" style="background-color: #34d399;">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                            <line x1="22" y1="2" x2="11" y2="13"></line>
-                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                        </svg>
-                        Prepare Transaction
-                    </button>
-                </div>
-                
-                <!-- Import & Broadcast Transactions -->
-                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-                    <h4>Import & Broadcast Signed Transactions</h4>
-                    <div class="info-box" style="background-color: rgba(251, 191, 36, 0.1); border-left: 4px solid #fbbf24; margin-top: 10px;">
-                        <p>Import signed transactions from an offline wallet to broadcast them to the network.</p>
-                    </div>
-                    <input type="file" id="txFileInput" accept=".json,.txt" style="display: none;">
-                    <button onclick="document.getElementById('txFileInput').click()" class="button" style="background-color: #fbbf24; margin-top: 15px;">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="7 10 12 15 17 10"></polyline>
-                            <line x1="12" y1="15" x2="12" y2="3"></line>
-                        </svg>
-                        Import & Broadcast Transactions
-                    </button>
-                </div>
+                <input type="file" id="txFileInput" accept=".json,.txt" style="display: none;">
+                <button onclick="document.getElementById('txFileInput').click()" class="button" style="background-color: #fbbf24; margin-top: 15px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Import & Broadcast Transactions
+                </button>
             </div>
             
             <!-- Offline UTXO Import Section -->
