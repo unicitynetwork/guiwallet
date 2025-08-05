@@ -131,18 +131,18 @@
             background-color: var(--primary-color);
             color: white;
             border: none;
-            padding: 8px 16px;
+            padding: 3px 6px;
             border-radius: var(--border-radius);
             cursor: pointer;
-            font-size: 14px;
-            margin-right: 8px;
-            margin-bottom: 8px;
+            font-size: 10px;
+            margin-right: 3px;
+            margin-bottom: 3px;
             font-weight: 600;
             transition: var(--transition);
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
             display: inline-flex;
             align-items: center;
-            gap: 6px;
+            gap: 4px;
         }
         .wallet-button:hover {
             background-color: #2878f0;
@@ -168,13 +168,13 @@
             background-color: #666;
         }
         .wallet-button svg {
-            width: 14px;
-            height: 14px;
+            width: 10px;
+            height: 10px;
         }
         .wallet-actions-container {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px;
+            gap: 3px;
             margin-top: 20px;
             align-items: center;
         }
@@ -497,6 +497,26 @@
                 </div>
             </div>
             
+            <!-- Compact Endpoint Section -->
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 15px; padding: 6px 8px; background-color: #f8f9fa; border-radius: 4px;">
+                <label for="rpcServer" style="margin: 0; font-weight: 600; white-space: nowrap; font-size: 10px;">Endpoint:</label>
+                <input type="text" id="rpcServer" placeholder="ws://localhost:50003" value="ws://localhost:50003" style="flex: 1; padding: 3px 6px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px;">
+                <button id="connectRpcBtn" class="wallet-button">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                    </svg>
+                    Connect
+                </button>
+                <button id="disconnectRpcBtn" class="wallet-button" style="display: none; background-color: #ff006e;">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 6 6 18"></path>
+                        <path d="m6 6 12 12"></path>
+                    </svg>
+                    Disconnect
+                </button>
+            </div>
+            
             <!-- Wallet Info Section -->
             <div id="walletInfo" style="display: none; margin-bottom: 15px; padding: 15px; background-color: rgba(52, 211, 153, 0.05); border-radius: 8px; border: 1px solid rgba(52, 211, 153, 0.2);">
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
@@ -575,84 +595,10 @@
             </div>
         </div>
         
-        <div id="settings-section" class="card-section">
-            <h2>Security &amp; Recovery</h2>
-            
-            <div id="encryptionStatus" class="info-box" style="display: none; background-color: rgba(6, 214, 160, 0.1); border-left: 4px solid var(--success-color);">
-                <p>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--success-color)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 8px;">
-                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                    </svg>
-                    <strong>Your wallet is encrypted.</strong> Your private key is protected by your password.
-                </p>
-            </div>
-            
-            <!-- Migrate Wallet Section (hidden by default) -->
-            <div id="keys-section" class="card-section" style="display: none; box-shadow: none; border: 1px solid #e9ecef; margin-top: 20px;">
-                <h3>Migrate to Online Wallet</h3>
-                
-                <div class="warning" style="margin-bottom: 20px;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 8px;">
-                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-                        <line x1="12" y1="9" x2="12" y2="13"></line>
-                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                    </svg>
-                    <strong>Security Warning:</strong> Your private keys give complete access to your funds. Never share them with anyone or enter them on websites.
-                </div>
-                
-                <div>
-                    <h4>Private Key for Migration <span style="font-size: 14px; font-weight: normal; color: #666;">(WIF format)</span>:</h4>
-                    <div class="key-display-container">
-                        <div id="wifMasterKey" class="key-display masked">Generate a wallet to see your private key</div>
-                        <button id="toggleWifKeyBtn" class="small-button" disabled>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 5px;">
-                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                                <circle cx="12" cy="12" r="3"></circle>
-                            </svg>
-                            <span>Show</span>
-                        </button>
-                    </div>
-                    <div style="margin-top: 8px; font-size: 14px; color: #666;">
-                        Use this key to import your address to an online wallet<br>
-                    </div>
-                    
-                    <!-- Master key element hidden but still available for JavaScript functionality -->
-                    <div id="masterKey" class="key-display masked" style="display: none;">Generate a wallet to see your master key</div>
-                    <button id="toggleMasterKeyBtn" class="small-button" style="display: none;" disabled>Show</button>
-                </div>
-            </div>
-        </div>
         
         <!-- RPC Connection Section -->
         <div id="rpc-section" class="card-section">
             <h2>Blockchain Connection</h2>
-            
-            <div class="info-box">
-                <p>Connect to a Fulcrum-Alpha server to check balances and transactions. This requires a running Fulcrum server with WebSocket support enabled.</p>
-            </div>
-            
-            <div class="input-group">
-                <label for="rpcServer">Fulcrum Server URL:</label>
-                <input type="text" id="rpcServer" placeholder="ws://localhost:50003" value="ws://localhost:50003">
-            </div>
-            
-            <div class="button-container" style="justify-content: flex-start;">
-                <button id="connectRpcBtn" class="button">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                    </svg>
-                    Connect
-                </button>
-                <button id="disconnectRpcBtn" class="button" style="display: none; background-color: #ff006e;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                        <path d="M18 6 6 18"></path>
-                        <path d="m6 6 12 12"></path>
-                    </svg>
-                    Disconnect
-                </button>
-            </div>
             
             <div id="connectionStatus" style="margin-top: 20px; display: none;">
                 <div class="info-box" style="background-color: rgba(255, 186, 8, 0.1); border-left: 4px solid #ffba08;">
@@ -794,10 +740,10 @@
 
         document.addEventListener('DOMContentLoaded', function() {
             // HTML elements
-            const masterKeyElement = document.getElementById('masterKey');
+            // const masterKeyElement = document.getElementById('masterKey'); // Removed with Security section
             const addressList = document.getElementById('addressList');
             const passwordStrength = document.getElementById('passwordStrength');
-            const encryptionStatus = document.getElementById('encryptionStatus');
+            // const encryptionStatus = document.getElementById('encryptionStatus'); // Removed with Security section
             const walletInfo = document.getElementById('walletInfo');
             const walletAddress = document.getElementById('walletAddress');
             const walletAddressLink = document.getElementById('walletAddressLink');
@@ -809,7 +755,7 @@
             // Buttons
             const initializeWalletBtn = document.getElementById('initializeWalletBtn');
             const generateAddressBtn = document.getElementById('generateAddressBtn');
-            const toggleMasterKeyBtn = document.getElementById('toggleMasterKeyBtn');
+            // const toggleMasterKeyBtn = document.getElementById('toggleMasterKeyBtn'); // Removed with Security section
             const deleteWalletBtn = document.getElementById('deleteWalletBtn');
             const encryptWalletBtn = document.getElementById('encryptWalletBtn');
             const restoreWalletBtn = document.getElementById('restoreWalletBtn');
@@ -836,12 +782,12 @@
             };
             
             // Ensure encryption status is hidden by default
-            encryptionStatus.style.display = 'none';
+            // encryptionStatus.style.display = 'none'; // Removed with Security section
             
             // Helper function to update enabled/disabled state of buttons based on wallet state
             function updateButtonStates(walletExists) {
-                toggleMasterKeyBtn.disabled = !walletExists;
-                toggleWifKeyBtn.disabled = !walletExists;
+                // toggleMasterKeyBtn.disabled = !walletExists; // Removed with Security section
+                // toggleWifKeyBtn.disabled = !walletExists; // Removed with Security section
                 backupWalletBtn.disabled = !walletExists;
                 deleteWalletBtn.disabled = !walletExists;
                 initializeWalletBtn.disabled = walletExists;
@@ -983,8 +929,8 @@
                     // Update UI if wallet exists
                     if (wallet.masterPrivateKey) {
                         // Update regular master key display
-                        masterKeyElement.textContent = wallet.masterPrivateKey;
-                        masterKeyElement.classList.add('masked');
+                        // masterKeyElement.textContent = wallet.masterPrivateKey; // Removed with Security section
+                        // masterKeyElement.classList.add('masked'); // Removed with Security section
                         
                         // Generate the child key for the first address
                         const addressIndex = 0;
@@ -996,9 +942,9 @@
                         
                         // Convert and display WIF key using the child key
                         const wifKey = hexToWIF(childPrivateKey);
-                        const wifKeyElement = document.getElementById('wifMasterKey');
-                        wifKeyElement.textContent = wifKey;
-                        wifKeyElement.classList.add('masked');
+                        // const wifKeyElement = document.getElementById('wifMasterKey'); // Removed with Security section
+                        // wifKeyElement.textContent = wifKey; // Removed with Security section
+                        // wifKeyElement.classList.add('masked'); // Removed with Security section
                         
                         // Enable buttons
                         updateButtonStates(true);
@@ -1016,11 +962,11 @@
                     
                     // Check if wallet is encrypted and update UI
                     if (wallet.isEncrypted) {
-                        encryptionStatus.style.display = 'block';
+                        // encryptionStatus.style.display = 'block'; // Removed with Security section
                         // Hide password strength indicator when wallet is encrypted
                         passwordStrength.innerHTML = '';
                     } else {
-                        encryptionStatus.style.display = 'none';
+                        // encryptionStatus.style.display = 'none'; // Removed with Security section
                     }
                 }
             }
@@ -1054,15 +1000,15 @@
                 wallet.encryptedMasterKey = '';
                 wallet.childPrivateKey = null; // Will be set when generating first address
                 
-                masterKeyElement.textContent = wallet.masterPrivateKey;
-                masterKeyElement.classList.add('masked');
-                toggleMasterKeyBtn.textContent = 'Show';
+                // masterKeyElement.textContent = wallet.masterPrivateKey; // Removed with Security section
+                // masterKeyElement.classList.add('masked'); // Removed with Security section
+                // toggleMasterKeyBtn.textContent = 'Show'; // Removed with Security section
                 
                 // We'll update the WIF key after generating an address
                 // This placeholder will be replaced with the child key's WIF
-                const wifKeyElement = document.getElementById('wifMasterKey');
-                wifKeyElement.textContent = "Generate an address to see the key";
-                wifKeyElement.classList.add('masked');
+                // const wifKeyElement = document.getElementById('wifMasterKey'); // Removed with Security section
+                // wifKeyElement.textContent = "Generate an address to see the key"; // Removed with Security section
+                // wifKeyElement.classList.add('masked'); // Removed with Security section
                 
                 
                 // Enable/disable buttons
@@ -1078,7 +1024,7 @@
                                                 document.getElementById('keys-section').style.display = 'none';
                 
                 // Make sure encryption status is hidden for new wallets
-                encryptionStatus.style.display = 'none';
+                // encryptionStatus.style.display = 'none'; // Removed with Security section
                 
                 
                 // Reset section button text
@@ -1250,6 +1196,7 @@
             }
             
             // Toggle master key visibility
+            /* // Removed with Security section
             async function toggleMasterKey() {
                 if (masterKeyElement.classList.contains('masked')) {
                     // Check if wallet is encrypted
@@ -1297,21 +1244,22 @@
                     
                     if (shouldShow) {
                         masterKeyElement.classList.remove('masked');
-                        toggleMasterKeyBtn.textContent = 'Hide';
+                        // toggleMasterKeyBtn.textContent = 'Hide'; // Removed with Security section
                         
                         // Auto-hide after 30 seconds for security
                         setTimeout(() => {
                             if (!masterKeyElement.classList.contains('masked')) {
                                 masterKeyElement.classList.add('masked');
-                                toggleMasterKeyBtn.textContent = 'Show';
+                                // toggleMasterKeyBtn.textContent = 'Show'; // Removed with Security section
                             }
                         }, 30000);
                     }
                 } else {
                     masterKeyElement.classList.add('masked');
-                    toggleMasterKeyBtn.textContent = 'Show';
+                    // toggleMasterKeyBtn.textContent = 'Show'; // Removed with Security section
                 }
             }
+            */ // End of removed toggleMasterKey function
             
             // Convert hex private key to WIF format for importprivkey compatibility
             function hexToWIF(hexPrivateKey) {
@@ -1544,26 +1492,26 @@ Anyone with your master private key can access all your funds.`;
                     };
                     
                     // Clear UI for both key displays
-                    masterKeyElement.textContent = 'Generate a wallet to see your private key';
-                    masterKeyElement.classList.add('masked');
+                    // masterKeyElement.textContent = 'Generate a wallet to see your private key'; // Removed with Security section
+                    // masterKeyElement.classList.add('masked'); // Removed with Security section
                     
-                    const wifKeyElement = document.getElementById('wifMasterKey');
-                    wifKeyElement.textContent = 'Generate a wallet to see your private key';
-                    wifKeyElement.classList.add('masked');
+                    // const wifKeyElement = document.getElementById('wifMasterKey'); // Removed with Security section
+                    // wifKeyElement.textContent = 'Generate a wallet to see your private key'; // Removed with Security section
+                    // wifKeyElement.classList.add('masked'); // Removed with Security section
                     
                     // Hide wallet info and QR code
                     walletInfo.style.display = 'none';
                     walletQrCode.style.display = 'none';
                     
                     // Reset button text for toggle buttons
-                    toggleMasterKeyBtn.textContent = 'Show';
-                    toggleWifKeyBtn.textContent = 'Show';
+                    // toggleMasterKeyBtn.textContent = 'Show'; // Removed with Security section
+                    // toggleWifKeyBtn.textContent = 'Show'; // Removed with Security section
                     
                     // Update all button states
                     updateButtonStates(false);
                     
                     // Hide encryption status message
-                    encryptionStatus.style.display = 'none';
+                    // encryptionStatus.style.display = 'none'; // Removed with Security section
                     
                     // Clear password strength indicator
                     passwordStrength.innerHTML = '';
@@ -1844,14 +1792,14 @@ Anyone with your master private key can access all your funds.`;
                     };
                     
                     // Update UI for both key displays
-                    masterKeyElement.textContent = masterKey;
-                    masterKeyElement.classList.add('masked');
+                    // masterKeyElement.textContent = masterKey; // Removed with Security section
+                    // masterKeyElement.classList.add('masked'); // Removed with Security section
                     
                     // Convert and display WIF key
                     const wifKey = hexToWIF(masterKey);
-                    const wifKeyElement = document.getElementById('wifMasterKey');
-                    wifKeyElement.textContent = wifKey;
-                    wifKeyElement.classList.add('masked');
+                    // const wifKeyElement = document.getElementById('wifMasterKey'); // Removed with Security section
+                    // wifKeyElement.textContent = wifKey; // Removed with Security section
+                    // wifKeyElement.classList.add('masked'); // Removed with Security section
                     
                     
                     // Enable buttons
@@ -1859,11 +1807,11 @@ Anyone with your master private key can access all your funds.`;
                     
                     // Update encryption UI
                     if (isEncrypted) {
-                        encryptionStatus.style.display = 'block';
+                        // encryptionStatus.style.display = 'block'; // Removed with Security section
                         // Hide password strength indicator when wallet is encrypted
                         passwordStrength.innerHTML = '';
                     } else {
-                        encryptionStatus.style.display = 'none';
+                        // encryptionStatus.style.display = 'none'; // Removed with Security section
                     }
                     
                     // Generate a single address
@@ -1925,8 +1873,9 @@ Anyone with your master private key can access all your funds.`;
             }
             
             // Toggle WIF key visibility
+            /* // Removed with Security section
             async function toggleWifKey() {
-                const wifKeyElement = document.getElementById('wifMasterKey');
+                // const wifKeyElement = document.getElementById('wifMasterKey'); // Removed with Security section
                 
                 if (wifKeyElement.classList.contains('masked')) {
                     // Check if wallet is encrypted
@@ -1986,7 +1935,7 @@ Anyone with your master private key can access all your funds.`;
                         wifKeyElement.textContent = wifKey;
                         
                         wifKeyElement.classList.remove('masked');
-                        document.getElementById('toggleWifKeyBtn').innerHTML = `
+                        // document.getElementById('toggleWifKeyBtn').innerHTML = ` // Removed with Security section
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 5px;">
                                 <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
                                 <line x1="1" y1="1" x2="23" y2="23"></line>
@@ -1998,7 +1947,7 @@ Anyone with your master private key can access all your funds.`;
                         setTimeout(() => {
                             if (!wifKeyElement.classList.contains('masked')) {
                                 wifKeyElement.classList.add('masked');
-                                document.getElementById('toggleWifKeyBtn').innerHTML = `
+                                // document.getElementById('toggleWifKeyBtn').innerHTML = ` // Removed with Security section
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 5px;">
                                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                                         <circle cx="12" cy="12" r="3"></circle>
@@ -2019,6 +1968,7 @@ Anyone with your master private key can access all your funds.`;
                     `;
                 }
             }
+            */ // End of removed toggleWifKey function
             
             // Toggle section functionality
             function toggleSection(sectionId, buttonId, showText, hideText, iconSvg) {
@@ -2087,8 +2037,8 @@ Anyone with your master private key can access all your funds.`;
             
             // Set up event listeners
             initializeWalletBtn.addEventListener('click', initializeWallet);
-            toggleMasterKeyBtn.addEventListener('click', toggleMasterKey);
-            toggleWifKeyBtn.addEventListener('click', toggleWifKey);
+            // toggleMasterKeyBtn.addEventListener('click', toggleMasterKey); // Removed with Security section
+            // toggleWifKeyBtn.addEventListener('click', toggleWifKey); // Removed with Security section
             backupWalletBtn.addEventListener('click', downloadWallet);
             deleteWalletBtn.addEventListener('click', deleteWallet);
             restoreWalletBtn.addEventListener('click', showRestoreModal);
@@ -2295,7 +2245,17 @@ Anyone with your master private key can access all your funds.`;
                             console.log('Subscribed to block headers:', result);
                             if (result && (result.height || result.block_height)) {
                                 currentBlockHeight = result.height || result.block_height;
-                                updateCommonBalance();
+                                // Get the actual block header to extract timestamp
+                                electrumRequest('blockchain.block.header', [currentBlockHeight], function(headerHex) {
+                                    if (headerHex) {
+                                        // Parse block header to get timestamp (bytes 68-71)
+                                        // Bitcoin block header timestamp is at bytes 68-71 (little-endian)
+                                        const timestampBytes = headerHex.substr(68 * 2, 8).match(/.{2}/g).reverse().join('');
+                                        currentBlockTime = new Date(parseInt(timestampBytes, 16) * 1000);
+                                        console.log(`Block ${currentBlockHeight} timestamp: ${currentBlockTime.toISOString()}`);
+                                    }
+                                    updateCommonBalance();
+                                });
                             }
                         });
                         
@@ -2631,6 +2591,7 @@ Anyone with your master private key can access all your funds.`;
             let currentTransactions = [];
             let lastUpdateBlockHeight = null;
             let currentBlockHeight = null;
+            let currentBlockTime = null;
             let blockPollInterval = null;
             
             // Export button element
@@ -2649,7 +2610,7 @@ Anyone with your master private key can access all your funds.`;
                 let unconfirmedBalance = 0;
                 let utxoSource = 'none';
                 let blockHeight = currentBlockHeight || lastUpdateBlockHeight;
-                let lastUpdate = null;
+                let lastUpdate = currentBlockTime;
                 
                 // Calculate balances from UTXOs
                 if (currentUtxos && currentUtxos.length > 0) {
@@ -2662,7 +2623,10 @@ Anyone with your master private key can access all your funds.`;
                     });
                     utxoSource = 'online';
                     lastUpdateBlockHeight = currentBlockHeight;
-                    lastUpdate = new Date();
+                    // Use block time if available, otherwise current time
+                    if (!lastUpdate) {
+                        lastUpdate = new Date();
+                    }
                 } else if (offlineUtxoData && offlineUtxoData.utxos && offlineUtxoData.utxos.length > 0) {
                     offlineUtxoData.utxos.forEach(utxo => {
                         if (utxo.height > 0) {
@@ -2696,10 +2660,12 @@ Anyone with your master private key can access all your funds.`;
                 
                 // Update last update time
                 if (lastUpdateTime) {
-                    if (lastUpdate) {
-                        lastUpdateTime.textContent = lastUpdate.toLocaleString();
+                    if (blockHeight && lastUpdate) {
+                        lastUpdateTime.textContent = `Block #${blockHeight} at ${lastUpdate.toLocaleString()}`;
                     } else if (blockHeight) {
-                        lastUpdateTime.textContent = `Block ${blockHeight}`;
+                        lastUpdateTime.textContent = `Block #${blockHeight}`;
+                    } else if (lastUpdate) {
+                        lastUpdateTime.textContent = lastUpdate.toLocaleString();
                     } else {
                         lastUpdateTime.textContent = '-';
                     }
@@ -3011,10 +2977,20 @@ Anyone with your master private key can access all your funds.`;
                                 console.log(`New block detected: ${newHeight} (was ${currentBlockHeight})`);
                                 currentBlockHeight = newHeight;
                                 
-                                // Refresh all data
-                                refreshBalance();
-                                updateCommonBalance();
-                                updateTransactionHistory();
+                                // Get the actual block header to extract timestamp
+                                electrumRequest('blockchain.block.header', [currentBlockHeight], function(headerHex) {
+                                    if (headerHex) {
+                                        // Parse block header to get timestamp (bytes 68-71)
+                                        const timestampBytes = headerHex.substr(68 * 2, 8).match(/.{2}/g).reverse().join('');
+                                        currentBlockTime = new Date(parseInt(timestampBytes, 16) * 1000);
+                                        console.log(`Block ${currentBlockHeight} timestamp: ${currentBlockTime.toISOString()}`);
+                                    }
+                                    
+                                    // Refresh all data
+                                    refreshBalance();
+                                    updateCommonBalance();
+                                    updateTransactionHistory();
+                                });
                             }
                         }
                     });
