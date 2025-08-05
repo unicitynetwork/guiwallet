@@ -4,7 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is the Unicity Offline Wallet - a secure, client-side cryptocurrency wallet that runs entirely in the browser. The wallet is designed for offline use and consists of a single self-contained HTML file (`index.html`) with embedded JavaScript and CSS.
+This is the Unicity WEB GUI Wallet - a comprehensive web-based wallet for managing funds on the Unicity network. The wallet supports the consensus layer (Proof of Work blockchain) and is designed to also support the upcoming offchain state transition layer. It runs entirely in the browser as a single self-contained HTML file (`index.html`) with embedded JavaScript and CSS.
+
+## Purpose
+
+The Unicity WEB GUI Wallet serves as the primary interface for:
+- **Consensus Layer Management**: Interact with the Alpha cryptocurrency on the PoW blockchain
+- **Offchain Layer Support** (Planned): Future integration with the high-speed offchain state transition layer
+- **Cross-Layer Operations**: Seamless fund management across both layers (when offchain is implemented)
+
+> Note: The offchain state transition layer is not yet implemented. Current functionality focuses on the consensus layer.
 
 ## Project Structure
 
@@ -14,11 +23,19 @@ This is the Unicity Offline Wallet - a secure, client-side cryptocurrency wallet
   - BIP32/BIP44 HD wallet functionality
   - Bech32 address encoding for SegWit support
   - QR code generation
+  - Fulcrum server integration
   - Complete UI and wallet logic
-- `alpha-migrate.sh` - Shell script for migrating funds from offline wallet to Alpha node
+- `alpha-migrate.sh` - Shell script for migrating funds from wallet to Alpha node
 - `ref_materials/` - Reference materials directory
+- `README.md` - User documentation
+- `CLAUDE.md` - This file (AI assistant guidance)
 
 ## Key Architecture Components
+
+### Multi-Layer Architecture Support
+- **Consensus Layer**: Full support for PoW blockchain operations
+- **Offchain Layer**: Placeholder for future state transition layer integration
+- **WebSocket Integration**: Real-time updates via Fulcrum server connections
 
 ### Cryptographic Implementation
 The wallet uses several embedded cryptographic libraries:
@@ -28,18 +45,17 @@ The wallet uses several embedded cryptographic libraries:
 - **Bech32**: SegWit address encoding for `alpha1` prefixed addresses
 
 ### Security Model
-- All operations occur client-side with no server communication
+- All operations occur client-side with no server communication (except optional Fulcrum)
 - Private keys are generated using Web Crypto API for secure randomness
 - Wallet encryption uses AES with PBKDF2 (100,000 iterations)
 - Auto-hide feature for private keys after 30 seconds
 - IndexedDB for persistent storage across browser sessions
 
-### Address Generation
-The wallet implements a hierarchical deterministic (HD) wallet:
-1. Master key generation using secure random entropy
-2. BIP44 derivation path: `m/44'/0'/{addressIndex}'` for child key derivation
-3. Child key derivation using HMAC-SHA512
-4. SegWit (Bech32) address format with `alpha1` prefix
+### Operating Modes
+1. **Full Wallet Mode**: Complete control with private keys
+2. **Watch-Only Mode**: Monitor addresses without private keys
+3. **Online Mode**: Connected to Fulcrum for real-time data
+4. **Offline Mode**: Create and sign transactions without internet
 
 ## Key Functions and Flow
 
@@ -54,11 +70,18 @@ The wallet implements a hierarchical deterministic (HD) wallet:
 - Creates P2WPKH (Pay-to-Witness-Public-Key-Hash) address
 - Encodes as Bech32 with `alpha1` prefix
 
-### Bech32 Implementation
-- `createBech32`: Main function for creating Bech32 addresses
-- `bech32Checksum`: Generates 6-character checksum
-- `bech32Polymod`: Implements BCH polynomial for error detection
-- `hrpExpand`: Expands human-readable part for checksum calculation
+### Transaction Management
+- `createTransaction`: Build transactions with UTXO selection
+- `signTransaction`: Offline signing capability
+- `broadcastTransaction`: Submit to network via Fulcrum
+- `updateTransactionHistory`: Paginated transaction display (20 per page)
+- `updateUtxoListDisplay`: Paginated UTXO display (20 per page)
+
+### Fulcrum Integration
+- `connectToElectrumServer`: WebSocket connection management
+- `electrumRequest`: JSON-RPC communication
+- `subscribeToAddressChanges`: Real-time balance updates
+- `refreshBalance`: Fetch current UTXOs and balance
 
 ### Storage
 - Uses IndexedDB for cross-tab persistence
@@ -81,27 +104,15 @@ python3 -m http.server 8000
 chmod +x alpha-migrate.sh
 ```
 
-## Migration Process
-
-The wallet shows the derived child private key (not master key) which can be imported to Alpha nodes:
-
-```bash
-./alpha-migrate.sh <private_key_wif> <wallet_name>
-```
-
-The migration script:
-1. Creates or uses existing Alpha wallet
-2. Imports the private key using descriptors for SegWit compatibility
-3. Verifies the import and checks for available funds
-
 ## Important Technical Notes
 
 1. **No External Dependencies**: The entire application is self-contained in `index.html`
-2. **Offline-First Design**: Can be saved and run completely offline
-3. **Browser Compatibility**: Uses modern Web APIs (Crypto, IndexedDB)
+2. **Multi-Mode Design**: Supports online/offline and full/watch-only operations
+3. **Browser Compatibility**: Uses modern Web APIs (Crypto, IndexedDB, WebSocket)
 4. **Key Export**: The wallet exports the child private key, not the master key
 5. **Address Format**: Uses SegWit Bech32 encoding with custom `alpha1` prefix
-6. **Single Address**: Currently displays only one address at a time (index 0)
+6. **Pagination**: Both transactions and UTXOs display 20 items per page
+7. **Future-Ready**: Architecture designed to support offchain layer when implemented
 
 ## Testing Considerations
 
@@ -110,3 +121,15 @@ The migration script:
 - Ensure QR codes scan correctly
 - Test wallet backup/restore functionality
 - Verify migration script imports keys correctly to Alpha node
+- Test online/offline mode transitions
+- Verify pagination works correctly for large transaction/UTXO lists
+- Test watch-only mode functionality
+
+## Future Integration Points
+
+When implementing offchain state transition layer support:
+1. Add layer selection UI (consensus vs offchain)
+2. Implement state channel management functions
+3. Add cross-layer transfer mechanisms
+4. Update balance displays to show both layers
+5. Implement offchain transaction format and signing

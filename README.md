@@ -1,108 +1,156 @@
-# Unicity Offline Wallet
+# Unicity WEB GUI Wallet
 
-A simple, secure, client-side wallet that runs entirely in your browser. The  Wallet is designed for offline use, allowing you to manage private keys and generate addresses without exposing sensitive information to the internet.
+A comprehensive web-based wallet for the Unicity network that enables secure management of funds across both the consensus layer (Proof of Work blockchain) and the upcoming offchain state transition layer. This wallet runs entirely in your browser with no server dependencies, providing maximum security and privacy.
 
-![Unicity Offline Wallet](wallet-screenshot.png)
+![Unicity WEB GUI Wallet](wallet-screenshot.png)
+
+## Overview
+
+The Unicity WEB GUI Wallet is designed to be the primary interface for interacting with the Unicity network's multi-layer architecture:
+
+- **Consensus Layer (Active)**: Manage your Alpha cryptocurrency on the Proof of Work blockchain
+- **Offchain State Transition Layer (Coming Soon)**: Future support for high-speed, low-cost transactions in the offchain layer
+
+> **Note**: The offchain state transition layer is not yet implemented. Current functionality focuses on secure management of funds in the consensus layer.
 
 ## Features
 
-- **100% Client-Side**: All code runs in your browser - no data is ever sent to any server
-- **Offline Capable**: Save the HTML file and run it offline for maximum security
-- **Private Key Management**: Securely generate and manage private keys
-- **QR Code Support**: Generate QR codes for easy address sharing
-- **Wallet Encryption**: Protect your private keys with password encryption
-- **WIF Format**: Export private keys in Wallet Import Format (WIF) for compatibility with other wallets
-- **Simple Backup**: Easily backup your wallet data to a text file
-- **Persistent Storage**: Wallet data is saved in your browser's local storage
+### Core Wallet Features
+- **100% Client-Side**: All operations happen in your browser - no data is ever sent to any server
+- **Offline Capable**: Save the HTML file and run it completely offline for maximum security
+- **HD Wallet**: Hierarchical Deterministic wallet with BIP44-style derivation
+- **Multi-Mode Operation**: Supports both full wallet mode and watch-only mode
 
-## Security Features
+### Transaction Management
+- **UTXO Management**: Full visibility and control over your unspent transaction outputs
+- **Transaction History**: Complete transaction history with pagination (20 per page)
+- **Offline Signing**: Create and sign transactions offline, broadcast when connected
+- **Fee Control**: Manual fee adjustment for transaction priority
 
-- **Password Protection**: Optional encryption of your wallet with a password (using 100,000 PBKDF2 iterations)
-- **Password Strength Meter**: Visual feedback on password strength
+### Security Features
+- **Password Protection**: AES encryption with 100,000 PBKDF2 iterations
 - **Auto-Hide**: Private keys automatically hide after 30 seconds
-- **Confirmation Dialogs**: Extra verification steps before sensitive operations
+- **Secure Key Generation**: Uses Web Crypto API for cryptographically secure randomness
+- **Watch-Only Mode**: Monitor addresses without exposing private keys
+
+### Integration Features
+- **Fulcrum Server Support**: Connect to Fulcrum servers for real-time blockchain data
+- **Import/Export**: 
+  - Export UTXOs for offline transaction creation
+  - Import and broadcast signed transactions
+  - Backup and restore wallet data
+- **Migration Tools**: Included script for migrating to Alpha Core nodes
 
 ## How to Use
 
-1. **Setup**:
-   - Clone or download this repository
-   - Open `offline-wallet.html` in a web browser. You can either save as a file and transfer to an offline computer or open in the github pages https://unicitynetwork.github.io/offlinewallet/ and then go offline. 
+### Initial Setup
+1. **Access the Wallet**:
+   - Visit https://unicitynetwork.github.io/guiwallet/ 
+   - Or download `index.html` and open locally
+   - For maximum security, save the file and use it on an offline computer
 
-2. **Create a Wallet**:
-   - Click "Create Wallet" to create a new wallet
-   - A master key will be securely generated using cryptographically-strong random numbers
+2. **Create a New Wallet**:
+   - Click "Create Wallet" to generate a new master key
+   - The wallet uses secure random generation for maximum entropy
 
-3. **Security**:
-   - Click "Encrypt Wallet" to protect your wallet with a password
-   - Create a strong password to ensure maximum security
+3. **Secure Your Wallet**:
+   - Click "Encrypt Wallet" to add password protection
+   - Use a strong, unique password
+   - Backup your wallet data immediately
 
-4. **Backup**:
-   - Click "Backup Wallet" to download your wallet data as a text file
-   - Store this file securely (preferably on an offline device)
+### Managing Funds
 
+#### Online Mode (Connected to Fulcrum)
+1. Connect to a Fulcrum server using the RPC connection
+2. View real-time balance and transaction history
+3. Create and broadcast transactions directly
 
+#### Offline Mode
+1. Export UTXO data while online
+2. Transfer to offline computer
+3. Create and sign transactions offline
+4. Transfer signed transaction back to online computer for broadcasting
 
-## Technical Details
+### Watch-Only Mode
+- Monitor any Alpha address without private keys
+- View balance, transactions, and UTXOs
+- Perfect for cold storage monitoring
 
-The wallet implements:
-- BIP-44 style derivation paths for address generation
-- Secure random number generation via Web Crypto API
-- HMAC-SHA512 for HD wallet key derivation
-- Bech32 address encoding
-- AES encryption for wallet protection (with 100,000 PBKDF2 iterations for key derivation)
-- IndexedDB for cross-tab persistent storage
+## Technical Architecture
 
-## Import to Alpha Core
+### Consensus Layer Support
+The wallet fully supports the Unicity consensus layer (Proof of Work blockchain):
+- **Address Format**: SegWit Bech32 addresses with `alpha1` prefix
+- **Key Derivation**: BIP44 path `m/44'/0'/{index}'`
+- **Transaction Format**: Native SegWit (P2WPKH) transactions
 
-   - Click on Migrate Wallet and reveal the private key Note this is not the master key but the private key corresponding to the address (derived from the master key)
-   - This key can then be imported into supported online wallets such as Alpha core. There is script provided called `alpha-migration.sh` which will do the automate the migration. 
+### Cryptographic Implementation
+- **Key Generation**: secp256k1 elliptic curve cryptography
+- **HD Derivation**: HMAC-SHA512 for child key generation
+- **Encryption**: AES with PBKDF2 key derivation (100,000 iterations)
+- **Address Encoding**: Bech32 for SegWit compatibility
+
+### Storage
+- **IndexedDB**: Primary storage for cross-tab persistence
+- **LocalStorage**: Fallback storage option
+- **Encrypted Format**: All sensitive data encrypted before storage
+
+## Migration to Alpha Core
+
+The wallet includes tools for migrating funds to Alpha Core nodes:
 
 ```bash
-###############################################################################
-# Unicity Offline Wallet Migration Tool
-###############################################################################
-# 
-# DESCRIPTION:
-#   This script helps users migrate funds from an offline Unicity wallet by
-#   importing the private key into an online Alpha node. The script
-#   handles the technical details of importing a private key using descriptors,
-#   allowing users to access funds stored at SegWit (alpha1...) addresses.
-#
-# BACKGROUND:
-#   The offline wallet now shows the direct private key that generates your address,
-#   making migration simpler and more reliable. This script ensures proper import
-#   of this key with the correct descriptor format for compatibility with Alpha nodes.
-#
-# USAGE:
-#   ./alpha-migrate.sh <private_key_wif> <wallet_name>
-#
-# ARGUMENTS:
-#   private_key_wif - The private key in WIF format shown in the offline wallet
-#   wallet_name     - Name of the wallet to create or use for importing
-#
-# EXAMPLES:
-#   ./alpha-migrate.sh KxaRsSTC8uVbh6eJDwiyRu8oGgWpkFVFq7ff6QbaMTJfBHNZTMpV my_wallet
-#
-# NOTES:
-#   - If no funds appear, try rescanning the blockchain
-#   - The script will create a new wallet if the specified name doesn't exist
-#
-###############################################################################
+# Use the included migration script
+./alpha-migrate.sh <private_key_wif> <wallet_name>
+
+# Example:
+./alpha-migrate.sh KxaRsSTC8uVbh6eJDwiyRu8oGgWpkFVFq7ff6QbaMTJfBHNZTMpV my_wallet
 ```
 
-Save the above as `alpha-migrate.sh` and make it executable with `chmod +x alpha-migrate.sh`, then run it with your private key and wallet name.
+The migration script:
+1. Creates or uses an existing Alpha wallet
+2. Imports the private key with proper SegWit descriptors
+3. Verifies the import and checks for available funds
 
-## Security Recommendations
+## Security Best Practices
 
-- **Offline Use**: For maximum security, use this wallet on an offline computer
-- **Backup**: Always backup your wallet data and store it securely
-- **Strong Passwords**: Use a strong, unique password to encrypt your wallet
-- **Private Environment**: Ensure no one can see your screen when viewing private keys
+1. **Offline Usage**: For maximum security, use on an air-gapped computer
+2. **Backup Strategy**: 
+   - Keep multiple encrypted backups
+   - Store in geographically separate locations
+   - Test restore process regularly
+3. **Password Security**:
+   - Use strong, unique passwords
+   - Never share or write down passwords insecurely
+4. **Transaction Verification**: Always verify addresses and amounts before signing
+
+## Future Development
+
+### Offchain State Transition Layer (Planned)
+- High-speed transaction processing
+- Minimal fees for microtransactions
+- Seamless integration with consensus layer
+- State channel management
+
+### Additional Features (Roadmap)
+- Multi-signature support
+- Hardware wallet integration
+- Advanced coin control features
+- Mobile-responsive design improvements
 
 ## Development
 
-The entire wallet is contained in a single HTML file with embedded JavaScript and CSS. There are no external dependencies or build processes required.
+The entire wallet is self-contained in a single `index.html` file with embedded:
+- JavaScript implementation
+- CSS styling
+- Cryptographic libraries
+- No external dependencies or build process required
 
 ## License
 
 [MIT License](LICENSE)
+
+## Support
+
+For issues, feature requests, or contributions, please visit:
+https://github.com/unicitynetwork/guiwallet
