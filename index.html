@@ -2533,6 +2533,12 @@ Anyone with your master private key can access all your funds.`;
                                             refreshBalance();
                                         }
                                         
+                                        // Always update transaction history to refresh confirmation counts
+                                        updateTransactionHistory();
+                                        
+                                        // Also update UTXO list to refresh confirmation counts
+                                        updateUtxoListDisplay();
+                                        
                                         // Show notification
                                         showNotification(
                                             '🔗 New Block',
@@ -2905,11 +2911,20 @@ Anyone with your master private key can access all your funds.`;
                     watchOnlySection.style.display = 'block';
                     walletInfo.style.display = 'none';
                     watchOnlyMode = true;
+                    // Clear data when switching to watch-only mode
+                    currentTransactions = [];
+                    currentUtxos = [];
                 } else if (hasWallet) {
                     watchOnlySection.style.display = 'none';
                     walletInfo.style.display = 'block';
                     watchOnlyMode = false;
                     watchOnlyAddressValue = null;
+                    
+                    // Clear watch-only data when switching to wallet mode
+                    if (watchOnlyMode) {
+                        currentTransactions = [];
+                        currentUtxos = [];
+                    }
                     
                     // Subscribe to wallet address if connected
                     if (electrumConnected && wallet.addresses && wallet.addresses.length > 0) {
@@ -2921,6 +2936,10 @@ Anyone with your master private key can access all your funds.`;
                     walletInfo.style.display = 'none';
                     watchOnlyMode = false;
                     watchOnlyAddressValue = null;
+                    
+                    // Clear data
+                    currentTransactions = [];
+                    currentUtxos = [];
                     
                     // Unsubscribe if connected
                     if (electrumConnected) {
@@ -2949,6 +2968,9 @@ Anyone with your master private key can access all your funds.`;
                                 // Update subscription if connected
                                 if (electrumConnected && address !== oldAddress) {
                                     subscribeToAddressChanges(address);
+                                    // Clear transaction history when address changes
+                                    currentTransactions = [];
+                                    currentUtxos = [];
                                     // Reset initial load flag when address changes
                                     isInitialLoad = true;
                                     setTimeout(() => {
@@ -2973,7 +2995,9 @@ Anyone with your master private key can access all your funds.`;
                     watchOnlyBalance.textContent = '-';
                     watchOnlyUnconfirmed.textContent = '';
                     currentUtxos = [];
+                    currentTransactions = [];
                     updateUtxoListDisplay();
+                    updateTransactionHistory();
                     
                     // Unsubscribe if connected
                     if (electrumConnected) {
@@ -3038,8 +3062,14 @@ Anyone with your master private key can access all your funds.`;
                         if (changes.hasChanged) {
                             // Only show notifications if not initial load
                             if (!isInitialLoad && changes.newTransactions.length > 0) {
-                                // Show notifications for new transactions
-                                changes.newTransactions.forEach(tx => {
+                                // Only show notifications for truly new unconfirmed transactions
+                                // When a new tx arrives, we should only notify about that one
+                                const unconfirmedNewTxs = changes.newTransactions.filter(tx => tx.height === 0);
+                                
+                                // If we have many new transactions, it's likely a data refresh issue
+                                // Only notify if we have 1-2 new unconfirmed transactions
+                                if (unconfirmedNewTxs.length <= 2) {
+                                    unconfirmedNewTxs.forEach(tx => {
                                 const txid = tx.tx_hash || tx.txid;
                                 const shortTxid = txid.substring(0, 8) + '...' + txid.substring(txid.length - 8);
                                 
@@ -3072,7 +3102,8 @@ Anyone with your master private key can access all your funds.`;
                                     
                                     showNotification(notificationTitle, notificationBody);
                                 });
-                                });
+                                    });
+                                }
                             }
                             
                             // Show notifications for newly confirmed transactions (always show these)
@@ -3874,7 +3905,11 @@ Anyone with your master private key can access all your funds.`;
                                     ${txid}:${vout}
                                 </div>
                                 <div style="color: #888; margin-top: 2px;">
-                                    ${height > 0 ? `Block: ${height}` : 'Unconfirmed'}
+                                    ${height > 0 ? 
+                                        (currentBlockHeight ? 
+                                            `${Math.max(0, currentBlockHeight - height + 1)} confirmations` : 
+                                            `Block: ${height}`) : 
+                                        'Unconfirmed'}
                                     <span class="utxo-timestamp" data-height="${height}" data-index="${index}"></span>
                                 </div>
                             </div>
@@ -4111,8 +4146,14 @@ Anyone with your master private key can access all your funds.`;
                                 if (changes.hasChanged) {
                                     // Only show notifications if not initial load
                                     if (!isInitialLoad && changes.newTransactions.length > 0) {
-                                        // Show notifications for new transactions
-                                        changes.newTransactions.forEach(tx => {
+                                        // Only show notifications for truly new unconfirmed transactions
+                                        // When a new tx arrives, we should only notify about that one
+                                        const unconfirmedNewTxs = changes.newTransactions.filter(tx => tx.height === 0);
+                                        
+                                        // If we have many new transactions, it's likely a data refresh issue
+                                        // Only notify if we have 1-2 new unconfirmed transactions
+                                        if (unconfirmedNewTxs.length <= 2) {
+                                            unconfirmedNewTxs.forEach(tx => {
                                         const txid = tx.tx_hash || tx.txid;
                                         const shortTxid = txid.substring(0, 8) + '...' + txid.substring(txid.length - 8);
                                         
@@ -4147,7 +4188,8 @@ Anyone with your master private key can access all your funds.`;
                                             
                                             showNotification(notificationTitle, notificationBody);
                                         });
-                                        });
+                                            });
+                                        }
                                     }
                                     
                                     // Show notifications for newly confirmed transactions (always show these)
