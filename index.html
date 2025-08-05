@@ -787,7 +787,7 @@
             
             <!-- UTXO Import/Export Buttons -->
             <div style="margin-top: 15px; display: flex; gap: 3px;">
-                <button onclick="exportUtxoData()" class="wallet-button" style="background-color: #06d6a0;">
+                <button id="exportUtxoBtn" onclick="exportUtxoData()" class="wallet-button" style="background-color: #06d6a0;">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                         <polyline points="7 10 12 15 17 10"></polyline>
@@ -2893,7 +2893,7 @@ Anyone with your master private key can access all your funds.`;
             let blockPollInterval = null;
             
             // Export button element
-            // const exportUtxoBtn = document.getElementById('exportUtxoBtn'); // Removed duplicate balance display
+            const exportUtxoBtn = document.getElementById('exportUtxoBtn');
             const importUtxoBtn = document.getElementById('importUtxoBtn');
             const clearUtxoBtn = document.getElementById('clearUtxoBtn');
             const utxoFileInput = document.getElementById('utxoFileInput');
@@ -3234,15 +3234,19 @@ Anyone with your master private key can access all your funds.`;
                     }
                 }
                 
-                // Update Send button state based on available UTXOs and watch-only mode
+                // Update Send button state based on available UTXOs, wallet state, and watch-only mode
                 if (sendTransactionBtn) {
                     const hasUtxos = (currentUtxos && currentUtxos.length > 0) || 
                                    (offlineUtxoData && offlineUtxoData.utxos && offlineUtxoData.utxos.length > 0);
                     
-                    // Disable if no UTXOs or in watch-only mode
-                    sendTransactionBtn.disabled = !hasUtxos || watchOnlyMode;
+                    const hasWallet = wallet.addresses && wallet.addresses.length > 0;
                     
-                    if (watchOnlyMode) {
+                    // Disable if no UTXOs, in watch-only mode, or no wallet loaded
+                    sendTransactionBtn.disabled = !hasUtxos || watchOnlyMode || !hasWallet;
+                    
+                    if (!hasWallet) {
+                        sendTransactionBtn.title = "Please load a wallet first";
+                    } else if (watchOnlyMode) {
                         sendTransactionBtn.title = "Cannot send from watch-only address (no private key)";
                     } else if (hasUtxos) {
                         sendTransactionBtn.title = "Send Alpha to another address";
@@ -3612,7 +3616,12 @@ Anyone with your master private key can access all your funds.`;
             
             // Export UTXO data
             function exportUtxoData() {
-                if (!wallet.addresses || wallet.addresses.length === 0) {
+                // Get address from either watch-only mode or regular wallet
+                const address = watchOnlyMode && watchOnlyAddressValue ? 
+                    watchOnlyAddressValue : 
+                    (wallet.addresses && wallet.addresses.length > 0 ? wallet.addresses[0].address : null);
+                
+                if (!address) {
                     alert('No wallet address available');
                     return;
                 }
@@ -3622,7 +3631,6 @@ Anyone with your master private key can access all your funds.`;
                     return;
                 }
                 
-                const address = wallet.addresses[0].address;
                 const scriptHash = addressToScriptHash(address);
                 
                 if (!scriptHash) {
@@ -3919,18 +3927,20 @@ Anyone with your master private key can access all your funds.`;
                     utxoListElement.appendChild(utxoDiv);
                 });
                 
-                // Fetch and display timestamps for all UTXOs with block heights
-                utxosToDisplay.forEach((utxo, index) => {
-                    const height = utxo.height || 0;
-                    if (height > 0) {
-                        getBlockTimestamp(height, function(timestamp) {
-                            const timestampElement = utxoListElement.querySelector(`.utxo-timestamp[data-index="${index}"]`);
-                            if (timestampElement && timestamp) {
-                                timestampElement.textContent = ` • ${formatBlockTimestamp(timestamp)}`;
-                            }
-                        });
-                    }
-                });
+                // Fetch and display timestamps for all UTXOs with block heights (only when connected)
+                if (electrumConnected) {
+                    utxosToDisplay.forEach((utxo, index) => {
+                        const height = utxo.height || 0;
+                        if (height > 0) {
+                            getBlockTimestamp(height, function(timestamp) {
+                                const timestampElement = utxoListElement.querySelector(`.utxo-timestamp[data-index="${index}"]`);
+                                if (timestampElement && timestamp) {
+                                    timestampElement.textContent = ` • ${formatBlockTimestamp(timestamp)}`;
+                                }
+                            });
+                        }
+                    });
+                }
             }
             
             // Clear offline UTXO data
@@ -4227,7 +4237,7 @@ Anyone with your master private key can access all your funds.`;
             };
             
             // Event listeners for UTXO buttons
-            // exportUtxoBtn.onclick = exportUtxoData; // Removed duplicate balance display
+            exportUtxoBtn.onclick = exportUtxoData;
             importUtxoBtn.onclick = importUtxoData;
             clearUtxoBtn.onclick = clearOfflineUtxoData;
             
