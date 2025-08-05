@@ -614,7 +614,7 @@
         
         <!-- RPC Connection Section -->
         <div id="rpc-section" class="card-section">
-            <h2>Blockchain Connection</h2>
+            <h2>Cold Wallet</h2>
             
             <div id="connectionStatus" style="margin-top: 20px; display: none;">
                 <div class="info-box" style="background-color: rgba(255, 186, 8, 0.1); border-left: 4px solid #ffba08;">
@@ -622,15 +622,11 @@
                 </div>
             </div>
             
-            <!-- Import & Broadcast Transactions Section -->
-            <div style="margin-top: 30px;">
-                <h3>Import & Broadcast Signed Transactions</h3>
-                <div class="info-box" style="background-color: rgba(251, 191, 36, 0.1); border-left: 4px solid #fbbf24; margin-top: 10px;">
-                    <p>Import signed transactions from an offline wallet to broadcast them to the network.</p>
-                </div>
+            <!-- Import & Broadcast Transactions -->
+            <div style="margin-top: 20px;">
                 <input type="file" id="txFileInput" accept=".json,.txt" style="display: none;">
-                <button onclick="document.getElementById('txFileInput').click()" class="button" style="background-color: #fbbf24; margin-top: 15px;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                <button onclick="document.getElementById('txFileInput').click()" class="wallet-button" style="background-color: #fbbf24;">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                         <polyline points="7 10 12 15 17 10"></polyline>
                         <line x1="12" y1="15" x2="12" y2="3"></line>
@@ -639,49 +635,43 @@
                 </button>
             </div>
             
-            <!-- Offline UTXO Import Section -->
-            <div id="offlineUtxoSection" style="margin-top: 30px;">
-                <h3>Offline Balance Management</h3>
-                <div class="info-box" style="background-color: rgba(131, 56, 236, 0.1); border-left: 4px solid #8338ec;">
-                    <p>Import UTXO data exported from an online session to view balances offline.</p>
-                </div>
-                
-                <div class="button-container" style="justify-content: flex-start; margin-top: 15px;">
-                    <button id="importUtxoBtn" class="button" style="background-color: #8338ec;">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="17 8 12 3 7 8"></polyline>
-                            <line x1="12" y1="3" x2="12" y2="15"></line>
-                        </svg>
-                        Import UTXO Data
-                    </button>
-                    <button id="clearUtxoBtn" class="button" style="background-color: #666; display: none;">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                            <polyline points="3 6 5 6 21 6"></polyline>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                        </svg>
-                        Clear Offline Data
-                    </button>
-                </div>
-                
-                <!-- Hidden file input for import -->
-                <input type="file" id="utxoFileInput" accept=".json,.txt" style="display: none;">
-                
-                <!-- Offline Balance Display -->
-                <div id="offlineBalanceDisplay" style="display: none; margin-top: 20px;">
-                    <div class="info-box" style="background-color: rgba(6, 214, 160, 0.1); border-left: 4px solid var(--success-color);">
-                        <div>
-                            <p style="margin: 0; color: #666; font-size: 14px;">Offline Balance (Imported)</p>
-                            <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold;" id="offlineBalanceAmount">0.00000000 ALPHA</p>
-                            <p style="margin: 5px 0 0 0; color: #999; font-size: 12px;" id="offlineDataTimestamp">Last updated: Never</p>
-                        </div>
-                    </div>
-                    
-                    <div id="offlineUtxoList" style="margin-top: 15px; max-height: 200px; overflow-y: auto; border: 1px solid #e9ecef; border-radius: 8px; padding: 10px;">
-                        <!-- UTXOs will be listed here -->
-                    </div>
+            <!-- UTXO List Display -->
+            <div id="utxoListContainer" style="margin-top: 15px;">
+                <h4 style="margin-bottom: 10px;">Loaded UTXOs</h4>
+                <div id="currentUtxoList" style="max-height: 300px; overflow-y: auto; border: 1px solid #e9ecef; border-radius: 8px; padding: 10px; background-color: #f9fafb; font-size: 12px; font-family: monospace;">
+                    <p style="color: #999; text-align: center;">No UTXOs loaded</p>
                 </div>
             </div>
+            
+            <!-- UTXO Import/Export Buttons -->
+            <div style="margin-top: 15px; display: flex; gap: 3px;">
+                <button onclick="exportUtxoData()" class="wallet-button" style="background-color: #06d6a0;">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Export UTXO Data
+                </button>
+                <button id="importUtxoBtn" onclick="importUtxoData()" class="wallet-button" style="background-color: #8338ec;">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    Import UTXO Data
+                </button>
+                <button id="clearUtxoBtn" onclick="clearOfflineUtxoData()" class="wallet-button" style="background-color: #ef476f; display: none;">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                    Clear UTXOs
+                </button>
+            </div>
+            
+            <!-- Hidden file input for UTXO import -->
+            <input type="file" id="utxoFileInput" accept=".json,.txt" style="display: none;">
         </div>
         
     </div>
@@ -1098,6 +1088,9 @@
                 // Update balance display
                 updateCommonBalance();
                 
+                // Update UTXO list display
+                updateUtxoListDisplay();
+                
                 // If already connected to Fulcrum, refresh balance
                 if (electrumConnected && !wallet.addresses.find(a => a.address === addressInfo.address)) {
                     console.log('New address added and Fulcrum connected, refreshing balance...');
@@ -1491,6 +1484,7 @@ Anyone with your master private key can access all your funds.`;
                     offlineUtxoData = null;
                     updateTransactionHistory();
                     updateCommonBalance();
+                    updateUtxoListDisplay();
                     document.getElementById('transactionHistoryContainer').style.display = 'none';
                     
                     // Reset button text for toggle buttons
@@ -2226,6 +2220,7 @@ Anyone with your master private key can access all your funds.`;
                     
                     electrumSocket.onopen = function() {
                         electrumConnected = true;
+                        updateUtxoListDisplay(); // Update UTXO list display when connected
                         const infoBox = connectionStatusDiv.querySelector('.info-box');
                         if (infoBox) {
                             infoBox.style.backgroundColor = 'rgba(6, 214, 160, 0.1)';
@@ -2312,6 +2307,7 @@ Anyone with your master private key can access all your funds.`;
                     
                     electrumSocket.onclose = function() {
                         electrumConnected = false;
+                        updateUtxoListDisplay(); // Update UTXO list display when disconnected
                         const infoBox = connectionStatusDiv.querySelector('.info-box');
                         if (infoBox) {
                             infoBox.style.backgroundColor = 'rgba(255, 186, 8, 0.1)';
@@ -2347,6 +2343,7 @@ Anyone with your master private key can access all your funds.`;
                 }
                 electrumConnected = false;
                 electrumCallbacks = {};
+                updateUtxoListDisplay(); // Update UTXO list display when disconnected
                 
                 // Stop polling
                 stopBlockPolling();
@@ -2600,10 +2597,10 @@ Anyone with your master private key can access all your funds.`;
             const importUtxoBtn = document.getElementById('importUtxoBtn');
             const clearUtxoBtn = document.getElementById('clearUtxoBtn');
             const utxoFileInput = document.getElementById('utxoFileInput');
-            const offlineBalanceDisplay = document.getElementById('offlineBalanceDisplay');
-            const offlineBalanceAmount = document.getElementById('offlineBalanceAmount');
-            const offlineDataTimestamp = document.getElementById('offlineDataTimestamp');
-            const offlineUtxoList = document.getElementById('offlineUtxoList');
+            // const offlineBalanceDisplay = document.getElementById('offlineBalanceDisplay'); // Removed with Cold Wallet reorganization
+            // const offlineBalanceAmount = document.getElementById('offlineBalanceAmount'); // Removed with Cold Wallet reorganization
+            // const offlineDataTimestamp = document.getElementById('offlineDataTimestamp'); // Removed with Cold Wallet reorganization
+            // const offlineUtxoList = document.getElementById('offlineUtxoList'); // Removed with Cold Wallet reorganization
             
             // Update common balance display
             function updateCommonBalance() {
@@ -3158,9 +3155,10 @@ Anyone with your master private key can access all your funds.`;
                         offlineUtxoData = data;
                         localStorage.setItem('offlineUtxoData', JSON.stringify(data));
                         
-                        // Display the offline balance
-                        displayOfflineBalance();
+                        // Update displays
+                        // displayOfflineBalance(); // Removed with Cold Wallet reorganization
                         updateCommonBalance();
+                        updateUtxoListDisplay();
                         
                         alert(`UTXO data imported successfully (block ${data.blockchain.height})!`);
                     } catch (err) {
@@ -3173,7 +3171,7 @@ Anyone with your master private key can access all your funds.`;
                 event.target.value = '';
             };
             
-            // Display offline balance
+            /* // Display offline balance - Removed with Cold Wallet reorganization
             function displayOfflineBalance() {
                 if (!offlineUtxoData) {
                     offlineBalanceDisplay.style.display = 'none';
@@ -3242,14 +3240,82 @@ Anyone with your master private key can access all your funds.`;
                     });
                 }
             }
+            */ // End of displayOfflineBalance - Removed with Cold Wallet reorganization
+            
+            // Update UTXO list display
+            function updateUtxoListDisplay() {
+                const utxoListElement = document.getElementById('currentUtxoList');
+                if (!utxoListElement) return;
+                
+                // Determine which UTXOs to display
+                let utxosToDisplay = [];
+                let isOfflineData = false;
+                
+                if (currentUtxos && currentUtxos.length > 0) {
+                    // Online UTXOs from Fulcrum
+                    utxosToDisplay = currentUtxos.map(utxo => ({
+                        ...utxo,
+                        source: 'online'
+                    }));
+                } else if (offlineUtxoData && offlineUtxoData.utxos && offlineUtxoData.utxos.length > 0) {
+                    // Offline imported UTXOs
+                    utxosToDisplay = offlineUtxoData.utxos.map(utxo => ({
+                        ...utxo,
+                        source: 'offline'
+                    }));
+                    isOfflineData = true;
+                }
+                
+                // Show/hide clear button based on offline data and connection status
+                if (clearUtxoBtn) {
+                    clearUtxoBtn.style.display = (isOfflineData && !electrumConnected) ? 'inline-flex' : 'none';
+                }
+                
+                // Clear current display
+                utxoListElement.innerHTML = '';
+                
+                if (utxosToDisplay.length === 0) {
+                    utxoListElement.innerHTML = '<div style="color: #666; font-style: italic; font-size: 11px;">No UTXOs available</div>';
+                    return;
+                }
+                
+                // Display each UTXO
+                utxosToDisplay.forEach((utxo, index) => {
+                    const utxoDiv = document.createElement('div');
+                    utxoDiv.style.cssText = 'padding: 8px; background-color: #f8f9fa; border-radius: 4px; margin-bottom: 6px; font-size: 11px;';
+                    
+                    const amount = (utxo.value / 100000000).toFixed(8);
+                    const txid = utxo.tx_hash || utxo.txid;
+                    const vout = utxo.tx_pos !== undefined ? utxo.tx_pos : utxo.vout;
+                    const height = utxo.height || 0;
+                    const source = utxo.source === 'offline' ? ' (imported)' : '';
+                    
+                    utxoDiv.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; color: #06d6a0;">${amount} ALPHA${source}</div>
+                                <div style="font-family: monospace; color: #666; word-break: break-all;">
+                                    ${txid}:${vout}
+                                </div>
+                                <div style="color: #888; margin-top: 2px;">
+                                    ${height > 0 ? `Block: ${height}` : 'Unconfirmed'}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    utxoListElement.appendChild(utxoDiv);
+                });
+            }
             
             // Clear offline UTXO data
             function clearOfflineUtxoData() {
                 if (confirm('Are you sure you want to clear the offline UTXO data?')) {
                     offlineUtxoData = null;
                     localStorage.removeItem('offlineUtxoData');
-                    displayOfflineBalance();
+                    // displayOfflineBalance(); // Removed with Cold Wallet reorganization
                     updateCommonBalance();
+                    updateUtxoListDisplay();
                     alert('Offline UTXO data cleared');
                 }
             }
@@ -3260,8 +3326,9 @@ Anyone with your master private key can access all your funds.`;
                 if (stored) {
                     try {
                         offlineUtxoData = JSON.parse(stored);
-                        displayOfflineBalance();
+                        // displayOfflineBalance(); // Removed with Cold Wallet reorganization
                         updateCommonBalance();
+                        updateUtxoListDisplay();
                     } catch (err) {
                         console.error('Failed to load offline UTXO data:', err);
                     }
@@ -3290,6 +3357,7 @@ Anyone with your master private key can access all your funds.`;
                             if (result) {
                                 currentUtxos = result;
                                 updateCommonBalance();
+                                updateUtxoListDisplay();
                             }
                         });
                     }
@@ -3954,8 +4022,6 @@ Anyone with your master private key can access all your funds.`;
                 e.target.value = ''; // Clear input for re-use
             });
             
-            // Load offline data on startup
-            loadOfflineUtxoData();
         });
     </script>
 
