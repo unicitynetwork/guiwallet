@@ -127,6 +127,57 @@
             flex-wrap: wrap;
             gap: 10px;
         }
+        .wallet-button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            font-weight: 600;
+            transition: var(--transition);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .wallet-button:hover {
+            background-color: #2878f0;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+        .wallet-button:disabled {
+            background-color: #d0d0d0;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .wallet-button.delete-btn {
+            background-color: var(--danger-color);
+        }
+        .wallet-button.encrypt-btn {
+            background-color: #06d6a0;
+        }
+        .wallet-button.restore-btn {
+            background-color: #8338ec;
+        }
+        .wallet-button.migrate-btn {
+            background-color: #666;
+        }
+        .wallet-button svg {
+            width: 14px;
+            height: 14px;
+        }
+        .wallet-actions-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 20px;
+            align-items: center;
+        }
         .warning {
             color: var(--danger-color);
             font-weight: bold;
@@ -370,11 +421,37 @@
             
             <div class="input-group" style="margin-bottom: 15px;">
                 <input type="password" id="passwordModalInput" placeholder="Enter your password" style="width: 100%;">
+                <div id="passwordStrength" class="password-strength"></div>
             </div>
             
             <div style="display: flex; justify-content: space-between; gap: 10px;">
                 <button class="button" style="background-color: #d0d0d0;" id="passwordModalCancelBtn">Cancel</button>
                 <button class="button" id="passwordModalSubmitBtn">Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Restore Modal -->
+    <div id="restoreModal" class="qr-modal" style="display: none;">
+        <div class="qr-content" style="max-width: 500px;">
+            <h3>Restore Wallet from Backup</h3>
+            <p style="margin: 15px 0; color: #666;">Upload a previously saved wallet backup file to restore your wallet.</p>
+            
+            <div class="input-group" style="margin-bottom: 15px;">
+                <label for="restoreFileInput">Backup File:</label>
+                <input type="file" id="restoreFileInput" accept=".json" style="width: 100%;">
+            </div>
+            
+            <div class="input-group" style="margin-bottom: 15px;">
+                <label for="restorePasswordInput">Password (if encrypted):</label>
+                <input type="password" id="restorePasswordInput" placeholder="Enter wallet password" style="width: 100%;">
+            </div>
+            
+            <div id="restoreStatus" class="info-box" style="display: none; margin-bottom: 15px;"></div>
+            
+            <div style="display: flex; justify-content: space-between; gap: 10px;">
+                <button class="button" style="background-color: #d0d0d0;" id="restoreModalCancelBtn">Cancel</button>
+                <button class="button" id="restoreModalSubmitBtn">Restore</button>
             </div>
         </div>
     </div>
@@ -413,63 +490,87 @@
         </div>
 
         <div id="wallet-section" class="card-section">
-            <h2>Your Wallet</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">Your Wallet</h2>
+                <div id="walletQrCode" style="display: none;">
+                    <!-- QR code will be generated here -->
+                </div>
+            </div>
             
-            <div class="button-container">
-                <button id="initializeWalletBtn" class="button" title="Creates a new wallet with a secure private key. This is the first step to use this wallet.">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+            <!-- Wallet Info Section -->
+            <div id="walletInfo" style="display: none; margin-bottom: 15px; padding: 15px; background-color: rgba(52, 211, 153, 0.05); border-radius: 8px; border: 1px solid rgba(52, 211, 153, 0.2);">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <div>
+                            <a id="walletAddressLink" href="#" target="_blank" style="color: var(--primary-color); text-decoration: none; font-family: monospace;">
+                                <span id="walletAddress">-</span>
+                            </a>
+                        </div>
+                        <div>
+                            <span id="walletBalance" style="font-weight: 600;">0 ALPHA</span>
+                            <span id="walletUnconfirmed" style="color: #999;">(0)</span>
+                        </div>
+                    </div>
+                    <div>
+                        <span style="font-size: 12px; color: #999;">Last update: <span id="lastUpdateTime">-</span></span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="wallet-actions-container">
+                <button id="initializeWalletBtn" class="wallet-button" title="Creates a new wallet with a secure private key. This is the first step to use this wallet.">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                         <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                     </svg>
-                    Create Wallet
+                    Create
                 </button>
-                <button id="downloadBtn" class="button" disabled title="Download your wallet data as a text file for backup. Keep this file safe and private.">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                <button id="encryptWalletBtn" class="wallet-button encrypt-btn" disabled title="Protect your wallet with a password">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    Encrypt
+                </button>
+                <button id="restoreWalletBtn" class="wallet-button restore-btn" title="Restore wallet from backup">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    Restore
+                </button>
+                <button id="migrateWalletBtn" class="wallet-button migrate-btn" disabled title="Export wallet for migration">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 20h9"></path>
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                    </svg>
+                    Migrate
+                </button>
+                <button id="backupWalletBtn" class="wallet-button" disabled title="Download your wallet data as a text file for backup. Keep this file safe and private.">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                         <polyline points="7 10 12 15 17 10"></polyline>
                         <line x1="12" y1="15" x2="12" y2="3"></line>
                     </svg>
-                    Backup Wallet
+                    Backup
                 </button>
-                <button id="deleteWalletBtn" class="button delete-btn" disabled title="Deletes all wallet data from your browser. This cannot be undone.">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                <button id="deleteWalletBtn" class="wallet-button delete-btn" disabled title="Deletes all wallet data from your browser. This cannot be undone.">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="3 6 5 6 21 6"></polyline>
                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                         <line x1="10" y1="11" x2="10" y2="17"></line>
                         <line x1="14" y1="11" x2="14" y2="17"></line>
                     </svg>
-                    Delete Wallet
+                    Delete
                 </button>
             </div>
 
-            <div id="addresses-container">
-                <h3>Your Address:</h3>
-                <div id="addressList" class="address-list">
-                    <!-- Address will be added here -->
-                </div>
-                
-                <!-- Balance Display -->
-                <div id="balanceContainer" style="margin-top: 20px; padding: 15px; background-color: rgba(52, 211, 153, 0.1); border-radius: 8px; border: 1px solid rgba(52, 211, 153, 0.3);">
-                    <h4 style="margin: 0 0 10px 0; color: #333;">Wallet Balance</h4>
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <span style="font-size: 24px; font-weight: bold; color: #34d399;" id="totalBalance">0.00000000</span>
-                            <span style="font-size: 18px; color: #666;"> ALPHA</span>
-                        </div>
-                        <div style="text-align: right;">
-                            <small style="color: #666;">Last updated: <span id="lastUpdateBlock">Never</span></small>
-                            <br>
-                            <small style="color: #666;">Block height: <span id="currentBlockHeight">-</span></small>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Transaction History -->
-                <div id="transactionHistoryContainer" style="margin-top: 20px; display: none;">
-                    <h4 style="margin-bottom: 10px;">Transaction History</h4>
-                    <div id="transactionHistoryList" style="max-height: 400px; overflow-y: auto; border: 1px solid #e9ecef; border-radius: 8px; padding: 10px; background-color: #f9fafb;">
-                        <p style="color: #999; text-align: center;">Loading transactions...</p>
-                    </div>
+            <!-- Transaction History -->
+            <div id="transactionHistoryContainer" style="margin-top: 20px; display: none;">
+                <h4 style="margin-bottom: 10px;">Transaction History</h4>
+                <div id="transactionHistoryList" style="max-height: 400px; overflow-y: auto; border: 1px solid #e9ecef; border-radius: 8px; padding: 10px; background-color: #f9fafb;">
+                    <p style="color: #999; text-align: center;">Loading transactions...</p>
                 </div>
             </div>
         </div>
@@ -484,92 +585,6 @@
                         <polyline points="22 4 12 14.01 9 11.01"></polyline>
                     </svg>
                     <strong>Your wallet is encrypted.</strong> Your private key is protected by your password.
-                </p>
-            </div>
-            
-            <!-- Encryption Toggle Button -->
-            <div class="button-container" style="justify-content: flex-start; margin-top: 20px;">
-                <button id="showEncryptionBtn" class="button" style="background-color: #06d6a0;" disabled title="Create a wallet first">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                    </svg>
-                    Encrypt Wallet
-                </button>
-                
-                <button id="showRestoreBtn" class="button" style="background-color: #8338ec;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="17 8 12 3 7 8"></polyline>
-                        <line x1="12" y1="3" x2="12" y2="15"></line>
-                    </svg>
-                    Restore Wallet
-                </button>
-                
-                <button id="showAdvancedBtn" class="button" style="background-color: #666;" disabled title="Create a wallet first">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                        <path d="M12 20h9"></path>
-                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-                    </svg>
-                    Migrate Wallet
-                </button>
-            </div>
-            
-            <!-- Encryption Section (hidden by default) -->
-            <div id="encryption-section" class="card-section" style="display: none; box-shadow: none; border: 1px solid #e9ecef; margin-top: 20px;">
-                <h3>Encrypt Wallet</h3>
-                
-                <div class="input-group">
-                    <label for="walletPassword">Set a password to encrypt your wallet:</label>
-                    <input type="password" id="walletPassword" placeholder="Enter a strong password">
-                </div>
-                <div id="passwordStrength"></div>
-                
-                <button id="savePasswordBtn" class="button" disabled title="Create a wallet first before encrypting it">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                    </svg>
-                    Encrypt Wallet
-                </button>
-                <p style="margin-top: 15px; font-size: 14px; color: #555;">
-                    Encrypting your wallet protects the master private key with your password.
-                    <br>Make sure to remember this password or you won't be able to access your wallet!
-                </p>
-            </div>
-            
-            <!-- Restore Section (hidden by default) -->
-            <div id="restore-section" class="card-section" style="display: none; box-shadow: none; border: 1px solid #e9ecef; margin-top: 20px;">
-                <h3>Import/Restore Wallet</h3>
-                
-                <div class="info-box">
-                    <p>
-                        To restore your wallet from a backup, you'll need the downloaded wallet file and your encryption password (if the wallet was encrypted).
-                    </p>
-                </div>
-                
-                <div class="input-group">
-                    <label for="walletFile">Wallet Backup File:</label>
-                    <input type="file" id="walletFile" accept=".txt">
-                </div>
-                
-                <div class="input-group">
-                    <label for="decryptPassword">Decryption Password (if encrypted):</label>
-                    <input type="password" id="decryptPassword" placeholder="Enter your wallet password">
-                </div>
-                
-                <button id="restoreWalletBtn" class="button">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="17 8 12 3 7 8"></polyline>
-                        <line x1="12" y1="3" x2="12" y2="15"></line>
-                    </svg>
-                    Restore Wallet
-                </button>
-                
-                <p style="margin-top: 15px; font-size: 14px; color: #555;">
-                    Note: Restoring a wallet will overwrite any existing wallet data.
-                    <br>Make sure to back up your current wallet first if needed!
                 </p>
             </div>
             
@@ -781,17 +796,25 @@
             // HTML elements
             const masterKeyElement = document.getElementById('masterKey');
             const addressList = document.getElementById('addressList');
-            const walletPasswordInput = document.getElementById('walletPassword');
             const passwordStrength = document.getElementById('passwordStrength');
             const encryptionStatus = document.getElementById('encryptionStatus');
+            const walletInfo = document.getElementById('walletInfo');
+            const walletAddress = document.getElementById('walletAddress');
+            const walletAddressLink = document.getElementById('walletAddressLink');
+            const walletBalance = document.getElementById('walletBalance');
+            const walletUnconfirmed = document.getElementById('walletUnconfirmed');
+            const lastUpdateTime = document.getElementById('lastUpdateTime');
+            const walletQrCode = document.getElementById('walletQrCode');
             
             // Buttons
             const initializeWalletBtn = document.getElementById('initializeWalletBtn');
             const generateAddressBtn = document.getElementById('generateAddressBtn');
             const toggleMasterKeyBtn = document.getElementById('toggleMasterKeyBtn');
-            const downloadBtn = document.getElementById('downloadBtn');
             const deleteWalletBtn = document.getElementById('deleteWalletBtn');
-            const savePasswordBtn = document.getElementById('savePasswordBtn');
+            const encryptWalletBtn = document.getElementById('encryptWalletBtn');
+            const restoreWalletBtn = document.getElementById('restoreWalletBtn');
+            const migrateWalletBtn = document.getElementById('migrateWalletBtn');
+            const backupWalletBtn = document.getElementById('backupWalletBtn');
             
             // Password Modal Elements
             const passwordModal = document.getElementById('passwordModal');
@@ -819,35 +842,25 @@
             function updateButtonStates(walletExists) {
                 toggleMasterKeyBtn.disabled = !walletExists;
                 toggleWifKeyBtn.disabled = !walletExists;
-                downloadBtn.disabled = !walletExists;
+                backupWalletBtn.disabled = !walletExists;
                 deleteWalletBtn.disabled = !walletExists;
                 initializeWalletBtn.disabled = walletExists;
+                encryptWalletBtn.disabled = !walletExists || wallet.encrypted;
+                restoreWalletBtn.disabled = walletExists;
+                migrateWalletBtn.disabled = !walletExists;
                 
-                // Section toggle buttons
-                const showEncryptionBtn = document.getElementById('showEncryptionBtn');
-                const showAdvancedBtn = document.getElementById('showAdvancedBtn');
                 
-                // Update encryption and migrate buttons based on wallet existence
-                showEncryptionBtn.disabled = !walletExists || wallet.isEncrypted;
-                showAdvancedBtn.disabled = !walletExists;
-                
-                // Update titles
+                // Update button tooltips
                 if (walletExists) {
-                    showEncryptionBtn.title = wallet.isEncrypted ? "Wallet is already encrypted" : "Encrypt wallet";
-                    showAdvancedBtn.title = "View your private key for migration";
                     initializeWalletBtn.title = "Wallet already created";
+                    migrateWalletBtn.title = "Export for migration to Alpha node";
+                    encryptWalletBtn.title = wallet.isEncrypted ? "Wallet is already encrypted" : "Encrypt wallet";
                 } else {
-                    showEncryptionBtn.title = "Create a wallet first";
-                    showAdvancedBtn.title = "Create a wallet first";
                     initializeWalletBtn.title = "Creates a new wallet with a secure private key. This is the first step to use this wallet.";
+                    migrateWalletBtn.title = "Create a wallet first";
+                    encryptWalletBtn.title = "Create a wallet first";
                 }
                 
-                // Only enable encrypt button if wallet exists and is not encrypted
-                if (walletExists && !wallet.isEncrypted) {
-                    savePasswordBtn.disabled = false;
-                } else {
-                    savePasswordBtn.disabled = true;
-                }
             }
             
             // Password modal functions
@@ -993,6 +1006,8 @@
                         // Render address (just the first one)
                         if (wallet.addresses && wallet.addresses.length > 0) {
                             addAddressToUI(wallet.addresses[0]);
+                            // Update balance display
+                            updateCommonBalance();
                         }
                     } else {
                         // No wallet, disable buttons
@@ -1002,15 +1017,10 @@
                     // Check if wallet is encrypted and update UI
                     if (wallet.isEncrypted) {
                         encryptionStatus.style.display = 'block';
-                        walletPasswordInput.disabled = true;
-                        savePasswordBtn.disabled = true;
                         // Hide password strength indicator when wallet is encrypted
                         passwordStrength.innerHTML = '';
                     } else {
                         encryptionStatus.style.display = 'none';
-                        walletPasswordInput.disabled = !wallet.masterPrivateKey;
-                        // Since we have a wallet and it's not encrypted, enable the encrypt button
-                        savePasswordBtn.disabled = !wallet.masterPrivateKey;
                     }
                 }
             }
@@ -1054,8 +1064,6 @@
                 wifKeyElement.textContent = "Generate an address to see the key";
                 wifKeyElement.classList.add('masked');
                 
-                // Clear existing addresses
-                addressList.innerHTML = '';
                 
                 // Enable/disable buttons
                 updateButtonStates(true);
@@ -1067,23 +1075,19 @@
                 saveWalletData();
                 
                 // Close any open sections to maintain a clean UI
-                document.getElementById('encryption-section').style.display = 'none';
-                document.getElementById('restore-section').style.display = 'none';
-                document.getElementById('keys-section').style.display = 'none';
+                                                document.getElementById('keys-section').style.display = 'none';
                 
                 // Make sure encryption status is hidden for new wallets
                 encryptionStatus.style.display = 'none';
                 
-                // Make sure password input is enabled for new wallets
-                walletPasswordInput.disabled = false;
                 
                 // Reset section button text
                 document.getElementById('showEncryptionBtn').innerHTML = `
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                         <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                     </svg>
-                    Encrypt Wallet`;
+                    Encrypt`;
                     
                 document.getElementById('showRestoreBtn').innerHTML = `
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
@@ -1162,37 +1166,36 @@
             
             // Add address to UI
             function addAddressToUI(addressInfo) {
-                const addressItem = document.createElement('div');
-                addressItem.className = 'address-item';
+                // Show wallet info section
+                walletInfo.style.display = 'block';
                 
-                addressItem.innerHTML = `
-                    <div>
-                        <div>${addressInfo.address}</div>
-                    </div>
-                    <div>
-                        <button class="small-button qr-btn" data-address="${addressInfo.address}" title="Show QR code for this address">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 5px;">
-                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                                <rect x="7" y="7" width="3" height="3"></rect>
-                                <rect x="14" y="7" width="3" height="3"></rect>
-                                <rect x="7" y="14" width="3" height="3"></rect>
-                                <rect x="14" y="14" width="3" height="3"></rect>
-                            </svg>
-                            <span>QR Code</span>
-                        </button>
-                    </div>
-                `;
+                // Update address
+                walletAddress.textContent = addressInfo.address;
+                walletAddressLink.href = `https://www.unicity.network/address/${addressInfo.address}`;
                 
-                // Clear existing content first
-                addressList.innerHTML = '';
-                addressList.appendChild(addressItem);
+                // Generate QR code
+                generateWalletQRCode(addressInfo.address);
                 
-                // Add event listener to QR button
-                const qrBtn = addressItem.querySelector('.qr-btn');
-                qrBtn.addEventListener('click', function() {
-                    const address = this.getAttribute('data-address');
-                    showQRCode(address);
+                // Update balance display
+                updateCommonBalance();
+            }
+            
+            // Generate QR code for wallet address
+            function generateWalletQRCode(address) {
+                // Clear existing QR code
+                walletQrCode.innerHTML = '';
+                
+                // Create QR code with smaller size
+                new QRCode(walletQrCode, {
+                    text: address,
+                    width: 100,
+                    height: 100,
+                    colorDark: "#3a86ff",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.M
                 });
+                
+                walletQrCode.style.display = 'block';
             }
             
             
@@ -1483,8 +1486,7 @@ Anyone with your master private key can access all your funds.`;
             }
             
             // Encrypt wallet with password
-            function savePassword() {
-                const password = walletPasswordInput.value;
+            function encryptWallet(password) {
                 if (!password) {
                     alert('Please enter a password');
                     return;
@@ -1512,13 +1514,10 @@ Anyone with your master private key can access all your funds.`;
                     
                     // Update UI
                     encryptionStatus.style.display = 'block';
-                    walletPasswordInput.disabled = true;
-                    savePasswordBtn.disabled = true;
                     // Clear password strength indicator when wallet is encrypted
                     passwordStrength.innerHTML = '';
                     
                     alert('Wallet encrypted successfully! Your private key is now protected by your password.');
-                    walletPasswordInput.value = '';
                 } catch (e) {
                     console.error("Error encrypting wallet", e);
                     alert('Error encrypting wallet: ' + e.message);
@@ -1552,7 +1551,9 @@ Anyone with your master private key can access all your funds.`;
                     wifKeyElement.textContent = 'Generate a wallet to see your private key';
                     wifKeyElement.classList.add('masked');
                     
-                    addressList.innerHTML = '';
+                    // Hide wallet info and QR code
+                    walletInfo.style.display = 'none';
+                    walletQrCode.style.display = 'none';
                     
                     // Reset button text for toggle buttons
                     toggleMasterKeyBtn.textContent = 'Show';
@@ -1567,14 +1568,9 @@ Anyone with your master private key can access all your funds.`;
                     // Clear password strength indicator
                     passwordStrength.innerHTML = '';
                     
-                    // Reset password input
-                    walletPasswordInput.value = '';
-                    walletPasswordInput.disabled = true;
                     
                     // Close all open sections
-                    document.getElementById('encryption-section').style.display = 'none';
-                    document.getElementById('restore-section').style.display = 'none';
-                    document.getElementById('keys-section').style.display = 'none';
+                                                            document.getElementById('keys-section').style.display = 'none';
                     
                     // Reset toggle buttons text
                     document.getElementById('showEncryptionBtn').innerHTML = `
@@ -1733,15 +1729,33 @@ Anyone with your master private key can access all your funds.`;
                 return new Uint8Array(bytes);
             }
             
-            // Set up wallet restoration functionality
-            const walletFileInput = document.getElementById('walletFile');
-            const decryptPasswordInput = document.getElementById('decryptPassword');
-            const restoreWalletBtn = document.getElementById('restoreWalletBtn');
+            // Restore Modal Elements
+            const restoreModal = document.getElementById('restoreModal');
+            const restoreFileInput = document.getElementById('restoreFileInput');
+            const restorePasswordInput = document.getElementById('restorePasswordInput');
+            const restoreModalCancelBtn = document.getElementById('restoreModalCancelBtn');
+            const restoreModalSubmitBtn = document.getElementById('restoreModalSubmitBtn');
+            const restoreStatus = document.getElementById('restoreStatus');
+            
+            function showRestoreModal() {
+                restoreModal.style.display = 'flex';
+                document.body.style.overflow = 'hidden';
+                restoreFileInput.value = '';
+                restorePasswordInput.value = '';
+                restoreStatus.style.display = 'none';
+            }
+            
+            function closeRestoreModal() {
+                restoreModal.style.display = 'none';
+                document.body.style.overflow = '';
+            }
             
             async function restoreWallet() {
-                const file = walletFileInput.files[0];
+                const file = restoreFileInput.files[0];
                 if (!file) {
-                    alert('Please select a wallet backup file.');
+                    restoreStatus.className = 'info-box error';
+                    restoreStatus.textContent = 'Please select a wallet backup file.';
+                    restoreStatus.style.display = 'block';
                     return;
                 }
                 
@@ -1764,9 +1778,11 @@ Anyone with your master private key can access all your funds.`;
                             encryptedMasterKey = encryptedKeyMatch[1].trim();
                             
                             // Get the decryption password
-                            const password = decryptPasswordInput.value;
+                            const password = restorePasswordInput.value;
                             if (!password) {
-                                alert('This is an encrypted wallet. Please enter the decryption password.');
+                                restoreStatus.className = 'info-box error';
+                                restoreStatus.textContent = 'This is an encrypted wallet. Please enter the decryption password.';
+                                restoreStatus.style.display = 'block';
                                 return;
                             }
                             
@@ -1780,15 +1796,21 @@ Anyone with your master private key can access all your funds.`;
                                 masterKey = decryptedBytes.toString(CryptoJS.enc.Utf8);
                                 
                                 if (!masterKey) {
-                                    alert('Failed to decrypt the wallet. The password may be incorrect.');
+                                    restoreStatus.className = 'info-box error';
+                                    restoreStatus.textContent = 'Failed to decrypt the wallet. The password may be incorrect.';
+                                    restoreStatus.style.display = 'block';
                                     return;
                                 }
                             } catch (e) {
-                                alert('Error decrypting wallet: ' + e.message);
+                                restoreStatus.className = 'info-box error';
+                                restoreStatus.textContent = 'Error decrypting wallet: ' + e.message;
+                                restoreStatus.style.display = 'block';
                                 return;
                             }
                         } else {
-                            alert('Could not find the encrypted master key in the backup file.');
+                            restoreStatus.className = 'info-box error';
+                            restoreStatus.textContent = 'Could not find the encrypted master key in the backup file.';
+                            restoreStatus.style.display = 'block';
                             return;
                         }
                     } else {
@@ -1797,7 +1819,9 @@ Anyone with your master private key can access all your funds.`;
                         if (masterKeyMatch && masterKeyMatch[1]) {
                             masterKey = masterKeyMatch[1].trim();
                         } else {
-                            alert('Could not find the master private key in the backup file.');
+                            restoreStatus.className = 'info-box error';
+                            restoreStatus.textContent = 'Could not find the master private key in the backup file.';
+                            restoreStatus.style.display = 'block';
                             return;
                         }
                     }
@@ -1829,7 +1853,6 @@ Anyone with your master private key can access all your funds.`;
                     wifKeyElement.textContent = wifKey;
                     wifKeyElement.classList.add('masked');
                     
-                    addressList.innerHTML = '';
                     
                     // Enable buttons
                     updateButtonStates(true);
@@ -1837,14 +1860,10 @@ Anyone with your master private key can access all your funds.`;
                     // Update encryption UI
                     if (isEncrypted) {
                         encryptionStatus.style.display = 'block';
-                        walletPasswordInput.disabled = true;
-                        savePasswordBtn.disabled = true; // Already encrypted, disable button
                         // Hide password strength indicator when wallet is encrypted
                         passwordStrength.innerHTML = '';
                     } else {
                         encryptionStatus.style.display = 'none';
-                        walletPasswordInput.disabled = false;
-                        savePasswordBtn.disabled = false; // Not encrypted, enable button
                     }
                     
                     // Generate a single address
@@ -1862,9 +1881,7 @@ Anyone with your master private key can access all your funds.`;
                     saveWalletData();
                     
                     // Close any open sections to maintain a clean UI
-                    document.getElementById('encryption-section').style.display = 'none';
-                    document.getElementById('restore-section').style.display = 'none';
-                    document.getElementById('keys-section').style.display = 'none';
+                                                            document.getElementById('keys-section').style.display = 'none';
                     
                     // Reset section button text
                     document.getElementById('showEncryptionBtn').innerHTML = `
@@ -1889,14 +1906,21 @@ Anyone with your master private key can access all your funds.`;
                         </svg>
                         Migrate Wallet`;
                     
-                    alert('Wallet restored successfully!');
+                    // Show success message
+                    restoreStatus.className = 'info-box success';
+                    restoreStatus.textContent = 'Wallet restored successfully!';
+                    restoreStatus.style.display = 'block';
                     
-                    // Clear the form
-                    walletFileInput.value = '';
-                    decryptPasswordInput.value = '';
+                    // Close modal after a delay
+                    setTimeout(() => {
+                        closeRestoreModal();
+                    }, 2000);
+                    
                 } catch (e) {
                     console.error('Error restoring wallet:', e);
-                    alert('Failed to restore wallet: ' + e.message);
+                    restoreStatus.className = 'info-box error';
+                    restoreStatus.textContent = 'Failed to restore wallet: ' + e.message;
+                    restoreStatus.style.display = 'block';
                 }
             }
             
@@ -2003,9 +2027,7 @@ Anyone with your master private key can access all your funds.`;
                 
                 if (section.style.display === 'none') {
                     // Hide any other open sections first
-                    document.getElementById('encryption-section').style.display = 'none';
-                    document.getElementById('restore-section').style.display = 'none';
-                    document.getElementById('keys-section').style.display = 'none';
+                                                            document.getElementById('keys-section').style.display = 'none';
                     
                     // Reset all button texts
                     document.getElementById('showEncryptionBtn').innerHTML = `
@@ -2062,80 +2084,29 @@ Anyone with your master private key can access all your funds.`;
                 );
             }
             
-            // Encryption section toggle
-            function toggleEncryptionSection() {
-                // Check if the section is already open (button text is "Hide Encryption Options")
-                const encryptionSection = document.getElementById('encryption-section');
-                const showEncryptionBtn = document.getElementById('showEncryptionBtn');
-                
-                // If the section is already open, close it regardless of encryption status
-                if (encryptionSection.style.display === 'block') {
-                    toggleSection(
-                        'encryption-section', 
-                        'showEncryptionBtn',
-                        'Encrypt Wallet',
-                        'Hide Encryption Options',
-                        `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                         </svg>`
-                    );
-                    return;
-                }
-                
-                // If the section is closed but wallet is already encrypted, show message
-                if (wallet.isEncrypted) {
-                    alert('Your wallet is already encrypted with a password.');
-                    return;
-                }
-                
-                // Make sure password input is enabled before opening section
-                walletPasswordInput.disabled = false;
-                
-                // Open the section
-                toggleSection(
-                    'encryption-section', 
-                    'showEncryptionBtn',
-                    'Encrypt Wallet',
-                    'Hide Encryption Options',
-                    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                     </svg>`
-                );
-            }
-            
-            // Restore section toggle
-            function toggleRestoreSection() {
-                toggleSection(
-                    'restore-section', 
-                    'showRestoreBtn',
-                    'Restore Wallet',
-                    'Hide Restore Options',
-                    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="17 8 12 3 7 8"></polyline>
-                        <line x1="12" y1="3" x2="12" y2="15"></line>
-                     </svg>`
-                );
-            }
             
             // Set up event listeners
             initializeWalletBtn.addEventListener('click', initializeWallet);
             toggleMasterKeyBtn.addEventListener('click', toggleMasterKey);
             toggleWifKeyBtn.addEventListener('click', toggleWifKey);
-            downloadBtn.addEventListener('click', downloadWallet);
+            backupWalletBtn.addEventListener('click', downloadWallet);
             deleteWalletBtn.addEventListener('click', deleteWallet);
-            savePasswordBtn.addEventListener('click', savePassword);
-            restoreWalletBtn.addEventListener('click', restoreWallet);
+            restoreWalletBtn.addEventListener('click', showRestoreModal);
+            encryptWalletBtn.addEventListener('click', () => {
+                showPasswordModal('Encrypt Your Wallet', 'Enter a strong password to encrypt your wallet:').then(password => {
+                    if (password) {
+                        encryptWallet(password);
+                    }
+                });
+            });
+            migrateWalletBtn.addEventListener('click', toggleMigrateSection);
             
-            // Section toggle event listeners
-            document.getElementById('showAdvancedBtn').addEventListener('click', toggleMigrateSection);
-            document.getElementById('showEncryptionBtn').addEventListener('click', toggleEncryptionSection);
-            document.getElementById('showRestoreBtn').addEventListener('click', toggleRestoreSection);
+            // Restore modal event listeners
+            restoreModalCancelBtn.addEventListener('click', closeRestoreModal);
+            restoreModalSubmitBtn.addEventListener('click', restoreWallet);
             
             // Password strength checker
-            walletPasswordInput.addEventListener('input', function() {
+            passwordModalInput.addEventListener('input', function() {
                 checkPasswordStrength(this.value);
             });
             
@@ -2674,37 +2645,84 @@ Anyone with your master private key can access all your funds.`;
             
             // Update common balance display
             function updateCommonBalance() {
-                let totalBalance = 0;
+                let confirmedBalance = 0;
+                let unconfirmedBalance = 0;
                 let utxoSource = 'none';
                 let blockHeight = currentBlockHeight || lastUpdateBlockHeight;
+                let lastUpdate = null;
                 
-                // Use currentUtxos if connected, otherwise use offline data
+                // Calculate balances from UTXOs
                 if (currentUtxos && currentUtxos.length > 0) {
-                    totalBalance = currentUtxos.reduce((sum, utxo) => sum + utxo.value, 0);
+                    currentUtxos.forEach(utxo => {
+                        if (utxo.height > 0) {
+                            confirmedBalance += utxo.value;
+                        } else {
+                            unconfirmedBalance += utxo.value;
+                        }
+                    });
                     utxoSource = 'online';
                     lastUpdateBlockHeight = currentBlockHeight;
+                    lastUpdate = new Date();
                 } else if (offlineUtxoData && offlineUtxoData.utxos && offlineUtxoData.utxos.length > 0) {
-                    totalBalance = offlineUtxoData.utxos.reduce((sum, utxo) => sum + utxo.value, 0);
+                    offlineUtxoData.utxos.forEach(utxo => {
+                        if (utxo.height > 0) {
+                            confirmedBalance += utxo.value;
+                        } else {
+                            unconfirmedBalance += utxo.value;
+                        }
+                    });
                     utxoSource = 'offline';
                     if (offlineUtxoData.blockHeight) {
                         lastUpdateBlockHeight = offlineUtxoData.blockHeight;
                         blockHeight = offlineUtxoData.blockHeight;
                     }
+                    if (offlineUtxoData.timestamp) {
+                        lastUpdate = new Date(offlineUtxoData.timestamp);
+                    }
                 }
                 
-                // Update balance display
-                const balanceInAlpha = totalBalance / 100000000;
-                document.getElementById('totalBalance').textContent = balanceInAlpha.toFixed(8);
-                
-                // Update block info
-                if (lastUpdateBlockHeight) {
-                    document.getElementById('lastUpdateBlock').textContent = `Block ${lastUpdateBlockHeight}`;
-                } else {
-                    document.getElementById('lastUpdateBlock').textContent = 'Never';
+                // Update wallet info display if it exists
+                if (walletBalance) {
+                    walletBalance.textContent = `${(confirmedBalance / 100000000).toFixed(8)} ALPHA`;
+                }
+                if (walletUnconfirmed) {
+                    if (unconfirmedBalance > 0) {
+                        walletUnconfirmed.style.display = 'inline';
+                        walletUnconfirmed.textContent = `(${(unconfirmedBalance / 100000000).toFixed(8)})`;
+                    } else {
+                        walletUnconfirmed.style.display = 'none';
+                    }
                 }
                 
-                if (blockHeight) {
-                    document.getElementById('currentBlockHeight').textContent = blockHeight;
+                // Update last update time
+                if (lastUpdateTime) {
+                    if (lastUpdate) {
+                        lastUpdateTime.textContent = lastUpdate.toLocaleString();
+                    } else if (blockHeight) {
+                        lastUpdateTime.textContent = `Block ${blockHeight}`;
+                    } else {
+                        lastUpdateTime.textContent = '-';
+                    }
+                }
+                
+                // Update old balance display elements for backwards compatibility
+                const totalBalanceEl = document.getElementById('totalBalance');
+                if (totalBalanceEl) {
+                    totalBalanceEl.textContent = ((confirmedBalance + unconfirmedBalance) / 100000000).toFixed(8);
+                }
+                
+                const lastUpdateBlockEl = document.getElementById('lastUpdateBlock');
+                if (lastUpdateBlockEl) {
+                    if (lastUpdateBlockHeight) {
+                        lastUpdateBlockEl.textContent = `Block ${lastUpdateBlockHeight}`;
+                    } else {
+                        lastUpdateBlockEl.textContent = 'Never';
+                    }
+                }
+                
+                const currentBlockHeightEl = document.getElementById('currentBlockHeight');
+                if (currentBlockHeightEl && blockHeight) {
+                    currentBlockHeightEl.textContent = blockHeight;
                 }
                 
                 // Update import button state based on connection
