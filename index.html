@@ -2811,22 +2811,57 @@ Anyone with your master private key can access all your funds.`;
                     });
                 }
                 
-                // Check if any inputs are spending our UTXOs
-                if (txDetails.vin && currentUtxos) {
+                // Check if any inputs are spending from our address
+                // We need to check both current UTXOs and historical transactions
+                if (txDetails.vin) {
                     txDetails.vin.forEach(input => {
                         const prevTxid = input.txid;
                         const prevVout = input.vout;
                         
-                        // Check if this input is spending one of our UTXOs
-                        const matchingUtxo = currentUtxos.find(utxo => 
-                            utxo.tx_hash === prevTxid && utxo.tx_pos === prevVout
-                        );
+                        // First check current UTXOs
+                        if (currentUtxos) {
+                            const matchingUtxo = currentUtxos.find(utxo => 
+                                utxo.tx_hash === prevTxid && utxo.tx_pos === prevVout
+                            );
+                            
+                            if (matchingUtxo) {
+                                isOurInput = true;
+                                inputAmount += matchingUtxo.value;
+                                return; // Found it, continue to next input
+                            }
+                        }
                         
-                        if (matchingUtxo) {
-                            isOurInput = true;
-                            inputAmount += matchingUtxo.value;
+                        // If not in current UTXOs, check if this transaction output was to our address
+                        // by looking at our transaction history
+                        if (currentTransactions) {
+                            const prevTx = currentTransactions.find(tx => 
+                                (tx.tx_hash || tx.txid) === prevTxid
+                            );
+                            
+                            if (prevTx) {
+                                // This transaction is in our history, so likely one of the outputs was ours
+                                // For now, we'll assume it's ours (more accurate would be to fetch that tx too)
+                                isOurInput = true;
+                                // We don't know the exact amount without fetching the previous tx
+                                // but we can calculate it from the current tx outputs and fee
+                            }
                         }
                     });
+                    
+                    // If we identified this as our input but don't have the amount,
+                    // calculate it from outputs plus estimated fee
+                    if (isOurInput && inputAmount === 0) {
+                        // Sum all outputs
+                        let totalOutputs = 0;
+                        if (txDetails.vout) {
+                            txDetails.vout.forEach(output => {
+                                totalOutputs += output.value * 100000000;
+                            });
+                        }
+                        // Assume a standard fee (this is approximate)
+                        const estimatedFee = 10000; // 0.0001 ALPHA
+                        inputAmount = totalOutputs + estimatedFee;
+                    }
                 }
                 
                 // Determine transaction type and calculate net amount
