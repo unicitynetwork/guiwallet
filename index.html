@@ -2525,7 +2525,13 @@ Anyone with your master private key can access all your funds.`;
                                         
                                         // Update UI and refresh data
                                         updateCommonBalance();
-                                        refreshBalance();
+                                        
+                                        // Refresh appropriate balance
+                                        if (watchOnlyMode && watchOnlyAddressValue) {
+                                            refreshWatchOnlyBalance(watchOnlyAddressValue);
+                                        } else {
+                                            refreshBalance();
+                                        }
                                         
                                         // Show notification
                                         showNotification(
@@ -2541,7 +2547,11 @@ Anyone with your master private key can access all your funds.`;
                                     console.log('Address status changed:', scriptHash, status);
                                     
                                     // Refresh balance and transactions immediately
-                                    refreshBalance();
+                                    if (watchOnlyMode && watchOnlyAddressValue) {
+                                        refreshWatchOnlyBalance(watchOnlyAddressValue);
+                                    } else {
+                                        refreshBalance();
+                                    }
                                     
                                     // Show notification
                                     showNotification(
