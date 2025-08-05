@@ -3281,23 +3281,39 @@ Anyone with your master private key can access all your funds.`;
                 let statusColor = confirmations > 0 ? '#34d399' : '#fbbf24';
                 let statusText = confirmations > 0 ? `${confirmations} confirmations` : 'Unconfirmed';
                 
+                // Check if we're still loading transaction details
+                const isLoading = !txDetails;
+                
                 // Default display while loading
                 let isIncoming = true;
                 let amount = '0.00000000';
                 let destinations = [];
                 let senderAddress = null;
+                let directionText = 'Loading...';
+                let directionColor = '#9ca3af'; // Gray color for loading
+                let amountColor = '#9ca3af';
+                let amountSign = '';
                 
-                if (txDetails) {
+                if (!isLoading) {
                     // Calculate net amount and direction from full transaction details
                     const result = calculateTransactionAmount(txDetails, ourAddress);
                     isIncoming = result.isIncoming;
                     amount = (Math.abs(result.netAmount) / 100000000).toFixed(8);
                     destinations = result.destinations;
                     senderAddress = result.senderAddress;
+                    
+                    // Set direction text and colors based on transaction type
+                    directionText = isIncoming ? '↓ Received' : '↑ Sent';
+                    directionColor = isIncoming ? '#34d399' : '#ef4444';
+                    amountColor = isIncoming ? '#34d399' : '#333';
+                    amountSign = isIncoming ? '+' : '-';
                 }
                 
                 let addressHtml = '';
-                if (isIncoming && senderAddress) {
+                if (isLoading) {
+                    // Show loading state for address
+                    addressHtml = '<div style="margin-top: 5px; font-size: 12px; color: #9ca3af;">Loading...</div>';
+                } else if (isIncoming && senderAddress) {
                     // Show sender for incoming transactions
                     const truncAddr = senderAddress.substring(0, 11) + '...' + senderAddress.substring(senderAddress.length - 6);
                     addressHtml = `<div style="margin-top: 5px; font-size: 12px; color: #666;">From: <a href="https://www.unicity.network/address/${senderAddress}" target="_blank" style="color: #3b82f6; text-decoration: none;">${truncAddr}</a></div>`;
@@ -3316,8 +3332,8 @@ Anyone with your master private key can access all your funds.`;
                     <div style="display: flex; justify-content: space-between; align-items: start;">
                         <div style="flex: 1;">
                             <div style="display: flex; align-items: center; margin-bottom: 5px;">
-                                <span style="color: ${isIncoming ? '#34d399' : '#ef4444'}; font-weight: bold; margin-right: 10px;">
-                                    ${isIncoming ? '↓ Received' : '↑ Sent'}
+                                <span style="color: ${directionColor}; font-weight: bold; margin-right: 10px;">
+                                    ${directionText}
                                 </span>
                                 <a href="${txLink}" target="_blank" style="font-family: monospace; font-size: 12px; color: #3b82f6; text-decoration: none;">
                                     ${truncatedTxid}
@@ -3331,8 +3347,8 @@ Anyone with your master private key can access all your funds.`;
                             ${addressHtml}
                         </div>
                         <div style="text-align: right;">
-                            <div style="font-size: 16px; font-weight: bold; color: ${isIncoming ? '#34d399' : '#333'};">
-                                ${isIncoming ? '+' : '-'}${amount} ALPHA
+                            <div style="font-size: 16px; font-weight: bold; color: ${amountColor};">
+                                ${amountSign}${amount} ALPHA
                             </div>
                         </div>
                     </div>
@@ -3542,6 +3558,11 @@ Anyone with your master private key can access all your funds.`;
                 
                 console.log(`  Final: isOurInput=${isOurInput}, outputAmount=${outputAmount/100000000}, inputAmount=${inputAmount/100000000}, isIncoming=${isIncoming}, netAmount=${Math.abs(netAmount)/100000000}`);
                 
+                // Check if sender address was provided via _senderAddress field
+                if (!senderAddress && txDetails._senderAddress) {
+                    senderAddress = txDetails._senderAddress;
+                }
+                
                 return {
                     isIncoming,
                     netAmount: Math.abs(netAmount),
@@ -3551,6 +3572,63 @@ Anyone with your master private key can access all your funds.`;
             }
             
             // Update transaction history display
+            // Collect all transactions that need to be fetched
+            function collectRequiredTransactions(transactions) {
+                const requiredTxIds = new Set();
+                
+                // Add all transaction IDs
+                transactions.forEach(tx => {
+                    const txid = tx.tx_hash || tx.txid;
+                    requiredTxIds.add(txid);
+                });
+                
+                // Also collect all input transactions we might need
+                transactions.forEach(tx => {
+                    const txid = tx.tx_hash || tx.txid;
+                    if (transactionDetailsCache[txid] && transactionDetailsCache[txid].vin) {
+                        transactionDetailsCache[txid].vin.forEach(input => {
+                            if (input.txid) {
+                                requiredTxIds.add(input.txid);
+                            }
+                        });
+                    }
+                });
+                
+                return Array.from(requiredTxIds);
+            }
+            
+            // Fetch all required transaction details
+            function fetchAllTransactionDetails(txIds, callback) {
+                let pending = txIds.length;
+                let completed = 0;
+                
+                if (pending === 0) {
+                    callback();
+                    return;
+                }
+                
+                txIds.forEach(txid => {
+                    if (transactionDetailsCache[txid]) {
+                        // Already cached
+                        completed++;
+                        if (completed === pending) {
+                            callback();
+                        }
+                    } else {
+                        // Fetch transaction details
+                        electrumRequest('blockchain.transaction.get', [txid, true], function(txDetails) {
+                            if (txDetails) {
+                                transactionDetailsCache[txid] = txDetails;
+                            }
+                            completed++;
+                            if (completed === pending) {
+                                callback();
+                            }
+                        });
+                    }
+                });
+            }
+            
             function updateTransactionHistory() {
                 if (!electrumConnected || !currentTransactions || currentTransactions.length === 0) {
                     document.getElementById('transactionHistoryContainer').style.display = 'none';
@@ -3578,40 +3656,55 @@ Anyone with your master private key can access all your funds.`;
                 
                 if (!ourAddress) return;
                 
+                // First, display all transactions with loading state
                 recentTxs.forEach(tx => {
                     const confirmations = tx.height > 0 ? Math.max(0, currentHeight - tx.height + 1) : 0;
-                    const txid = tx.tx_hash || tx.txid;
-                    
-                    // First add placeholder element
                     const txElement = formatTransactionDisplay(tx, ourAddress, confirmations, null);
                     historyList.appendChild(txElement);
+                });
+                
+                // Collect all transaction IDs we need to fetch
+                const txIdsToFetch = recentTxs.map(tx => tx.tx_hash || tx.txid);
+                
+                // First round: fetch all main transactions
+                fetchAllTransactionDetails(txIdsToFetch, function() {
+                    // Now collect all input transactions we need
+                    const inputTxIds = new Set();
                     
-                    // Then fetch full transaction details
-                    electrumRequest('blockchain.transaction.get', [txid, true], function(txDetails) {
-                        if (txDetails) {
-                            // Cache the transaction details
-                            transactionDetailsCache[txid] = txDetails;
+                    recentTxs.forEach(tx => {
+                        const txid = tx.tx_hash || tx.txid;
+                        const txDetails = transactionDetailsCache[txid];
+                        if (txDetails && txDetails.vin) {
+                            txDetails.vin.forEach(input => {
+                                if (input.txid) {
+                                    inputTxIds.add(input.txid);
+                                }
+                            });
+                        }
+                    });
+                    
+                    // Second round: fetch all input transactions
+                    fetchAllTransactionDetails(Array.from(inputTxIds), function() {
+                        // Now update all transactions with complete details
+                        recentTxs.forEach(tx => {
+                            const confirmations = tx.height > 0 ? Math.max(0, currentHeight - tx.height + 1) : 0;
+                            const txid = tx.tx_hash || tx.txid;
+                            const txDetails = transactionDetailsCache[txid];
                             
-                            // For incoming transactions, fetch the sender address
-                            const result = calculateTransactionAmount(txDetails, ourAddress);
-                            
-                            if (result.isIncoming && txDetails.vin && txDetails.vin.length > 0) {
-                                // Get the first (and only) input
-                                const input = txDetails.vin[0];
-                                const prevTxid = input.txid;
-                                const prevVout = input.vout;
+                            if (txDetails) {
+                                // Check if this is an incoming transaction and get sender address
+                                const result = calculateTransactionAmount(txDetails, ourAddress);
                                 
-                                // Fetch the previous transaction to get the sender address
-                                electrumRequest('blockchain.transaction.get', [prevTxid, true], function(prevTxDetails) {
-                                    // Cache the transaction details
-                                    if (prevTxDetails) {
-                                        transactionDetailsCache[prevTxid] = prevTxDetails;
-                                    }
+                                if (result.isIncoming && txDetails.vin && txDetails.vin.length > 0) {
+                                    // Get sender address from cached previous transaction
+                                    const input = txDetails.vin[0];
+                                    const prevTxid = input.txid;
+                                    const prevVout = input.vout;
+                                    const prevTxDetails = transactionDetailsCache[prevTxid];
                                     
                                     if (prevTxDetails && prevTxDetails.vout && prevTxDetails.vout[prevVout]) {
                                         const prevOutput = prevTxDetails.vout[prevVout];
                                         if (prevOutput.scriptPubKey) {
-                                            // Extract sender address
                                             if (prevOutput.scriptPubKey.addresses && prevOutput.scriptPubKey.addresses.length > 0) {
                                                 result.senderAddress = prevOutput.scriptPubKey.addresses[0];
                                             } else if (prevOutput.scriptPubKey.address) {
@@ -3620,34 +3713,23 @@ Anyone with your master private key can access all your funds.`;
                                         }
                                     }
                                     
-                                    // Update the element with full details including sender
-                                    // Create a modified txDetails with sender info
+                                    // Update with sender info
                                     const txDetailsWithSender = Object.assign({}, txDetails, {_senderAddress: result.senderAddress});
                                     const updatedElement = formatTransactionDisplay(tx, ourAddress, confirmations, txDetailsWithSender);
                                     const oldElement = historyList.querySelector(`[data-txid="${txid}"]`);
                                     if (oldElement) {
                                         oldElement.replaceWith(updatedElement);
                                     }
-                                    
-                                    // Re-fetch and display block timestamp after element replacement
-                                    if (tx.height > 0) {
-                                        getBlockTimestamp(tx.height, function(timestamp) {
-                                            const timestampElement = historyList.querySelector(`[data-txid="${txid}"] .block-timestamp`);
-                                            if (timestampElement && timestamp) {
-                                                timestampElement.textContent = ` • ${formatBlockTimestamp(timestamp)}`;
-                                            }
-                                        });
+                                } else {
+                                    // Update the element with full details
+                                    const updatedElement = formatTransactionDisplay(tx, ourAddress, confirmations, txDetails);
+                                    const oldElement = historyList.querySelector(`[data-txid="${txid}"]`);
+                                    if (oldElement) {
+                                        oldElement.replaceWith(updatedElement);
                                     }
-                                });
-                            } else {
-                                // Update the element with full details (outgoing transaction)
-                                const updatedElement = formatTransactionDisplay(tx, ourAddress, confirmations, txDetails);
-                                const oldElement = historyList.querySelector(`[data-txid="${txid}"]`);
-                                if (oldElement) {
-                                    oldElement.replaceWith(updatedElement);
                                 }
                                 
-                                // Re-fetch and display block timestamp after element replacement
+                                // Fetch and display block timestamp
                                 if (tx.height > 0) {
                                     getBlockTimestamp(tx.height, function(timestamp) {
                                         const timestampElement = historyList.querySelector(`[data-txid="${txid}"] .block-timestamp`);
@@ -3657,18 +3739,8 @@ Anyone with your master private key can access all your funds.`;
                                     });
                                 }
                             }
-                        }
-                    });
-                    
-                    // Fetch and display block timestamp for initial placeholder
-                    if (tx.height > 0) {
-                        getBlockTimestamp(tx.height, function(timestamp) {
-                            const timestampElement = historyList.querySelector(`[data-txid="${txid}"] .block-timestamp`);
-                            if (timestampElement && timestamp) {
-                                timestampElement.textContent = ` • ${formatBlockTimestamp(timestamp)}`;
-                            }
                         });
-                    }
+                    });
                 });
             }
             
