@@ -491,7 +491,7 @@
 
         <div id="wallet-section" class="card-section">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">Your Wallet</h2>
+                <h2 style="margin: 0;">My Wallet</h2>
                 <div id="walletQrCode" style="display: none;">
                     <!-- QR code will be generated here -->
                 </div>
@@ -538,17 +538,17 @@
             </div>
             
             <!-- Watch-Only Address Input -->
-            <div id="watchOnlySection" style="display: none; margin-bottom: 15px; padding: 15px; background-color: rgba(139, 56, 236, 0.05); border-radius: 8px; border: 1px solid rgba(139, 56, 236, 0.2);">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <label style="font-weight: 600; font-size: 12px; white-space: nowrap;">Watch Address:</label>
-                    <input type="text" id="watchOnlyAddress" placeholder="alpha1..." style="flex: 1; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 12px;">
-                    <div>
-                        <span id="watchOnlyBalance" style="font-weight: 600; font-size: 12px;">-</span>
-                        <span id="watchOnlyUnconfirmed" style="color: #999; font-size: 12px;"></span>
+            <div id="watchOnlySection" style="display: none; margin-bottom: 15px;">
+                <div style="display: flex; align-items: center; gap: 6px; padding: 6px 8px; background-color: #f8f9fa; border-radius: 4px;">
+                    <label style="margin: 0; font-weight: 600; white-space: nowrap; font-size: 10px;">Watch:</label>
+                    <input type="text" id="watchOnlyAddress" placeholder="alpha1..." style="flex: 1; padding: 3px 6px; border: 1px solid #ddd; border-radius: 3px; font-family: monospace; font-size: 10px;">
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                        <span id="watchOnlyBalance" style="font-weight: 600; font-size: 10px;">-</span>
+                        <span id="watchOnlyUnconfirmed" style="color: #999; font-size: 10px;"></span>
                     </div>
                 </div>
-                <div style="margin-top: 8px;">
-                    <span style="font-size: 11px; color: #666;">Enter any Alpha address to monitor its balance and UTXOs</span>
+                <div style="margin-top: 4px; padding-left: 8px;">
+                    <span style="font-size: 9px; color: #666;">Enter any Alpha address to monitor its balance and UTXOs</span>
                 </div>
             </div>
             
@@ -2583,6 +2583,7 @@ Anyone with your master private key can access all your funds.`;
                                         </div>
                                         <div style="color: #999; font-size: 12px; margin-top: 2px;">
                                             ${height > 0 ? 'Block ' + height : 'Unconfirmed'}
+                                            <span class="legacy-tx-timestamp" data-height="${height}" data-txid="${txId}"></span>
                                         </div>
                                     </div>
                                     <button class="small-button" onclick="navigator.clipboard.writeText('${txId}').then(() => alert('Transaction ID copied!'));" title="Copy transaction ID">
@@ -2705,38 +2706,44 @@ Anyone with your master private key can access all your funds.`;
                 // Fetch UTXOs
                 electrumRequest('blockchain.scripthash.listunspent', [scriptHash], function(result) {
                     if (result) {
-                        currentUtxos = result;
-                        
-                        // Calculate balances
-                        let confirmed = 0;
-                        let unconfirmed = 0;
-                        
-                        result.forEach(utxo => {
-                            if (utxo.height > 0) {
-                                confirmed += utxo.value;
+                        // Only update if UTXOs changed
+                        if (hasArrayChanged(currentUtxos, result)) {
+                            currentUtxos = result;
+                            
+                            // Calculate balances
+                            let confirmed = 0;
+                            let unconfirmed = 0;
+                            
+                            result.forEach(utxo => {
+                                if (utxo.height > 0) {
+                                    confirmed += utxo.value;
+                                } else {
+                                    unconfirmed += utxo.value;
+                                }
+                            });
+                            
+                            // Update display
+                            watchOnlyBalance.textContent = (confirmed / 100000000).toFixed(8) + ' ALPHA';
+                            if (unconfirmed > 0) {
+                                watchOnlyUnconfirmed.textContent = '(' + (unconfirmed / 100000000).toFixed(8) + ')';
                             } else {
-                                unconfirmed += utxo.value;
+                                watchOnlyUnconfirmed.textContent = '';
                             }
-                        });
-                        
-                        // Update display
-                        watchOnlyBalance.textContent = (confirmed / 100000000).toFixed(8) + ' ALPHA';
-                        if (unconfirmed > 0) {
-                            watchOnlyUnconfirmed.textContent = '(' + (unconfirmed / 100000000).toFixed(8) + ')';
-                        } else {
-                            watchOnlyUnconfirmed.textContent = '';
+                            
+                            updateUtxoListDisplay();
+                            updateCommonBalance(); // This will update Send button state
                         }
-                        
-                        updateUtxoListDisplay();
-                        updateCommonBalance(); // This will update Send button state
                     }
                 });
                 
                 // Also fetch transaction history
                 electrumRequest('blockchain.scripthash.get_history', [scriptHash], function(result) {
                     if (result) {
-                        currentTransactions = result;
-                        updateTransactionHistory();
+                        // Only update if transactions changed
+                        if (hasArrayChanged(currentTransactions, result)) {
+                            currentTransactions = result;
+                            updateTransactionHistory();
+                        }
                     }
                 });
             }
@@ -2916,6 +2923,7 @@ Anyone with your master private key can access all your funds.`;
                             <div style="color: #666; font-size: 12px;">
                                 <span style="color: ${statusColor};">${statusText}</span>
                                 ${tx.height > 0 ? ` • Block ${tx.height}` : ''}
+                                <span class="block-timestamp" data-height="${tx.height}"></span>
                             </div>
                             ${destinationHtml}
                         </div>
@@ -3117,9 +3125,74 @@ Anyone with your master private key can access all your funds.`;
                             if (oldElement) {
                                 oldElement.replaceWith(updatedElement);
                             }
+                            
+                            // Re-fetch and display block timestamp after element replacement
+                            if (tx.height > 0) {
+                                getBlockTimestamp(tx.height, function(timestamp) {
+                                    const timestampElement = historyList.querySelector(`[data-txid="${txid}"] .block-timestamp`);
+                                    if (timestampElement && timestamp) {
+                                        timestampElement.textContent = ` • ${formatBlockTimestamp(timestamp)}`;
+                                    }
+                                });
+                            }
                         }
                     });
+                    
+                    // Fetch and display block timestamp for initial placeholder
+                    if (tx.height > 0) {
+                        getBlockTimestamp(tx.height, function(timestamp) {
+                            const timestampElement = historyList.querySelector(`[data-txid="${txid}"] .block-timestamp`);
+                            if (timestampElement && timestamp) {
+                                timestampElement.textContent = ` • ${formatBlockTimestamp(timestamp)}`;
+                            }
+                        });
+                    }
                 });
+            }
+            
+            // Cache for block timestamps
+            const blockTimestampCache = {};
+            
+            // Get block timestamp
+            function getBlockTimestamp(height, callback) {
+                if (!height || height <= 0) {
+                    callback(null);
+                    return;
+                }
+                
+                // Check cache first
+                if (blockTimestampCache[height]) {
+                    callback(blockTimestampCache[height]);
+                    return;
+                }
+                
+                // Fetch block header
+                electrumRequest('blockchain.block.header', [height], function(header) {
+                    if (header) {
+                        // Extract timestamp from block header (at bytes 68-71, little-endian)
+                        const timestampHex = header.substring(136, 144);
+                        const timestamp = parseInt(timestampHex.match(/../g).reverse().join(''), 16);
+                        const date = new Date(timestamp * 1000);
+                        blockTimestampCache[height] = date;
+                        callback(date);
+                    } else {
+                        callback(null);
+                    }
+                });
+            }
+            
+            // Format block timestamp for display
+            function formatBlockTimestamp(date) {
+                if (!date) return '';
+                const options = { 
+                    year: 'numeric', 
+                    month: 'short', 
+                    day: 'numeric', 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    hour12: false
+                };
+                return date.toLocaleString(undefined, options);
             }
             
             // Start polling for new blocks
@@ -3468,12 +3541,26 @@ Anyone with your master private key can access all your funds.`;
                                 </div>
                                 <div style="color: #888; margin-top: 2px;">
                                     ${height > 0 ? `Block: ${height}` : 'Unconfirmed'}
+                                    <span class="utxo-timestamp" data-height="${height}" data-index="${index}"></span>
                                 </div>
                             </div>
                         </div>
                     `;
                     
                     utxoListElement.appendChild(utxoDiv);
+                });
+                
+                // Fetch and display timestamps for all UTXOs with block heights
+                utxosToDisplay.forEach((utxo, index) => {
+                    const height = utxo.height || 0;
+                    if (height > 0) {
+                        getBlockTimestamp(height, function(timestamp) {
+                            const timestampElement = utxoListElement.querySelector(`.utxo-timestamp[data-index="${index}"]`);
+                            if (timestampElement && timestamp) {
+                                timestampElement.textContent = ` • ${formatBlockTimestamp(timestamp)}`;
+                            }
+                        });
+                    }
                 });
             }
             
@@ -3504,6 +3591,32 @@ Anyone with your master private key can access all your funds.`;
                 }
             }
             
+            // Helper to compare arrays for changes
+            function hasArrayChanged(oldArray, newArray) {
+                if (!oldArray || !newArray) return true;
+                if (oldArray.length !== newArray.length) return true;
+                
+                // Create a map of old items for comparison
+                const oldMap = new Map();
+                oldArray.forEach(item => {
+                    const key = (item.tx_hash || item.txid) + ':' + (item.tx_pos !== undefined ? item.tx_pos : item.vout || 0);
+                    oldMap.set(key, item);
+                });
+                
+                // Check if any new item is different
+                for (const newItem of newArray) {
+                    const key = (newItem.tx_hash || newItem.txid) + ':' + (newItem.tx_pos !== undefined ? newItem.tx_pos : newItem.vout || 0);
+                    const oldItem = oldMap.get(key);
+                    if (!oldItem) return true; // New item
+                    
+                    // Check if height changed (confirmation status)
+                    if (oldItem.height !== newItem.height) return true;
+                    if (oldItem.value !== newItem.value) return true;
+                }
+                
+                return false;
+            }
+            
             // Update refreshBalance to store current data
             const originalRefreshBalance = refreshBalance;
             refreshBalance = function() {
@@ -3516,17 +3629,23 @@ Anyone with your master private key can access all your funds.`;
                         // Store transactions
                         electrumRequest('blockchain.scripthash.get_history', [scriptHash], function(result) {
                             if (result) {
-                                currentTransactions = result;
-                                updateTransactionHistory();
+                                // Only update if transactions changed
+                                if (hasArrayChanged(currentTransactions, result)) {
+                                    currentTransactions = result;
+                                    updateTransactionHistory();
+                                }
                             }
                         });
                         
                         // Store UTXOs
                         electrumRequest('blockchain.scripthash.listunspent', [scriptHash], function(result) {
                             if (result) {
-                                currentUtxos = result;
-                                updateCommonBalance();
-                                updateUtxoListDisplay();
+                                // Only update if UTXOs changed
+                                if (hasArrayChanged(currentUtxos, result)) {
+                                    currentUtxos = result;
+                                    updateCommonBalance();
+                                    updateUtxoListDisplay();
+                                }
                             }
                         });
                     }
