@@ -2868,6 +2868,12 @@ Anyone with your master private key can access all your funds.`;
             window.generateNewAddress = function() {
                 originalGenerateNewAddress();
                 if (electrumConnected) {
+                    // Clear previous address data
+                    currentTransactions = [];
+                    currentUtxos = [];
+                    updateTransactionHistory();
+                    updateUtxoListDisplay();
+                    
                     setTimeout(() => {
                         refreshBalance();
                         // Subscribe to the new address
@@ -2918,6 +2924,8 @@ Anyone with your master private key can access all your funds.`;
                     // Clear data when switching to watch-only mode
                     currentTransactions = [];
                     currentUtxos = [];
+                    updateTransactionHistory();
+                    updateUtxoListDisplay();
                 } else if (hasWallet) {
                     watchOnlySection.style.display = 'none';
                     walletInfo.style.display = 'block';
@@ -2928,6 +2936,8 @@ Anyone with your master private key can access all your funds.`;
                     if (watchOnlyMode) {
                         currentTransactions = [];
                         currentUtxos = [];
+                        updateTransactionHistory();
+                        updateUtxoListDisplay();
                     }
                     
                     // Subscribe to wallet address if connected
@@ -2977,6 +2987,8 @@ Anyone with your master private key can access all your funds.`;
                                     currentUtxos = [];
                                     // Reset initial load flag when address changes
                                     isInitialLoad = true;
+                                    // Update UI to clear the transaction list
+                                    updateTransactionHistory();
                                     setTimeout(() => {
                                         isInitialLoad = false;
                                     }, 2000);
