@@ -150,10 +150,11 @@
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
         }
         .wallet-button:disabled {
-            background-color: #d0d0d0;
+            background-color: #d0d0d0 !important;
             cursor: not-allowed;
             transform: none;
             box-shadow: none;
+            opacity: 0.6;
         }
         .wallet-button.delete-btn {
             background-color: var(--danger-color);
@@ -2856,12 +2857,17 @@ Anyone with your master private key can access all your funds.`;
                     }
                 }
                 
-                // Update Send button state based on available UTXOs
+                // Update Send button state based on available UTXOs and watch-only mode
                 if (sendTransactionBtn) {
                     const hasUtxos = (currentUtxos && currentUtxos.length > 0) || 
                                    (offlineUtxoData && offlineUtxoData.utxos && offlineUtxoData.utxos.length > 0);
-                    sendTransactionBtn.disabled = !hasUtxos;
-                    if (hasUtxos) {
+                    
+                    // Disable if no UTXOs or in watch-only mode
+                    sendTransactionBtn.disabled = !hasUtxos || watchOnlyMode;
+                    
+                    if (watchOnlyMode) {
+                        sendTransactionBtn.title = "Cannot send from watch-only address (no private key)";
+                    } else if (hasUtxos) {
                         sendTransactionBtn.title = "Send Alpha to another address";
                     } else {
                         sendTransactionBtn.title = "No UTXOs available to spend";
