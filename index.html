@@ -447,6 +447,30 @@
                 <div id="addressList" class="address-list">
                     <!-- Address will be added here -->
                 </div>
+                
+                <!-- Balance Display -->
+                <div id="balanceContainer" style="margin-top: 20px; padding: 15px; background-color: rgba(52, 211, 153, 0.1); border-radius: 8px; border: 1px solid rgba(52, 211, 153, 0.3);">
+                    <h4 style="margin: 0 0 10px 0; color: #333;">Wallet Balance</h4>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <span style="font-size: 24px; font-weight: bold; color: #34d399;" id="totalBalance">0.00000000</span>
+                            <span style="font-size: 18px; color: #666;"> ALPHA</span>
+                        </div>
+                        <div style="text-align: right;">
+                            <small style="color: #666;">Last updated: <span id="lastUpdateBlock">Never</span></small>
+                            <br>
+                            <small style="color: #666;">Block height: <span id="currentBlockHeight">-</span></small>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Transaction History -->
+                <div id="transactionHistoryContainer" style="margin-top: 20px; display: none;">
+                    <h4 style="margin-bottom: 10px;">Transaction History</h4>
+                    <div id="transactionHistoryList" style="max-height: 400px; overflow-y: auto; border: 1px solid #e9ecef; border-radius: 8px; padding: 10px; background-color: #f9fafb;">
+                        <p style="color: #999; text-align: center;">Loading transactions...</p>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -2295,6 +2319,24 @@ Anyone with your master private key can access all your funds.`;
                         // Show balance display
                         balanceDisplay.style.display = 'block';
                         
+                        // Subscribe to headers for new blocks
+                        electrumRequest('blockchain.headers.subscribe', [], function(result) {
+                            console.log('Subscribed to block headers:', result);
+                            if (result && (result.height || result.block_height)) {
+                                currentBlockHeight = result.height || result.block_height;
+                                updateCommonBalance();
+                            }
+                        });
+                        
+                        // Refresh balance on connect  
+                        refreshBalance();
+                        
+                        // Update import button state
+                        updateCommonBalance();
+                        
+                        // Start polling for new blocks
+                        startBlockPolling();
+                        
                         // Get server version
                         electrumRequest('server.version', ['Unicity Wallet', '1.4'], function(result) {
                             console.log('Server version:', result);
@@ -2373,6 +2415,12 @@ Anyone with your master private key can access all your funds.`;
                 }
                 electrumConnected = false;
                 electrumCallbacks = {};
+                
+                // Stop polling
+                stopBlockPolling();
+                
+                // Update UI
+                updateCommonBalance();
             }
             
             // Make an Electrum RPC request
@@ -2610,6 +2658,9 @@ Anyone with your master private key can access all your funds.`;
             let offlineUtxoData = null;
             let currentUtxos = [];
             let currentTransactions = [];
+            let lastUpdateBlockHeight = null;
+            let currentBlockHeight = null;
+            let blockPollInterval = null;
             
             // Export button element
             const exportUtxoBtn = document.getElementById('exportUtxoBtn');
@@ -2620,6 +2671,310 @@ Anyone with your master private key can access all your funds.`;
             const offlineBalanceAmount = document.getElementById('offlineBalanceAmount');
             const offlineDataTimestamp = document.getElementById('offlineDataTimestamp');
             const offlineUtxoList = document.getElementById('offlineUtxoList');
+            
+            // Update common balance display
+            function updateCommonBalance() {
+                let totalBalance = 0;
+                let utxoSource = 'none';
+                let blockHeight = currentBlockHeight || lastUpdateBlockHeight;
+                
+                // Use currentUtxos if connected, otherwise use offline data
+                if (currentUtxos && currentUtxos.length > 0) {
+                    totalBalance = currentUtxos.reduce((sum, utxo) => sum + utxo.value, 0);
+                    utxoSource = 'online';
+                    lastUpdateBlockHeight = currentBlockHeight;
+                } else if (offlineUtxoData && offlineUtxoData.utxos && offlineUtxoData.utxos.length > 0) {
+                    totalBalance = offlineUtxoData.utxos.reduce((sum, utxo) => sum + utxo.value, 0);
+                    utxoSource = 'offline';
+                    if (offlineUtxoData.blockHeight) {
+                        lastUpdateBlockHeight = offlineUtxoData.blockHeight;
+                        blockHeight = offlineUtxoData.blockHeight;
+                    }
+                }
+                
+                // Update balance display
+                const balanceInAlpha = totalBalance / 100000000;
+                document.getElementById('totalBalance').textContent = balanceInAlpha.toFixed(8);
+                
+                // Update block info
+                if (lastUpdateBlockHeight) {
+                    document.getElementById('lastUpdateBlock').textContent = `Block ${lastUpdateBlockHeight}`;
+                } else {
+                    document.getElementById('lastUpdateBlock').textContent = 'Never';
+                }
+                
+                if (blockHeight) {
+                    document.getElementById('currentBlockHeight').textContent = blockHeight;
+                }
+                
+                // Update import button state based on connection
+                if (importUtxoBtn) {
+                    importUtxoBtn.disabled = electrumConnected;
+                    if (electrumConnected) {
+                        importUtxoBtn.title = "UTXO imports are disabled while connected to Fulcrum";
+                    } else {
+                        importUtxoBtn.title = "Import UTXO data from file";
+                    }
+                }
+            }
+            
+            // Format transaction for display
+            function formatTransactionDisplay(tx, ourAddress, confirmations, txDetails) {
+                const txid = tx.tx_hash || tx.txid || tx.id;
+                const truncatedTxid = txid.substring(0, 6) + '...' + txid.substring(txid.length - 6);
+                const txLink = `https://www.unicity.network/tx/${txid}`;
+                
+                const txDiv = document.createElement('div');
+                txDiv.style.cssText = 'padding: 15px; border-bottom: 1px solid #e9ecef; font-size: 14px;';
+                txDiv.setAttribute('data-txid', txid);
+                
+                let statusColor = confirmations > 0 ? '#34d399' : '#fbbf24';
+                let statusText = confirmations > 0 ? `${confirmations} confirmations` : 'Unconfirmed';
+                
+                // Default display while loading
+                let isIncoming = true;
+                let amount = '0.00000000';
+                let destinations = [];
+                
+                if (txDetails) {
+                    // Calculate net amount and direction from full transaction details
+                    const result = calculateTransactionAmount(txDetails, ourAddress);
+                    isIncoming = result.isIncoming;
+                    amount = (Math.abs(result.netAmount) / 100000000).toFixed(8);
+                    destinations = result.destinations;
+                }
+                
+                let destinationHtml = '';
+                if (destinations.length > 0) {
+                    destinationHtml = '<div style="margin-top: 5px; font-size: 12px; color: #666;">To: ';
+                    destinations.forEach((dest, idx) => {
+                        if (idx > 0) destinationHtml += ', ';
+                        const truncAddr = dest.address.substring(0, 11) + '...' + dest.address.substring(dest.address.length - 6);
+                        destinationHtml += `<a href="https://www.unicity.network/address/${dest.address}" target="_blank" style="color: #3b82f6; text-decoration: none;">${truncAddr}</a>`;
+                    });
+                    destinationHtml += '</div>';
+                }
+                
+                txDiv.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div style="flex: 1;">
+                            <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                                <span style="color: ${isIncoming ? '#34d399' : '#ef4444'}; font-weight: bold; margin-right: 10px;">
+                                    ${isIncoming ? '↓ Received' : '↑ Sent'}
+                                </span>
+                                <a href="${txLink}" target="_blank" style="font-family: monospace; font-size: 12px; color: #3b82f6; text-decoration: none;">
+                                    ${truncatedTxid}
+                                </a>
+                            </div>
+                            <div style="color: #666; font-size: 12px;">
+                                <span style="color: ${statusColor};">${statusText}</span>
+                                ${tx.height > 0 ? ` • Block ${tx.height}` : ''}
+                            </div>
+                            ${destinationHtml}
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 16px; font-weight: bold; color: ${isIncoming ? '#34d399' : '#333'};">
+                                ${isIncoming ? '+' : '-'}${amount} ALPHA
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                return txDiv;
+            }
+            
+            // Calculate transaction amount and determine if incoming/outgoing
+            function calculateTransactionAmount(txDetails, ourAddress) {
+                let inputAmount = 0;
+                let outputAmount = 0;
+                let isOurInput = false;
+                let destinations = [];
+                let ourOutputs = [];
+                
+                // First check all outputs to see what we received
+                if (txDetails.vout) {
+                    txDetails.vout.forEach((output, index) => {
+                        const value = output.value * 100000000; // Convert to satoshis
+                        
+                        if (output.scriptPubKey) {
+                            // For SegWit, the address might be in 'address' field instead of 'addresses'
+                            const addresses = output.scriptPubKey.addresses || 
+                                            (output.scriptPubKey.address ? [output.scriptPubKey.address] : []);
+                            
+                            const isOurs = addresses.includes(ourAddress);
+                            
+                            if (isOurs) {
+                                outputAmount += value;
+                                ourOutputs.push({vout: index, value: value});
+                            }
+                        }
+                    });
+                }
+                
+                // Check if any inputs are spending our UTXOs
+                if (txDetails.vin && currentUtxos) {
+                    txDetails.vin.forEach(input => {
+                        const prevTxid = input.txid;
+                        const prevVout = input.vout;
+                        
+                        // Check if this input is spending one of our UTXOs
+                        const matchingUtxo = currentUtxos.find(utxo => 
+                            utxo.tx_hash === prevTxid && utxo.tx_pos === prevVout
+                        );
+                        
+                        if (matchingUtxo) {
+                            isOurInput = true;
+                            inputAmount += matchingUtxo.value;
+                        }
+                    });
+                }
+                
+                // Determine transaction type and calculate net amount
+                let isIncoming = false;
+                let netAmount = 0;
+                
+                if (isOurInput && outputAmount > 0) {
+                    // We sent a transaction (our inputs, some outputs back to us as change)
+                    isIncoming = false;
+                    netAmount = outputAmount - inputAmount; // Negative value (what we spent minus change)
+                    
+                    // Find destinations (outputs that aren't ours)
+                    if (txDetails.vout) {
+                        txDetails.vout.forEach((output, index) => {
+                            const value = output.value * 100000000;
+                            if (output.scriptPubKey) {
+                                const addresses = output.scriptPubKey.addresses || 
+                                                (output.scriptPubKey.address ? [output.scriptPubKey.address] : []);
+                                
+                                // If it's not our address, it's a destination
+                                if (addresses.length > 0 && !addresses.includes(ourAddress)) {
+                                    destinations.push({
+                                        address: addresses[0],
+                                        amount: value
+                                    });
+                                }
+                            }
+                        });
+                    }
+                } else if (!isOurInput && outputAmount > 0) {
+                    // We received a transaction (not our inputs, but outputs to us)
+                    isIncoming = true;
+                    netAmount = outputAmount;
+                } else if (isOurInput && outputAmount === 0) {
+                    // We sent everything (no change back)
+                    isIncoming = false;
+                    netAmount = -inputAmount;
+                    
+                    // All outputs are destinations
+                    if (txDetails.vout) {
+                        txDetails.vout.forEach(output => {
+                            const value = output.value * 100000000;
+                            if (output.scriptPubKey) {
+                                const addresses = output.scriptPubKey.addresses || 
+                                                (output.scriptPubKey.address ? [output.scriptPubKey.address] : []);
+                                if (addresses.length > 0) {
+                                    destinations.push({
+                                        address: addresses[0],
+                                        amount: value
+                                    });
+                                }
+                            }
+                        });
+                    }
+                }
+                
+                return {
+                    isIncoming,
+                    netAmount: Math.abs(netAmount),
+                    destinations
+                };
+            }
+            
+            // Update transaction history display
+            function updateTransactionHistory() {
+                if (!electrumConnected || !currentTransactions || currentTransactions.length === 0) {
+                    document.getElementById('transactionHistoryContainer').style.display = 'none';
+                    return;
+                }
+                
+                document.getElementById('transactionHistoryContainer').style.display = 'block';
+                const historyList = document.getElementById('transactionHistoryList');
+                historyList.innerHTML = '';
+                
+                // Sort by height (most recent first)
+                const sortedTxs = [...currentTransactions].sort((a, b) => {
+                    if (a.height === 0 && b.height === 0) return 0;
+                    if (a.height === 0) return -1;
+                    if (b.height === 0) return 1;
+                    return b.height - a.height;
+                });
+                
+                // Display recent transactions
+                const recentTxs = sortedTxs.slice(0, 20);
+                const currentHeight = currentBlockHeight || 0;
+                const ourAddress = wallet.addresses[0].address;
+                
+                recentTxs.forEach(tx => {
+                    const confirmations = tx.height > 0 ? Math.max(0, currentHeight - tx.height + 1) : 0;
+                    const txid = tx.tx_hash || tx.txid;
+                    
+                    // First add placeholder element
+                    const txElement = formatTransactionDisplay(tx, ourAddress, confirmations, null);
+                    historyList.appendChild(txElement);
+                    
+                    // Then fetch full transaction details
+                    electrumRequest('blockchain.transaction.get', [txid, true], function(txDetails) {
+                        if (txDetails) {
+                            // Update the element with full details
+                            const updatedElement = formatTransactionDisplay(tx, ourAddress, confirmations, txDetails);
+                            const oldElement = historyList.querySelector(`[data-txid="${txid}"]`);
+                            if (oldElement) {
+                                oldElement.replaceWith(updatedElement);
+                            }
+                        }
+                    });
+                });
+            }
+            
+            // Start polling for new blocks
+            function startBlockPolling() {
+                // Clear any existing interval
+                if (blockPollInterval) {
+                    clearInterval(blockPollInterval);
+                }
+                
+                // Poll every 30 seconds
+                blockPollInterval = setInterval(function() {
+                    if (!electrumConnected) {
+                        stopBlockPolling();
+                        return;
+                    }
+                    
+                    // Get latest block header
+                    electrumRequest('blockchain.headers.subscribe', [], function(result) {
+                        if (result && (result.height || result.block_height)) {
+                            const newHeight = result.height || result.block_height;
+                            if (newHeight > currentBlockHeight) {
+                                console.log(`New block detected: ${newHeight} (was ${currentBlockHeight})`);
+                                currentBlockHeight = newHeight;
+                                
+                                // Refresh all data
+                                refreshBalance();
+                                updateCommonBalance();
+                                updateTransactionHistory();
+                            }
+                        }
+                    });
+                }, 30000); // 30 seconds
+            }
+            
+            // Stop polling for blocks
+            function stopBlockPolling() {
+                if (blockPollInterval) {
+                    clearInterval(blockPollInterval);
+                    blockPollInterval = null;
+                }
+            }
             
             // Export UTXO data
             function exportUtxoData() {
@@ -2706,6 +3061,10 @@ Anyone with your master private key can access all your funds.`;
             
             // Import UTXO data
             function importUtxoData() {
+                if (electrumConnected) {
+                    alert('UTXO imports are disabled while connected to Fulcrum server');
+                    return;
+                }
                 utxoFileInput.click();
             }
             
@@ -2737,6 +3096,19 @@ Anyone with your master private key can access all your funds.`;
                             }
                         }
                         
+                        // Check block height freshness
+                        if (lastUpdateBlockHeight && data.blockchain && data.blockchain.height && 
+                            data.blockchain.height < lastUpdateBlockHeight) {
+                            const confirmImport = confirm(
+                                `Warning: This UTXO data is from block ${data.blockchain.height}, but you have more recent data from block ${lastUpdateBlockHeight}.\n\n` +
+                                `Importing this will overwrite your newer data. Continue?`
+                            );
+                            if (!confirmImport) {
+                                utxoFileInput.value = '';
+                                return;
+                            }
+                        }
+                        
                         // Check data freshness
                         const exportDate = new Date(data.blockchain.timestamp);
                         const now = new Date();
@@ -2758,6 +3130,7 @@ Anyone with your master private key can access all your funds.`;
                         
                         // Display the offline balance
                         displayOfflineBalance();
+                        updateCommonBalance();
                         
                         alert(`UTXO data imported successfully (block ${data.blockchain.height})!`);
                     } catch (err) {
@@ -2846,6 +3219,7 @@ Anyone with your master private key can access all your funds.`;
                     offlineUtxoData = null;
                     localStorage.removeItem('offlineUtxoData');
                     displayOfflineBalance();
+                    updateCommonBalance();
                     alert('Offline UTXO data cleared');
                 }
             }
@@ -2857,6 +3231,7 @@ Anyone with your master private key can access all your funds.`;
                     try {
                         offlineUtxoData = JSON.parse(stored);
                         displayOfflineBalance();
+                        updateCommonBalance();
                     } catch (err) {
                         console.error('Failed to load offline UTXO data:', err);
                     }
@@ -2876,6 +3251,7 @@ Anyone with your master private key can access all your funds.`;
                         electrumRequest('blockchain.scripthash.get_history', [scriptHash], function(result) {
                             if (result) {
                                 currentTransactions = result;
+                                updateTransactionHistory();
                             }
                         });
                         
@@ -2883,6 +3259,7 @@ Anyone with your master private key can access all your funds.`;
                         electrumRequest('blockchain.scripthash.listunspent', [scriptHash], function(result) {
                             if (result) {
                                 currentUtxos = result;
+                                updateCommonBalance();
                             }
                         });
                     }
