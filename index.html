@@ -399,9 +399,135 @@
             font-size: 14px;
             font-weight: 600;
         }
+        /* In-browser notifications */
+        .notification-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            max-width: 400px;
+        }
+        
+        .notification {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            padding: 16px 20px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: flex-start;
+            animation: slideIn 0.3s ease-out;
+            transition: all 0.3s ease;
+            border-left: 4px solid #3a86ff;
+            min-width: 320px;
+        }
+        
+        .notification.success {
+            border-left-color: #06d6a0;
+        }
+        
+        .notification.error {
+            border-left-color: #ef476f;
+        }
+        
+        .notification.warning {
+            border-left-color: #ffba08;
+        }
+        
+        .notification.info {
+            border-left-color: #3a86ff;
+        }
+        
+        .notification-icon {
+            font-size: 24px;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+        
+        .notification-content {
+            flex: 1;
+            margin-right: 12px;
+        }
+        
+        .notification-title {
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: #333;
+        }
+        
+        .notification-message {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.4;
+        }
+        
+        .notification-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            color: #999;
+            cursor: pointer;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+        
+        .notification-close:hover {
+            background-color: #f0f0f0;
+            color: #333;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+        
+        .notification.removing {
+            animation: slideOut 0.3s ease-in;
+        }
+        
+        /* Mobile responsive */
+        @media (max-width: 600px) {
+            .notification-container {
+                top: 10px;
+                right: 10px;
+                left: 10px;
+                max-width: none;
+            }
+            
+            .notification {
+                min-width: auto;
+            }
+        }
     </style>
 </head>
 <body>
+    <!-- Notification Container -->
+    <div id="notificationContainer" class="notification-container"></div>
+    
     <!-- QR Code Modal -->
     <div id="qrModal" class="qr-modal" style="display: none;">
         <span class="close-modal" onclick="document.getElementById('qrModal').style.display='none'; document.body.style.overflow='';">&times;</span>
@@ -1090,6 +1216,13 @@
                 // Save wallet to local storage
                 saveWalletData();
                 
+                // Show notification
+                if (addressIndex === 0) {
+                    showInAppNotification('Wallet Created', 'Your new wallet has been created successfully', 'success');
+                } else {
+                    showInAppNotification('Address Generated', `New address generated at index ${addressIndex}`, 'success');
+                }
+                
                 // If already connected to Fulcrum, refresh balance for new address
                 if (electrumConnected) {
                     console.log('Already connected to Fulcrum, refreshing balance for new address...');
@@ -1383,6 +1516,8 @@ Anyone with your master private key can access all your funds.`;
                     document.body.removeChild(a);
                     URL.revokeObjectURL(url);
                 }, 100);
+                
+                showInAppNotification('Wallet Backed Up', 'Wallet backup file has been downloaded', 'success');
             }
             
             // Check password strength
@@ -1467,10 +1602,10 @@ Anyone with your master private key can access all your funds.`;
                     // Clear password strength indicator when wallet is encrypted
                     passwordStrength.innerHTML = '';
                     
-                    alert('Wallet encrypted successfully! Your private key is now protected by your password.');
+                    showInAppNotification('Wallet Encrypted', 'Your private key is now protected by your password', 'success');
                 } catch (e) {
                     console.error("Error encrypting wallet", e);
-                    alert('Error encrypting wallet: ' + e.message);
+                    showInAppNotification('Encryption Error', e.message, 'error');
                 }
             }
             
@@ -1573,7 +1708,7 @@ Anyone with your master private key can access all your funds.`;
                         localStorage.removeItem('alphaWallet');
                     }
                     
-                    alert('Wallet deleted successfully.');
+                    showInAppNotification('Wallet Deleted', 'Your wallet has been deleted successfully', 'success');
                 }
             }
             
@@ -1878,6 +2013,7 @@ Anyone with your master private key can access all your funds.`;
                     restoreStatus.className = 'info-box success';
                     restoreStatus.textContent = 'Wallet restored successfully!';
                     restoreStatus.style.display = 'block';
+                    showInAppNotification('Wallet Restored', 'Your wallet has been successfully restored from backup', 'success');
                     
                     // Close modal after a delay
                     setTimeout(() => {
@@ -2287,6 +2423,7 @@ Anyone with your master private key can access all your funds.`;
                             infoBox.style.borderLeftColor = 'var(--success-color)';
                         }
                         connectionStatusText.textContent = 'Connected to Fulcrum server';
+                        showInAppNotification('Connected', 'Successfully connected to Fulcrum server', 'success');
                         
                         // Update buttons
                         connectRpcBtn.style.display = 'none';
@@ -2415,6 +2552,7 @@ Anyone with your master private key can access all your funds.`;
                             infoBox.style.borderLeftColor = 'var(--danger-color)';
                         }
                         connectionStatusText.textContent = 'Connection error: Check console for details';
+                        showInAppNotification('Connection Error', 'Failed to connect to Fulcrum server', 'error');
                     };
                     
                     electrumSocket.onclose = function() {
@@ -2440,7 +2578,7 @@ Anyone with your master private key can access all your funds.`;
                     };
                     
                 } catch (err) {
-                    alert('Failed to connect: ' + err.message);
+                    showInAppNotification('Connection Failed', err.message, 'error');
                     const infoBox = connectionStatusDiv.querySelector('.info-box');
                     if (infoBox) {
                         infoBox.style.backgroundColor = 'rgba(255, 0, 110, 0.1)';
@@ -2455,6 +2593,7 @@ Anyone with your master private key can access all your funds.`;
                 if (electrumSocket) {
                     electrumSocket.close();
                     electrumSocket = null;
+                    showInAppNotification('Disconnected', 'Manually disconnected from Fulcrum server', 'info');
                 }
                 electrumConnected = false;
                 electrumCallbacks = {};
@@ -2783,6 +2922,9 @@ Anyone with your master private key can access all your funds.`;
                                 if (electrumConnected && address !== oldAddress) {
                                     subscribeToAddressChanges(address);
                                 }
+                                
+                                // Show notification
+                                showInAppNotification('Watch-Only Address Set', `Monitoring address: ${address.substring(0, 10)}...${address.substring(address.length - 6)}`, 'info');
                             }
                         } catch (err) {
                             console.log('Invalid address format:', err);
@@ -2804,6 +2946,9 @@ Anyone with your master private key can access all your funds.`;
                     if (electrumConnected) {
                         unsubscribeFromAddressChanges();
                     }
+                    
+                    // Show notification
+                    showInAppNotification('Watch-Only Cleared', 'Watch-only address has been cleared', 'info');
                 }
             });
             
@@ -3433,7 +3578,7 @@ Anyone with your master private key can access all your funds.`;
                     // Fetch UTXOs
                     electrumRequest('blockchain.scripthash.listunspent', [scriptHash], function(utxos, error) {
                         if (error) {
-                            alert('Failed to fetch UTXOs: ' + error.message);
+                            showInAppNotification('Export Failed', 'Failed to fetch UTXOs: ' + error.message, 'error');
                             return;
                         }
                         
@@ -3474,7 +3619,7 @@ Anyone with your master private key can access all your funds.`;
                         URL.revokeObjectURL(url);
                         
                         const blockInfo = blockHeight ? ` at block ${blockHeight}` : '';
-                        alert(`UTXO data exported successfully${blockInfo}!`);
+                        showInAppNotification('Export Successful', `UTXO data exported${blockInfo}`, 'success');
                     });
                 }
             }
@@ -3553,9 +3698,9 @@ Anyone with your master private key can access all your funds.`;
                         updateCommonBalance();
                         updateUtxoListDisplay();
                         
-                        alert(`UTXO data imported successfully (block ${data.blockchain.height})!`);
+                        showInAppNotification('Import Successful', `UTXO data imported (block ${data.blockchain.height})`, 'success');
                     } catch (err) {
-                        alert('Failed to import UTXO data: ' + err.message);
+                        showInAppNotification('Import Failed', err.message, 'error');
                     }
                 };
                 reader.readAsText(file);
@@ -3723,7 +3868,7 @@ Anyone with your master private key can access all your funds.`;
                     // displayOfflineBalance(); // Removed with Cold Wallet reorganization
                     updateCommonBalance();
                     updateUtxoListDisplay();
-                    alert('Offline UTXO data cleared');
+                    showInAppNotification('Data Cleared', 'Offline UTXO data has been cleared', 'info');
                 }
             }
             
@@ -3754,10 +3899,86 @@ Anyone with your master private key can access all your funds.`;
                 }
             }
             
-            // Show system notification
+            // Show in-browser notification
+            function showInAppNotification(title, message, type = 'info') {
+                const container = document.getElementById('notificationContainer');
+                
+                // Create notification element
+                const notification = document.createElement('div');
+                notification.className = `notification ${type}`;
+                
+                // Choose icon based on type
+                let icon = '';
+                switch(type) {
+                    case 'success':
+                        icon = '✅';
+                        break;
+                    case 'error':
+                        icon = '❌';
+                        break;
+                    case 'warning':
+                        icon = '⚠️';
+                        break;
+                    case 'info':
+                    default:
+                        icon = 'ℹ️';
+                        break;
+                }
+                
+                notification.innerHTML = `
+                    <div class="notification-icon">${icon}</div>
+                    <div class="notification-content">
+                        <div class="notification-title">${title}</div>
+                        <div class="notification-message">${message}</div>
+                    </div>
+                    <button class="notification-close">&times;</button>
+                `;
+                
+                // Add close functionality
+                const closeBtn = notification.querySelector('.notification-close');
+                closeBtn.onclick = () => removeNotification(notification);
+                
+                // Add to container
+                container.appendChild(notification);
+                
+                // Auto-remove after 8 seconds
+                setTimeout(() => removeNotification(notification), 8000);
+            }
+            
+            // Remove notification with animation
+            function removeNotification(notification) {
+                if (!notification || notification.classList.contains('removing')) return;
+                
+                notification.classList.add('removing');
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }
+            
+            // Show system notification (only for transactions)
             function showNotification(title, body, icon = null) {
+                // Determine if this is a transaction notification
+                const isTransaction = title.includes('Transaction') || title.includes('Incoming') || 
+                                    title.includes('Outgoing') || title.includes('Confirmed');
+                
+                // Always show in-app notification
+                let type = 'info';
+                if (title.includes('✅') || title.includes('Confirmed')) type = 'success';
+                else if (title.includes('💰') || title.includes('Incoming')) type = 'success';
+                else if (title.includes('📤') || title.includes('Outgoing')) type = 'info';
+                else if (title.includes('🔗') || title.includes('Block')) type = 'info';
+                else if (title.includes('Error') || title.includes('Failed')) type = 'error';
+                
+                showInAppNotification(title, body, type);
+                
+                // Only show system notification for transactions
+                if (!isTransaction) return;
+                
+                // Show system notification if supported
                 if (!('Notification' in window)) {
-                    console.log('This browser does not support notifications');
+                    console.log('This browser does not support system notifications');
                     return;
                 }
                 
@@ -3765,15 +3986,13 @@ Anyone with your master private key can access all your funds.`;
                     const notification = new Notification(title, {
                         body: body,
                         icon: icon || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiMzNGQzOTkiIHN0cm9rZS13aWR0aD0iMiI+PHJlY3QgeD0iMyIgeT0iMTEiIHdpZHRoPSIxOCIgaGVpZ2h0PSIxMSIgcng9IjIiIHJ5PSIyIi8+PHBhdGggZD0iTTcgMTFWN2E1IDUgMCAwIDEgMTAgMHY0Ii8+PC9zdmc+',
-                        tag: 'alpha-wallet-' + Date.now(), // Unique tag to prevent duplicate notifications
+                        tag: 'alpha-wallet-' + Date.now(),
                         requireInteraction: false,
                         silent: false
                     });
                     
-                    // Auto-close after 5 seconds
                     setTimeout(() => notification.close(), 5000);
                     
-                    // Handle click
                     notification.onclick = function() {
                         window.focus();
                         notification.close();
@@ -4171,7 +4390,7 @@ Anyone with your master private key can access all your funds.`;
                     pendingTransactions = [];
                     
                 } catch (error) {
-                    alert('Error signing transactions: ' + error.message);
+                    showInAppNotification('Signing Failed', 'Error signing transactions: ' + error.message, 'error');
                     console.error('Signing error:', error);
                 }
             };
@@ -4475,13 +4694,13 @@ Anyone with your master private key can access all your funds.`;
                         if (error) {
                             console.error('Broadcast error:', error);
                             console.error('Failed tx hex:', signedTx.raw);
-                            alert('Error broadcasting transaction: ' + error.message || error);
+                            showInAppNotification('Broadcast Failed', 'Error broadcasting transaction: ' + (error.message || error), 'error');
                         } else {
                             broadcastCount++;
                             console.log('Transaction broadcast:', result);
                             
                             if (broadcastCount === signedTransactions.length) {
-                                alert(`Successfully broadcast ${broadcastCount} transaction(s)`);
+                                showInAppNotification('Transaction Sent', `Successfully broadcast ${broadcastCount} transaction(s)`, 'success');
                                 // Refresh balance
                                 if (wallet.addresses && wallet.addresses.length > 0) {
                                     queryAddressInfo(wallet.addresses[0]);
@@ -4522,7 +4741,7 @@ Anyone with your master private key can access all your funds.`;
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
                 
-                alert(`Saved ${signedTransactions.length} signed transaction(s) to file. Transfer this file to an online machine to broadcast.`);
+                showInAppNotification('Transactions Saved', `Saved ${signedTransactions.length} signed transaction(s) to file`, 'success');
             }
             
             // Import and broadcast transactions from file
@@ -4536,18 +4755,20 @@ Anyone with your master private key can access all your funds.`;
                         const importedData = JSON.parse(event.target.result);
                         
                         if (!importedData.transactions || !Array.isArray(importedData.transactions)) {
-                            alert('Invalid transaction file format');
+                            showInAppNotification('Import Failed', 'Invalid transaction file format', 'error');
                             return;
                         }
                         
                         // Check if we're online
                         if (!electrumSocket || electrumSocket.readyState !== WebSocket.OPEN) {
-                            alert('Not connected to network. Please connect first.');
+                            showInAppNotification('Not Connected', 'Please connect to Fulcrum server first', 'warning');
                             return;
                         }
                         
                         // Show confirmation
                         const txCount = importedData.transactions.length;
+                        showInAppNotification('Transactions Loaded', `Loaded ${txCount} transaction(s) from file`, 'info');
+                        
                         if (confirm(`Import and broadcast ${txCount} transaction(s)?`)) {
                             const rawTransactions = importedData.transactions.map(tx => {
                                 // Check if raw is a JSON object (old format) or hex string (new format)
@@ -4577,7 +4798,7 @@ Anyone with your master private key can access all your funds.`;
                         }
                         
                     } catch (error) {
-                        alert('Error reading transaction file: ' + error.message);
+                        showInAppNotification('Read Error', 'Error reading transaction file: ' + error.message, 'error');
                         console.error('Import error:', error);
                     }
                 };
