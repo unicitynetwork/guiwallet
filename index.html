@@ -633,14 +633,6 @@
                         </div>
                     </div>
                 </div>
-                
-                <!-- Transaction History -->
-                <div style="margin-top: 20px;">
-                    <h4>Recent Transactions</h4>
-                    <div id="transactionList" style="max-height: 300px; overflow-y: auto; border: 1px solid #e9ecef; border-radius: 8px; padding: 10px;">
-                        <p style="color: #999; text-align: center;">No transactions found</p>
-                    </div>
-                </div>
             </div>
             
             <!-- Send Transaction Section -->
@@ -1021,13 +1013,14 @@
                 saveWalletData();
                 
                 // Close any open sections to maintain a clean UI
-                                                document.getElementById('keys-section').style.display = 'none';
+                // document.getElementById('keys-section').style.display = 'none'; // Removed with Security section
                 
                 // Make sure encryption status is hidden for new wallets
                 // encryptionStatus.style.display = 'none'; // Removed with Security section
                 
                 
-                // Reset section button text
+                // Reset section button text - Removed with Security section
+                /*
                 document.getElementById('showEncryptionBtn').innerHTML = `
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
@@ -1042,13 +1035,16 @@
                         <line x1="12" y1="3" x2="12" y2="15"></line>
                     </svg>
                     Restore Wallet`;
+                */
                     
+                /* // Removed with Security section
                 document.getElementById('showAdvancedBtn').innerHTML = `
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
                         <path d="M12 20h9"></path>
                         <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
                     </svg>
                     Migrate Wallet`;
+                */
             }
             
             // Generate a new address from master key
@@ -1503,6 +1499,14 @@ Anyone with your master private key can access all your funds.`;
                     walletInfo.style.display = 'none';
                     walletQrCode.style.display = 'none';
                     
+                    // Clear transaction history and UTXOs
+                    currentTransactions = [];
+                    currentUtxos = [];
+                    offlineUtxoData = null;
+                    updateTransactionHistory();
+                    updateCommonBalance();
+                    document.getElementById('transactionHistoryContainer').style.display = 'none';
+                    
                     // Reset button text for toggle buttons
                     // toggleMasterKeyBtn.textContent = 'Show'; // Removed with Security section
                     // toggleWifKeyBtn.textContent = 'Show'; // Removed with Security section
@@ -1518,30 +1522,30 @@ Anyone with your master private key can access all your funds.`;
                     
                     
                     // Close all open sections
-                                                            document.getElementById('keys-section').style.display = 'none';
+                    // document.getElementById('keys-section').style.display = 'none'; // Removed with Security section
                     
                     // Reset toggle buttons text
-                    document.getElementById('showEncryptionBtn').innerHTML = `
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                    // document.getElementById('showEncryptionBtn').innerHTML = ` // Removed with Security section
+                        /* <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
                             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                             <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                         </svg>
-                        Encrypt Wallet`;
+                        Encrypt Wallet`; */
                         
-                    document.getElementById('showRestoreBtn').innerHTML = `
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                    // document.getElementById('showRestoreBtn').innerHTML = ` // Removed with Security section
+                        /* <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                             <polyline points="17 8 12 3 7 8"></polyline>
                             <line x1="12" y1="3" x2="12" y2="15"></line>
                         </svg>
-                        Restore Wallet`;
+                        Restore Wallet`; */
                         
-                    document.getElementById('showAdvancedBtn').innerHTML = `
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                    // document.getElementById('showAdvancedBtn').innerHTML = ` // Removed with Security section
+                        /* <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
                             <path d="M12 20h9"></path>
                             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
                         </svg>
-                        Migrate Wallet`;
+                        Migrate Wallet`; */
                     
                     try {
                         // Remove from IndexedDB
@@ -1829,30 +1833,30 @@ Anyone with your master private key can access all your funds.`;
                     saveWalletData();
                     
                     // Close any open sections to maintain a clean UI
-                                                            document.getElementById('keys-section').style.display = 'none';
+                    // document.getElementById('keys-section').style.display = 'none'; // Removed with Security section
                     
                     // Reset section button text
-                    document.getElementById('showEncryptionBtn').innerHTML = `
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                    // document.getElementById('showEncryptionBtn').innerHTML = ` // Removed with Security section
+                        /* <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
                             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                             <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                         </svg>
-                        Encrypt Wallet`;
+                        Encrypt Wallet`; */
                         
-                    document.getElementById('showRestoreBtn').innerHTML = `
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                    // document.getElementById('showRestoreBtn').innerHTML = ` // Removed with Security section
+                        /* <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                             <polyline points="17 8 12 3 7 8"></polyline>
                             <line x1="12" y1="3" x2="12" y2="15"></line>
                         </svg>
-                        Restore Wallet`;
+                        Restore Wallet`; */
                         
-                    document.getElementById('showAdvancedBtn').innerHTML = `
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                    // document.getElementById('showAdvancedBtn').innerHTML = ` // Removed with Security section
+                        /* <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
                             <path d="M12 20h9"></path>
                             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
                         </svg>
-                        Migrate Wallet`;
+                        Migrate Wallet`; */
                     
                     // Show success message
                     restoreStatus.className = 'info-box success';
@@ -1980,27 +1984,27 @@ Anyone with your master private key can access all your funds.`;
                                                             document.getElementById('keys-section').style.display = 'none';
                     
                     // Reset all button texts
-                    document.getElementById('showEncryptionBtn').innerHTML = `
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                    // document.getElementById('showEncryptionBtn').innerHTML = ` // Removed with Security section
+                        /* <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
                             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                             <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                         </svg>
-                        Encrypt Wallet`;
+                        Encrypt Wallet`; */
                         
-                    document.getElementById('showRestoreBtn').innerHTML = `
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                    // document.getElementById('showRestoreBtn').innerHTML = ` // Removed with Security section
+                        /* <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                             <polyline points="17 8 12 3 7 8"></polyline>
                             <line x1="12" y1="3" x2="12" y2="15"></line>
                         </svg>
-                        Restore Wallet`;
+                        Restore Wallet`; */
                         
-                    document.getElementById('showAdvancedBtn').innerHTML = `
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                    // document.getElementById('showAdvancedBtn').innerHTML = ` // Removed with Security section
+                        /* <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
                             <path d="M12 20h9"></path>
                             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
                         </svg>
-                        Migrate Wallet`;
+                        Migrate Wallet`; */
                     
                     // Show this section
                     section.style.display = 'block';
@@ -2021,6 +2025,7 @@ Anyone with your master private key can access all your funds.`;
             }
             
             // Migrate section toggle
+            /* // Removed with Security section
             function toggleMigrateSection() {
                 toggleSection(
                     'keys-section', 
@@ -2033,6 +2038,7 @@ Anyone with your master private key can access all your funds.`;
                     </svg>`
                 );
             }
+            */
             
             
             // Set up event listeners
@@ -2049,7 +2055,7 @@ Anyone with your master private key can access all your funds.`;
                     }
                 });
             });
-            migrateWalletBtn.addEventListener('click', toggleMigrateSection);
+            // migrateWalletBtn.addEventListener('click', toggleMigrateSection); // Removed with Security section
             
             // Restore modal event listeners
             restoreModalCancelBtn.addEventListener('click', closeRestoreModal);
@@ -2204,7 +2210,7 @@ Anyone with your master private key can access all your funds.`;
             const connectionStatusText = document.getElementById('connectionStatusText');
             const balanceDisplay = document.getElementById('balanceDisplay');
             const balanceAmount = document.getElementById('balanceAmount');
-            const transactionList = document.getElementById('transactionList');
+            // const transactionList = document.getElementById('transactionList'); // Removed duplicate transaction display
             const refreshBalanceBtn = document.getElementById('refreshBalanceBtn');
             
             // Connect to Electrum server
@@ -2528,12 +2534,12 @@ Anyone with your master private key can access all your funds.`;
                 // Get transaction history (using blockchain.scripthash.get_history)
                 electrumRequest('blockchain.scripthash.get_history', [scriptHash], function(result, error) {
                     if (error) {
-                        transactionList.innerHTML = '<p style="color: #999; text-align: center;">Error loading transactions</p>';
+                        // transactionList.innerHTML = '<p style="color: #999; text-align: center;">Error loading transactions</p>'; // Removed duplicate transaction display
                         return;
                     }
                     
                     if (result && result.length > 0) {
-                        transactionList.innerHTML = '';
+                        // transactionList.innerHTML = ''; // Removed duplicate transaction display
                         
                         // Show last 10 transactions
                         const recentTxs = result.slice(-10).reverse();
@@ -2561,10 +2567,10 @@ Anyone with your master private key can access all your funds.`;
                                 </div>
                             `;
                             
-                            transactionList.appendChild(txDiv);
+                            // transactionList.appendChild(txDiv); // Removed duplicate transaction display
                         });
                     } else {
-                        transactionList.innerHTML = '<p style="color: #999; text-align: center;">No transactions found</p>';
+                        // transactionList.innerHTML = '<p style="color: #999; text-align: center;">No transactions found</p>'; // Removed duplicate transaction display
                     }
                 });
             }
