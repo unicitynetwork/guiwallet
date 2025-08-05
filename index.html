@@ -537,6 +537,21 @@
                 </div>
             </div>
             
+            <!-- Watch-Only Address Input -->
+            <div id="watchOnlySection" style="display: none; margin-bottom: 15px; padding: 15px; background-color: rgba(139, 56, 236, 0.05); border-radius: 8px; border: 1px solid rgba(139, 56, 236, 0.2);">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <label style="font-weight: 600; font-size: 12px; white-space: nowrap;">Watch Address:</label>
+                    <input type="text" id="watchOnlyAddress" placeholder="alpha1..." style="flex: 1; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                    <div>
+                        <span id="watchOnlyBalance" style="font-weight: 600; font-size: 12px;">-</span>
+                        <span id="watchOnlyUnconfirmed" style="color: #999; font-size: 12px;"></span>
+                    </div>
+                </div>
+                <div style="margin-top: 8px;">
+                    <span style="font-size: 11px; color: #666;">Enter any Alpha address to monitor its balance and UTXOs</span>
+                </div>
+            </div>
+            
             <div class="wallet-actions-container">
                 <button id="initializeWalletBtn" class="wallet-button" title="Creates a new wallet with a secure private key. This is the first step to use this wallet.">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -592,7 +607,7 @@
                     <label for="recipientAddress" style="margin: 0; font-weight: 600; white-space: nowrap; font-size: 10px;">Destination:</label>
                     <input type="text" id="recipientAddress" placeholder="alpha1..." style="flex: 1; padding: 3px 6px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; font-family: monospace;">
                     <input type="number" id="sendAmount" placeholder="0.00000000" step="0.00000001" min="0" style="width: 100px; padding: 3px 6px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px;">
-                    <button onclick="prepareSendTransaction()" class="wallet-button" style="background-color: #34d399;">
+                    <button id="sendTransactionBtn" onclick="prepareSendTransaction()" class="wallet-button" style="background-color: #34d399;">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="22" y1="2" x2="11" y2="13"></line>
                             <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
@@ -625,7 +640,7 @@
             <!-- Import & Broadcast Transactions -->
             <div style="margin-top: 20px;">
                 <input type="file" id="txFileInput" accept=".json,.txt" style="display: none;">
-                <button onclick="document.getElementById('txFileInput').click()" class="wallet-button" style="background-color: #fbbf24;">
+                <button id="importBroadcastBtn" onclick="document.getElementById('txFileInput').click()" class="wallet-button" style="background-color: #fbbf24;" disabled>
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                         <polyline points="7 10 12 15 17 10"></polyline>
@@ -694,6 +709,17 @@
             const walletUnconfirmed = document.getElementById('walletUnconfirmed');
             const lastUpdateTime = document.getElementById('lastUpdateTime');
             const walletQrCode = document.getElementById('walletQrCode');
+            
+            // Watch-only elements
+            const watchOnlySection = document.getElementById('watchOnlySection');
+            const watchOnlyAddress = document.getElementById('watchOnlyAddress');
+            const watchOnlyBalance = document.getElementById('watchOnlyBalance');
+            const watchOnlyUnconfirmed = document.getElementById('watchOnlyUnconfirmed');
+            const sendTransactionBtn = document.getElementById('sendTransactionBtn');
+            
+            // Watch-only state
+            let watchOnlyMode = false;
+            let watchOnlyAddressValue = null;
             
             // Buttons
             const initializeWalletBtn = document.getElementById('initializeWalletBtn');
@@ -2308,6 +2334,7 @@ Anyone with your master private key can access all your funds.`;
                     electrumSocket.onclose = function() {
                         electrumConnected = false;
                         updateUtxoListDisplay(); // Update UTXO list display when disconnected
+                        updateCommonBalance(); // Update button states
                         const infoBox = connectionStatusDiv.querySelector('.info-box');
                         if (infoBox) {
                             infoBox.style.backgroundColor = 'rgba(255, 186, 8, 0.1)';
@@ -2481,12 +2508,17 @@ Anyone with your master private key can access all your funds.`;
             
             // Refresh balance for current address
             function refreshBalance() {
-                if (!wallet.addresses || wallet.addresses.length === 0) {
-                    // balanceAmount.textContent = '0.00000000 ALPHA'; // Removed duplicate balance display
+                let address = null;
+                
+                if (watchOnlyMode && watchOnlyAddressValue) {
+                    address = watchOnlyAddressValue;
+                } else if (wallet.addresses && wallet.addresses.length > 0) {
+                    address = wallet.addresses[0].address;
+                } else {
+                    // No address available
                     return;
                 }
                 
-                const address = wallet.addresses[0].address;
                 const scriptHash = addressToScriptHash(address);
                 
                 if (!scriptHash) {
@@ -2602,6 +2634,113 @@ Anyone with your master private key can access all your funds.`;
             // const offlineDataTimestamp = document.getElementById('offlineDataTimestamp'); // Removed with Cold Wallet reorganization
             // const offlineUtxoList = document.getElementById('offlineUtxoList'); // Removed with Cold Wallet reorganization
             
+            // Update watch-only mode based on wallet and connection state
+            function updateWatchOnlyMode() {
+                const hasWallet = wallet.masterPrivateKey || (wallet.addresses && wallet.addresses.length > 0);
+                const shouldShowWatchOnly = !hasWallet && electrumConnected;
+                
+                if (shouldShowWatchOnly) {
+                    watchOnlySection.style.display = 'block';
+                    walletInfo.style.display = 'none';
+                    watchOnlyMode = true;
+                } else if (hasWallet) {
+                    watchOnlySection.style.display = 'none';
+                    walletInfo.style.display = 'block';
+                    watchOnlyMode = false;
+                    watchOnlyAddressValue = null;
+                } else {
+                    // Not connected and no wallet
+                    watchOnlySection.style.display = 'none';
+                    walletInfo.style.display = 'none';
+                    watchOnlyMode = false;
+                    watchOnlyAddressValue = null;
+                }
+            }
+            
+            // Handle watch-only address input
+            watchOnlyAddress.addEventListener('input', function(e) {
+                const address = e.target.value.trim();
+                
+                // Validate Bech32 address format
+                if (address.startsWith('alpha1') && address.length > 10) {
+                    // Debounce the input
+                    clearTimeout(watchOnlyAddress.debounceTimer);
+                    watchOnlyAddress.debounceTimer = setTimeout(() => {
+                        // Validate address format properly
+                        try {
+                            const decoded = decodeBech32(address);
+                            if (decoded) {
+                                watchOnlyAddressValue = address;
+                                refreshWatchOnlyBalance(address);
+                            }
+                        } catch (err) {
+                            console.log('Invalid address format:', err);
+                            watchOnlyAddressValue = null;
+                            watchOnlyBalance.textContent = 'Invalid address';
+                            watchOnlyUnconfirmed.textContent = '';
+                            currentUtxos = [];
+                            updateUtxoListDisplay();
+                        }
+                    }, 500);
+                } else if (address === '') {
+                    watchOnlyAddressValue = null;
+                    watchOnlyBalance.textContent = '-';
+                    watchOnlyUnconfirmed.textContent = '';
+                    currentUtxos = [];
+                    updateUtxoListDisplay();
+                }
+            });
+            
+            // Refresh balance for watch-only address
+            function refreshWatchOnlyBalance(address) {
+                if (!address || !electrumConnected) return;
+                
+                const scriptHash = addressToScriptHash(address);
+                if (!scriptHash) {
+                    watchOnlyBalance.textContent = 'Invalid address';
+                    watchOnlyUnconfirmed.textContent = '';
+                    return;
+                }
+                
+                // Fetch UTXOs
+                electrumRequest('blockchain.scripthash.listunspent', [scriptHash], function(result) {
+                    if (result) {
+                        currentUtxos = result;
+                        
+                        // Calculate balances
+                        let confirmed = 0;
+                        let unconfirmed = 0;
+                        
+                        result.forEach(utxo => {
+                            if (utxo.height > 0) {
+                                confirmed += utxo.value;
+                            } else {
+                                unconfirmed += utxo.value;
+                            }
+                        });
+                        
+                        // Update display
+                        watchOnlyBalance.textContent = (confirmed / 100000000).toFixed(8) + ' ALPHA';
+                        if (unconfirmed > 0) {
+                            watchOnlyUnconfirmed.textContent = '(' + (unconfirmed / 100000000).toFixed(8) + ')';
+                        } else {
+                            watchOnlyUnconfirmed.textContent = '';
+                        }
+                        
+                        updateUtxoListDisplay();
+                        updateCommonBalance(); // This will update Send button state
+                    }
+                });
+                
+                // Also fetch transaction history
+                electrumRequest('blockchain.scripthash.get_history', [scriptHash], function(result) {
+                    if (result) {
+                        currentTransactions = result;
+                        updateTransactionHistory();
+                    }
+                });
+            }
+            
             // Update common balance display
             function updateCommonBalance() {
                 let confirmedBalance = 0;
@@ -2698,6 +2837,32 @@ Anyone with your master private key can access all your funds.`;
                         importUtxoBtn.title = "Import UTXO data from file";
                     }
                 }
+                
+                // Update import & broadcast button state based on connection
+                const importBroadcastBtn = document.getElementById('importBroadcastBtn');
+                if (importBroadcastBtn) {
+                    importBroadcastBtn.disabled = !electrumConnected;
+                    if (electrumConnected) {
+                        importBroadcastBtn.title = "Import and broadcast signed transactions";
+                    } else {
+                        importBroadcastBtn.title = "Connect to Fulcrum to broadcast transactions";
+                    }
+                }
+                
+                // Update Send button state based on available UTXOs
+                if (sendTransactionBtn) {
+                    const hasUtxos = (currentUtxos && currentUtxos.length > 0) || 
+                                   (offlineUtxoData && offlineUtxoData.utxos && offlineUtxoData.utxos.length > 0);
+                    sendTransactionBtn.disabled = !hasUtxos;
+                    if (hasUtxos) {
+                        sendTransactionBtn.title = "Send Alpha to another address";
+                    } else {
+                        sendTransactionBtn.title = "No UTXOs available to spend";
+                    }
+                }
+                
+                // Handle watch-only mode visibility
+                updateWatchOnlyMode();
             }
             
             // Format transaction for display
@@ -2929,7 +3094,11 @@ Anyone with your master private key can access all your funds.`;
                 // Display recent transactions
                 const recentTxs = sortedTxs.slice(0, 20);
                 const currentHeight = currentBlockHeight || 0;
-                const ourAddress = wallet.addresses[0].address;
+                const ourAddress = watchOnlyMode && watchOnlyAddressValue ? 
+                    watchOnlyAddressValue : 
+                    (wallet.addresses && wallet.addresses.length > 0 ? wallet.addresses[0].address : null);
+                
+                if (!ourAddress) return;
                 
                 recentTxs.forEach(tx => {
                     const confirmations = tx.height > 0 ? Math.max(0, currentHeight - tx.height + 1) : 0;
@@ -3371,6 +3540,9 @@ Anyone with your master private key can access all your funds.`;
             
             // Load offline data on startup
             loadOfflineUtxoData();
+            
+            // Initial button state update
+            updateCommonBalance();
             
             // Transaction functionality
             let pendingTransactions = [];
