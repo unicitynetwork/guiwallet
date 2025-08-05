@@ -2889,6 +2889,7 @@ Anyone with your master private key can access all your funds.`;
             let offlineUtxoData = null;
             let currentUtxos = [];
             let currentTransactions = [];
+            let transactionDetailsCache = {}; // Cache for transaction details
             let isInitialLoad = true;  // Track if this is the first load
             let lastUpdateBlockHeight = null;
             let currentBlockHeight = null;
@@ -3078,6 +3079,11 @@ Anyone with your master private key can access all your funds.`;
                                 
                                 // Fetch transaction details to determine direction
                                 electrumRequest('blockchain.transaction.get', [txid, true], function(txDetails) {
+                                    // Cache the transaction details
+                                    if (txDetails) {
+                                        transactionDetailsCache[txid] = txDetails;
+                                    }
+                                    
                                     let notificationTitle, notificationBody;
                                     
                                     if (txDetails && watchOnlyAddressValue) {
@@ -3372,6 +3378,25 @@ Anyone with your master private key can access all your funds.`;
                                 outputAddress = output.scriptPubKey.address;
                             }
                             
+                            // If no address found, try to decode from hex (for SegWit outputs)
+                            if (!outputAddress && output.scriptPubKey.hex) {
+                                // Log the scriptPubKey structure for debugging
+                                console.log(`  Output ${index} scriptPubKey:`, JSON.stringify(output.scriptPubKey));
+                                
+                                // Try to decode SegWit address from hex
+                                // SegWit v0 P2WPKH starts with 0014 (OP_0 + 20 bytes)
+                                if (output.scriptPubKey.hex.startsWith('0014') && output.scriptPubKey.hex.length === 44) {
+                                    const witnessProgramHex = output.scriptPubKey.hex.substring(4);
+                                    const witnessProgram = [];
+                                    for (let i = 0; i < witnessProgramHex.length; i += 2) {
+                                        witnessProgram.push(parseInt(witnessProgramHex.substr(i, 2), 16));
+                                    }
+                                    // Convert to bech32 address
+                                    outputAddress = createBech32('alpha', [0].concat(convertBits(witnessProgram, 8, 5, true)));
+                                    console.log(`  Decoded SegWit address from hex: ${outputAddress}`);
+                                }
+                            }
+                            
                             if (outputAddress) {
                                 const isOurs = outputAddress.toLowerCase() === ourAddressLower;
                                 console.log(`  Output ${index}: ${outputAddress} = ${value/100000000} ALPHA (ours: ${isOurs})`);
@@ -3383,6 +3408,8 @@ Anyone with your master private key can access all your funds.`;
                                     // Track destination addresses for outgoing transactions
                                     destinations.push({address: outputAddress, value: value});
                                 }
+                            } else {
+                                console.log(`  Output ${index}: Unable to extract address from scriptPubKey:`, output.scriptPubKey);
                             }
                         }
                     });
@@ -3423,19 +3450,43 @@ Anyone with your master private key can access all your funds.`;
                             }
                         }
                         
-                        // If not in current UTXOs, check if this transaction output was to our address
-                        // by looking at our transaction history
-                        if (currentTransactions) {
+                        // If not in current UTXOs, we need to check if this specific output was ours
+                        // by fetching the previous transaction details
+                        if (transactionDetailsCache[prevTxid]) {
+                            // We already have the transaction details cached
+                            const prevTxDetails = transactionDetailsCache[prevTxid];
+                            if (prevTxDetails && prevTxDetails.vout && prevTxDetails.vout[prevVout]) {
+                                const prevOutput = prevTxDetails.vout[prevVout];
+                                
+                                // Extract address from the previous output
+                                let prevOutputAddress = null;
+                                if (prevOutput.scriptPubKey) {
+                                    if (prevOutput.scriptPubKey.addresses && prevOutput.scriptPubKey.addresses.length > 0) {
+                                        prevOutputAddress = prevOutput.scriptPubKey.addresses[0];
+                                    } else if (prevOutput.scriptPubKey.address) {
+                                        prevOutputAddress = prevOutput.scriptPubKey.address;
+                                    }
+                                }
+                                
+                                if (prevOutputAddress && prevOutputAddress.toLowerCase() === ourAddressLower) {
+                                    isOurInput = true;
+                                    inputAmount += prevOutput.value * 100000000; // Convert to satoshis
+                                    console.log(`  Input ${prevTxid}:${prevVout} is ours (from cached tx): ${prevOutput.value} ALPHA`);
+                                } else {
+                                    console.log(`  Input ${prevTxid}:${prevVout} is NOT ours (address: ${prevOutputAddress})`);
+                                }
+                            }
+                        } else if (currentTransactions) {
+                            // Check if this transaction is in our history
                             const prevTx = currentTransactions.find(tx => 
                                 ((tx.tx_hash || tx.txid) || '').toLowerCase() === prevTxid.toLowerCase()
                             );
                             
                             if (prevTx) {
-                                // This transaction is in our history, so likely one of the outputs was ours
-                                // For now, we'll assume it's ours (more accurate would be to fetch that tx too)
-                                isOurInput = true;
-                                console.log(`  Input ${prevTxid}:${prevVout} likely ours (found in transaction history)`);
-                                // We don't know the exact amount without fetching the previous tx
+                                // Transaction is in our history, but we need to fetch details to check the specific output
+                                console.log(`  Input ${prevTxid}:${prevVout} found in history, but need to fetch details to verify ownership`);
+                                // Note: We can't determine ownership without fetching the transaction
+                                // This will be handled asynchronously later
                             }
                         }
                     });
@@ -3475,14 +3526,6 @@ Anyone with your master private key can access all your funds.`;
                         });
                         netAmount = sentAmount;
                         console.log('  Warning: Could not determine input amounts for outbound transaction');
-                        
-                        // If we still have 0 amount, this is likely a data loading issue
-                        // Default to showing as incoming to avoid confusion
-                        if (netAmount === 0 && outputAmount > 0) {
-                            console.log('  Overriding to incoming due to 0 outbound amount with outputs to us');
-                            isIncoming = true;
-                            netAmount = outputAmount;
-                        }
                     }
                 } else {
                     // INBOUND transaction
@@ -3546,6 +3589,9 @@ Anyone with your master private key can access all your funds.`;
                     // Then fetch full transaction details
                     electrumRequest('blockchain.transaction.get', [txid, true], function(txDetails) {
                         if (txDetails) {
+                            // Cache the transaction details
+                            transactionDetailsCache[txid] = txDetails;
+                            
                             // For incoming transactions, fetch the sender address
                             const result = calculateTransactionAmount(txDetails, ourAddress);
                             
@@ -3557,6 +3603,11 @@ Anyone with your master private key can access all your funds.`;
                                 
                                 // Fetch the previous transaction to get the sender address
                                 electrumRequest('blockchain.transaction.get', [prevTxid, true], function(prevTxDetails) {
+                                    // Cache the transaction details
+                                    if (prevTxDetails) {
+                                        transactionDetailsCache[prevTxid] = prevTxDetails;
+                                    }
+                                    
                                     if (prevTxDetails && prevTxDetails.vout && prevTxDetails.vout[prevVout]) {
                                         const prevOutput = prevTxDetails.vout[prevVout];
                                         if (prevOutput.scriptPubKey) {
@@ -4253,6 +4304,11 @@ Anyone with your master private key can access all your funds.`;
                                         
                                         // Fetch transaction details to determine direction
                                         electrumRequest('blockchain.transaction.get', [txid, true], function(txDetails) {
+                                            // Cache the transaction details
+                                            if (txDetails) {
+                                                transactionDetailsCache[txid] = txDetails;
+                                            }
+                                            
                                             let notificationTitle, notificationBody;
                                             
                                             if (txDetails) {
