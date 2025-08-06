@@ -2440,7 +2440,7 @@ Anyone with your master private key can access all your funds.`;
                 
                 // Subscribe to new address
                 electrumRequest('blockchain.scripthash.subscribe', [scriptHash], function(result) {
-                    console.log('Subscribed to address changes:', scriptHash, 'status:', result);
+                    // Successfully subscribed to address changes
                     currentScriptHashSubscription = scriptHash;
                 });
             }
@@ -2503,7 +2503,7 @@ Anyone with your master private key can access all your funds.`;
                         
                         // Subscribe to headers for new blocks
                         electrumRequest('blockchain.headers.subscribe', [], function(result) {
-                            console.log('Subscribed to block headers:', result);
+                            // Successfully subscribed to block headers
                             headerSubscriptionActive = true;
                             if (result && (result.height || result.block_height)) {
                                 currentBlockHeight = result.height || result.block_height;
@@ -2864,8 +2864,7 @@ Anyone with your master private key can access all your funds.`;
                 }
                 
                 // balanceAmount.textContent = 'Loading...'; // Removed duplicate balance display
-                console.log('Address:', address);
-                console.log('Script hash:', scriptHash);
+                // Debug logs removed
                 
                 // Get script hash balance (using blockchain.scripthash.get_balance)
                 electrumRequest('blockchain.scripthash.get_balance', [scriptHash], function(result, error) {
@@ -3203,7 +3202,7 @@ Anyone with your master private key can access all your funds.`;
                 // Also fetch transaction history
                 electrumRequest('blockchain.scripthash.get_history', [scriptHash], function(result) {
                     if (result !== null && result !== undefined) {
-                        console.log('Transaction history fetched:', result.length, 'transactions');
+                        // Transaction history fetched successfully
                         // Analyze changes
                         const changes = analyzeTransactionChanges(currentTransactions, result);
                         
@@ -4564,81 +4563,31 @@ Anyone with your master private key can access all your funds.`;
             
             // Download the wallet page for offline use
             window.downloadWalletPage = function() {
-                // Show loading notification
-                showInAppNotification('Downloading...', 'Fetching clean wallet file from server', 'info');
+                // Due to CORS restrictions, we'll use a direct download link approach
+                // This avoids the fetch API and CORS issues when running from local servers
                 
-                // Fetch the clean HTML from GitHub Pages with cache busting
+                showInAppNotification('Starting Download', 'Your browser will download the wallet file directly', 'info');
+                
+                // Create a direct download link to the raw GitHub content
+                // This bypasses CORS issues and ensures we get the latest version
+                const a = document.createElement('a');
+                a.href = 'https://raw.githubusercontent.com/unicitynetwork/guiwallet/main/index.html';
+                a.download = 'unicity-wallet.html';
+                a.style.display = 'none';
+                
+                // Add timestamp to prevent caching
                 const timestamp = new Date().getTime();
-                fetch(`https://unicitynetwork.github.io/guiwallet/?t=${timestamp}`, {
-                    cache: 'no-cache',
-                    headers: {
-                        'Cache-Control': 'no-cache',
-                        'Pragma': 'no-cache'
-                    }
-                })
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Failed to fetch wallet file');
-                        }
-                        return response.text();
-                    })
-                    .then(html => {
-                        // Create a blob with the HTML content
-                        const blob = new Blob([html], { type: 'text/html' });
-                        
-                        // Create download link
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = 'unicity-wallet.html';
-                        
-                        // Trigger download
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        window.URL.revokeObjectURL(url);
-                        
-                        // Show notification
-                        showInAppNotification('Download Complete', 'Clean wallet saved as unicity-wallet.html', 'success');
-                    })
-                    .catch(error => {
-                        console.error('Download failed:', error);
-                        // Try fallback to raw GitHub content
-                        showInAppNotification('Trying alternative source...', 'GitHub Pages might be updating, trying direct GitHub link', 'info');
-                        
-                        return fetch('https://raw.githubusercontent.com/unicitynetwork/guiwallet/main/index.html', {
-                            cache: 'no-cache'
-                        })
-                        .then(response => {
-                            if (!response.ok) {
-                                throw new Error('Fallback also failed');
-                            }
-                            return response.text();
-                        })
-                        .then(html => {
-                            // Create a blob with the HTML content
-                            const blob = new Blob([html], { type: 'text/html' });
-                            
-                            // Create download link
-                            const url = window.URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = 'unicity-wallet.html';
-                            
-                            // Trigger download
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                            window.URL.revokeObjectURL(url);
-                            
-                            // Show notification
-                            showInAppNotification('Download Complete', 'Clean wallet saved as unicity-wallet.html (from GitHub repository)', 'success');
-                        })
-                        .catch(fallbackError => {
-                            console.error('Both download methods failed:', fallbackError);
-                            showInAppNotification('Download Failed', 'Could not fetch wallet file. Please try again later or download directly from the repository.', 'error');
-                        });
-                    });
+                a.href = `https://raw.githubusercontent.com/unicitynetwork/guiwallet/main/index.html?t=${timestamp}`;
+                
+                // Trigger the download
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                
+                // Show completion message after a short delay
+                setTimeout(() => {
+                    showInAppNotification('Download Started', 'Check your downloads folder for unicity-wallet.html', 'success');
+                }, 1000);
             }
             
             // Show in-browser notification
@@ -4809,7 +4758,7 @@ Anyone with your master private key can access all your funds.`;
                         // Store transactions
                         electrumRequest('blockchain.scripthash.get_history', [scriptHash], function(result) {
                             if (result) {
-                                console.log('Regular wallet transaction history fetched:', result.length, 'transactions');
+                                // Regular wallet transaction history fetched successfully
                                 // Analyze changes
                                 const changes = analyzeTransactionChanges(currentTransactions, result);
                                 
