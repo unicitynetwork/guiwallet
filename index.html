@@ -5372,7 +5372,7 @@ Anyone with your master private key can access all your funds.`;
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Getting Started</h3>
             <ul style="margin-bottom: 20px;">
                 <li><strong>Create New Wallet:</strong> Click "Create Wallet" to generate a new wallet with a secure private key</li>
-                <li><strong>Import Existing Wallet:</strong> Use "Import Wallet" to restore from a backup file or enter your private key</li>
+                <li><strong>Import Existing Wallet:</strong> Restore from a previously exported backup file</li>
                 <li><strong>Network Connection:</strong> The wallet automatically connects to the Unicity network when online. You can also manually connect/disconnect using the endpoint controls</li>
             </ul>
             
@@ -5393,15 +5393,18 @@ Anyone with your master private key can access all your funds.`;
             
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Sending Funds</h3>
             <ul style="margin-bottom: 20px;">
-                <li><strong>Online Mode:</strong> Click "Send", enter recipient address and amount, review fees, then broadcast directly</li>
-                <li><strong>Offline Mode:</strong>
+                <li><strong>Online Mode:</strong> Enter recipient address and amount, review fees, then click Send and broadcast directly</li>
+                <li><strong>Offline Mode (Cold Wallet):</strong>
                     <ol style="margin-top: 10px;">
-                        <li>Export UTXOs while online using "Export UTXOs"</li>
+                        <li>Export UTXOs as JSON file at online computer using "Export UTXOs"</li>
                         <li>Transfer the UTXO file to your offline computer</li>
-                        <li>Import UTXOs and create the transaction offline</li>
-                        <li>Sign and export the transaction</li>
-                        <li>Transfer back online and broadcast using "Import & Broadcast"</li>
+                        <li>Import UTXOs and create the transaction offline by setting the recipient address, amount, review fees</li>
+                        <li>At the offline computer, sign and export the transaction by clicking Send</li>
+                        <li>Transfer back to online computer and broadcast using "Import & Broadcast"</li>
                     </ol>
+                    <p style="margin-top: 10px; padding: 10px; background-color: #f3f4f6; border-radius: 4px; font-size: 13px;">
+                        <strong>Note on Cold Wallets:</strong> The wallet used to create and sign transactions should be stored only at an offline machine (cold wallet). The wallet state (UTXOs into the wallet's address) is read at the online machine in watch-only mode (we provide only public address at the online machine). The full wallet is at the isolated offline machine only. This is a very secure way of storing large funds, since it is not possible to access the offline machine, and thus hack it and spend the owner's funds. On the other hand, it takes more effort to follow this flow every time the owner needs to spend funds. That is why it is called a "Cold wallet". Note however, that we do not need the offline machine in order to receive funds to the cold wallet - it is just enough to inform the sender about the cold wallet's public address. This is absolutely safe to do.
+                    </p>
                 </li>
             </ul>
             
