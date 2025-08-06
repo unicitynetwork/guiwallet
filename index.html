@@ -3395,13 +3395,13 @@ Anyone with your master private key can access all your funds.`;
                     
                     const hasWallet = wallet.addresses && wallet.addresses.length > 0;
                     
-                    // Disable if no UTXOs, in watch-only mode, or no wallet loaded
-                    sendTransactionBtn.disabled = !hasUtxos || watchOnlyMode || !hasWallet;
+                    // Disable if no UTXOs, or if in watch-only mode without UTXOs, or if no wallet and not watch-only
+                    sendTransactionBtn.disabled = !hasUtxos || (!hasWallet && !watchOnlyMode);
                     
-                    if (!hasWallet) {
-                        sendTransactionBtn.title = "Please load a wallet first";
-                    } else if (watchOnlyMode) {
-                        sendTransactionBtn.title = "Cannot send from watch-only address (no private key)";
+                    if (!hasWallet && !watchOnlyMode) {
+                        sendTransactionBtn.title = "Please load a wallet or use watch-only mode";
+                    } else if (watchOnlyMode && hasUtxos) {
+                        sendTransactionBtn.title = "Prepare transaction for offline signing";
                     } else if (hasUtxos) {
                         sendTransactionBtn.title = "Send Alpha to another address";
                     } else {
@@ -4084,6 +4084,72 @@ Anyone with your master private key can access all your funds.`;
                 }
             }
             
+            // Export transaction template for watch-only mode
+            function exportTransactionTemplate(transactions, recipientAddress, totalAmount, senderAddress) {
+                // Get current block height if connected
+                if (electrumConnected) {
+                    electrumRequest('blockchain.headers.subscribe', [], function(headerInfo, error) {
+                        const blockHeight = headerInfo ? (headerInfo.height || headerInfo.block_height) : null;
+                        createAndExportTemplate(blockHeight);
+                    });
+                } else {
+                    createAndExportTemplate(null);
+                }
+                
+                function createAndExportTemplate(blockHeight) {
+                    // Collect only the UTXOs that will be spent
+                    const spentUtxos = transactions.map(tx => tx.input);
+                    
+                    // Create export data with transaction templates
+                    const exportData = {
+                        version: '1.2',
+                        network: 'alpha',
+                        address: senderAddress,
+                        scriptHash: addressToScriptHash(senderAddress),
+                        blockchain: {
+                            height: blockHeight,
+                            timestamp: new Date().toISOString(),
+                            exportDate: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString()
+                        },
+                        utxos: spentUtxos,
+                        transactionTemplates: transactions.map((tx, index) => ({
+                            index: index,
+                            inputs: [tx.input],
+                            outputs: tx.outputs,
+                            fee: tx.fee,
+                            changeAmount: tx.changeAmount,
+                            changeAddress: tx.changeAddress
+                        })),
+                        metadata: {
+                            walletVersion: '1.0.0',
+                            exportedFrom: window.location.hostname || 'offline-wallet',
+                            utxoCount: spentUtxos.length,
+                            totalValue: spentUtxos.reduce((sum, utxo) => sum + (utxo.value || 0), 0),
+                            recipientAddress: recipientAddress,
+                            sendAmount: totalAmount,
+                            exportType: 'transaction_template'
+                        }
+                    };
+                    
+                    // Convert to JSON with nice formatting
+                    const jsonData = JSON.stringify(exportData, null, 2);
+                    
+                    // Create download with descriptive filename
+                    const blob = new Blob([jsonData], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                    a.download = `alpha_tx_template_${totalAmount}ALPHA_${timestamp}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    showInAppNotification('Transaction Template Exported', `Exported template to send ${totalAmount} ALPHA to ${recipientAddress.substring(0, 10)}...`, 'success');
+                }
+            }
+            
             // Import UTXO data
             function importUtxoData() {
                 if (electrumConnected) {
@@ -4149,16 +4215,36 @@ Anyone with your master private key can access all your funds.`;
                             if (!confirmStale) return;
                         }
                         
-                        // Store the imported data
-                        offlineUtxoData = data;
-                        localStorage.setItem('offlineUtxoData', JSON.stringify(data));
-                        
-                        // Update displays
-                        // displayOfflineBalance(); // Removed with Cold Wallet reorganization
-                        updateCommonBalance();
-                        updateUtxoListDisplay();
-                        
-                        showInAppNotification('Import Successful', `UTXO data imported (block ${data.blockchain.height})`, 'success');
+                        // Check if this is a transaction template
+                        if (data.transactionTemplates && data.metadata && data.metadata.exportType === 'transaction_template') {
+                            // This is a transaction template - handle differently
+                            offlineUtxoData = data;
+                            localStorage.setItem('offlineUtxoData', JSON.stringify(data));
+                            
+                            // Update displays
+                            updateCommonBalance();
+                            updateUtxoListDisplay();
+                            
+                            showInAppNotification('Transaction Template Imported', 
+                                `Template to send ${data.metadata.sendAmount} ALPHA to ${data.metadata.recipientAddress.substring(0, 10)}...`, 
+                                'success');
+                            
+                            // Auto-open transaction confirmation modal with the template data
+                            setTimeout(() => {
+                                showTransactionTemplateConfirmation(data.transactionTemplates, data.metadata.recipientAddress, data.metadata.sendAmount);
+                            }, 500);
+                        } else {
+                            // Regular UTXO import
+                            offlineUtxoData = data;
+                            localStorage.setItem('offlineUtxoData', JSON.stringify(data));
+                            
+                            // Update displays
+                            // displayOfflineBalance(); // Removed with Cold Wallet reorganization
+                            updateCommonBalance();
+                            updateUtxoListDisplay();
+                            
+                            showInAppNotification('Import Successful', `UTXO data imported (block ${data.blockchain.height})`, 'success');
+                        }
                     } catch (err) {
                         showInAppNotification('Import Failed', err.message, 'error');
                     }
@@ -4798,15 +4884,21 @@ Anyone with your master private key can access all your funds.`;
                     return;
                 }
                 
-                // Check if wallet is loaded
-                if (!wallet.masterPrivateKey && !wallet.childPrivateKey) {
+                // Check if wallet is loaded - but allow watch-only mode
+                if (!watchOnlyMode && !wallet.masterPrivateKey && !wallet.childPrivateKey) {
                     alert('No wallet loaded. Please create or import a wallet first.');
                     return;
                 }
                 
-                // Check if we have a wallet address
-                if (!wallet.addresses || wallet.addresses.length === 0) {
+                // Check if we have a wallet address (or watch-only address)
+                if (!watchOnlyMode && (!wallet.addresses || wallet.addresses.length === 0)) {
                     alert('No wallet address available. Please generate an address first.');
+                    return;
+                }
+                
+                // In watch-only mode, check if we have an address
+                if (watchOnlyMode && !watchOnlyAddressValue) {
+                    alert('No watch-only address set. Please enter an address to monitor.');
                     return;
                 }
                 
@@ -4827,20 +4919,28 @@ Anyone with your master private key can access all your funds.`;
                 // Convert amount to satoshis (1 ALPHA = 100000000 satoshis)
                 const amountSatoshis = Math.floor(sendAmount * 100000000);
                 
+                // Get the sender address (wallet address or watch-only address)
+                const senderAddress = watchOnlyMode ? watchOnlyAddressValue : wallet.addresses[0].address;
+                
                 // Collect UTXOs for the required amount
-                const txPlan = collectUtxosForAmount(availableUtxos, amountSatoshis, recipientAddress);
+                const txPlan = collectUtxosForAmount(availableUtxos, amountSatoshis, recipientAddress, senderAddress);
                 
                 if (!txPlan.success) {
                     alert(txPlan.error);
                     return;
                 }
                 
-                // Show confirmation modal
-                showTransactionConfirmation(txPlan.transactions, recipientAddress, sendAmount);
+                // In watch-only mode, export transaction template instead of showing confirmation
+                if (watchOnlyMode) {
+                    exportTransactionTemplate(txPlan.transactions, recipientAddress, sendAmount, senderAddress);
+                } else {
+                    // Show confirmation modal for normal flow
+                    showTransactionConfirmation(txPlan.transactions, recipientAddress, sendAmount);
+                }
             };
             
             // Collect UTXOs for required amount
-            function collectUtxosForAmount(utxoList, amountSatoshis, recipientAddress) {
+            function collectUtxosForAmount(utxoList, amountSatoshis, recipientAddress, senderAddress) {
                 // Sort UTXOs by value (ascending) to minimize number of transactions
                 const sortedUtxos = [...utxoList].sort((a, b) => a.value - b.value);
                 
@@ -4882,9 +4982,6 @@ Anyone with your master private key can access all your funds.`;
                         }
                     }
                     
-                    // Get the wallet's address string (not the object)
-                    const walletAddress = wallet.addresses[0].address;
-                    
                     transactions.push({
                         input: utxo,
                         outputs: [
@@ -4892,13 +4989,13 @@ Anyone with your master private key can access all your funds.`;
                         ],
                         fee: feePerTx,
                         changeAmount: changeAmount,
-                        changeAddress: walletAddress // Send change back to our address
+                        changeAddress: senderAddress // Send change back to sender address
                     });
                     
                     // Add change output if needed
                     if (changeAmount > 0) {
                         transactions[transactions.length - 1].outputs.push({
-                            address: walletAddress,
+                            address: senderAddress,
                             value: changeAmount
                         });
                     }
@@ -4960,6 +5057,21 @@ Anyone with your master private key can access all your funds.`;
                 
                 document.getElementById('txConfirmDetails').innerHTML = detailsHtml;
                 document.getElementById('txConfirmModal').style.display = 'block';
+            }
+            
+            // Show transaction confirmation for imported templates
+            function showTransactionTemplateConfirmation(transactionTemplates, recipientAddress, totalAmount) {
+                // Convert templates back to transaction format
+                const transactions = transactionTemplates.map(template => ({
+                    input: template.inputs[0],
+                    outputs: template.outputs,
+                    fee: template.fee,
+                    changeAmount: template.changeAmount,
+                    changeAddress: template.changeAddress
+                }));
+                
+                // Use the regular confirmation modal
+                showTransactionConfirmation(transactions, recipientAddress, totalAmount);
             }
             
             // Cancel transaction
@@ -5443,14 +5555,28 @@ Anyone with your master private key can access all your funds.`;
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Sending Funds</h3>
             <ul style="margin-bottom: 20px;">
                 <li><strong>Online Mode:</strong> Enter recipient address and amount, review fees, then click Send and broadcast directly</li>
-                <li><strong>Offline Mode (Cold Wallet):</strong>
-                    <ol style="margin-top: 10px;">
-                        <li>Export UTXOs as JSON file at online computer using "Export UTXOs"</li>
-                        <li>Transfer the UTXO file to your offline computer</li>
-                        <li>Import UTXOs and create the transaction offline by setting the recipient address, amount, review fees</li>
-                        <li>At the offline computer, sign and export the transaction by clicking Send</li>
-                        <li>Transfer back to online computer and broadcast using "Import & Broadcast"</li>
-                    </ol>
+                <li><strong>Offline Mode (Cold Wallet) - Two Options:</strong>
+                    <div style="margin-top: 10px; padding: 10px; background-color: #e6f7ff; border-radius: 4px;">
+                        <strong>Option A: Prepare Transaction Online (Recommended)</strong>
+                        <ol style="margin-top: 5px;">
+                            <li>In watch-only mode, enter recipient address and amount, then click Send</li>
+                            <li>Export the transaction template (includes only required UTXOs)</li>
+                            <li>Transfer the template file to your offline computer</li>
+                            <li>Import the template - transaction details will auto-fill</li>
+                            <li>Review and sign the transaction offline</li>
+                            <li>Transfer back to online computer and broadcast using "Import & Broadcast"</li>
+                        </ol>
+                    </div>
+                    <div style="margin-top: 10px; padding: 10px; background-color: #f0f0f0; border-radius: 4px;">
+                        <strong>Option B: Prepare Transaction Offline</strong>
+                        <ol style="margin-top: 5px;">
+                            <li>Export UTXOs as JSON file at online computer using "Export UTXOs"</li>
+                            <li>Transfer the UTXO file to your offline computer</li>
+                            <li>Import UTXOs and create the transaction offline by setting the recipient address, amount, review fees</li>
+                            <li>At the offline computer, sign and export the transaction by clicking Send</li>
+                            <li>Transfer back to online computer and broadcast using "Import & Broadcast"</li>
+                        </ol>
+                    </div>
                     <p style="margin-top: 10px; padding: 10px; background-color: #f3f4f6; border-radius: 4px; font-size: 13px;">
                         <strong>Note on Cold Wallets:</strong> The wallet used to create and sign transactions should be stored only at an offline machine (cold wallet). The wallet state (UTXOs into the wallet's address) is read at the online machine in watch-only mode (we provide only public address at the online machine). The full wallet is at the isolated offline machine only. This is a very secure way of storing large funds, since it is not possible to access the offline machine, and thus hack it and spend the owner's funds. On the other hand, it takes more effort to follow this flow every time the owner needs to spend funds. That is why it is called a "Cold wallet". Note however, that we do not need the offline machine in order to receive funds to the cold wallet - it is just enough to inform the sender about the cold wallet's public address. This is absolutely safe to do.
                     </p>
