@@ -627,7 +627,7 @@
             <!-- Compact Endpoint Section -->
             <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 15px; padding: 6px 8px; background-color: #f8f9fa; border-radius: 4px;">
                 <label for="rpcServer" style="margin: 0; font-weight: 600; white-space: nowrap; font-size: 10px;">Endpoint:</label>
-                <input type="text" id="rpcServer" placeholder="ws://localhost:50003" value="ws://localhost:50003" style="flex: 1; padding: 3px 6px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px;">
+                <input type="text" id="rpcServer" placeholder="wss://unicorn.unicity.network:50004" value="wss://unicorn.unicity.network:50004" style="flex: 1; padding: 3px 6px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px;">
                 <button id="connectRpcBtn" class="wallet-button">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
@@ -2408,11 +2408,11 @@ Anyone with your master private key can access all your funds.`;
             // const refreshBalanceBtn = document.getElementById('refreshBalanceBtn'); // Removed duplicate balance display
             
             // Connect to Electrum server
-            function connectToElectrum() {
+            function connectToElectrum(silent = false) {
                 const serverUrl = rpcServerInput.value.trim();
                 
                 if (!serverUrl) {
-                    alert('Please enter a Fulcrum server URL');
+                    if (!silent) alert('Please enter a Fulcrum server URL');
                     return;
                 }
                 
@@ -2581,8 +2581,15 @@ Anyone with your master private key can access all your funds.`;
                             infoBox.style.backgroundColor = 'rgba(255, 0, 110, 0.1)';
                             infoBox.style.borderLeftColor = 'var(--danger-color)';
                         }
-                        connectionStatusText.textContent = 'Connection error: Check console for details';
-                        showInAppNotification('Connection Error', 'Failed to connect to Fulcrum server', 'error');
+                        if (silent) {
+                            connectionStatusText.textContent = 'Unable to auto-connect. Click connect to try manually.';
+                            setTimeout(() => {
+                                connectionStatusDiv.style.display = 'none';
+                            }, 3000);
+                        } else {
+                            connectionStatusText.textContent = 'Connection error: Check console for details';
+                            showInAppNotification('Connection Error', 'Failed to connect to Fulcrum server', 'error');
+                        }
                     };
                     
                     electrumSocket.onclose = function() {
@@ -2609,13 +2616,22 @@ Anyone with your master private key can access all your funds.`;
                     };
                     
                 } catch (err) {
-                    showInAppNotification('Connection Failed', err.message, 'error');
+                    if (!silent) {
+                        showInAppNotification('Connection Failed', err.message, 'error');
+                    }
                     const infoBox = connectionStatusDiv.querySelector('.info-box');
                     if (infoBox) {
                         infoBox.style.backgroundColor = 'rgba(255, 0, 110, 0.1)';
                         infoBox.style.borderLeftColor = 'var(--danger-color)';
                     }
-                    connectionStatusText.textContent = 'Failed to connect: ' + err.message;
+                    if (silent) {
+                        connectionStatusText.textContent = 'Auto-connect unavailable';
+                        setTimeout(() => {
+                            connectionStatusDiv.style.display = 'none';
+                        }, 3000);
+                    } else {
+                        connectionStatusText.textContent = 'Failed to connect: ' + err.message;
+                    }
                 }
             }
             
@@ -2865,6 +2881,26 @@ Anyone with your master private key can access all your funds.`;
             connectRpcBtn.onclick = connectToElectrum;
             disconnectRpcBtn.onclick = disconnectFromElectrum;
             // refreshBalanceBtn.onclick = refreshBalance; // Removed duplicate balance display
+            
+            // Auto-connect to default endpoint on page load
+            function tryAutoConnect() {
+                const defaultEndpoint = 'wss://unicorn.unicity.network:50004';
+                
+                // Only auto-connect if we're not already connected and the input has the default value
+                if (!electrumConnected && rpcServerInput.value === defaultEndpoint) {
+                    // Show a subtle notification that we're attempting to connect
+                    connectionStatusDiv.style.display = 'block';
+                    connectionStatusText.textContent = 'Auto-connecting to Unicity network...';
+                    
+                    // Attempt to connect silently
+                    setTimeout(() => {
+                        connectToElectrum(true); // Pass true for silent mode
+                    }, 500); // Small delay to ensure UI is ready
+                }
+            }
+            
+            // Call auto-connect when page loads
+            setTimeout(tryAutoConnect, 1000); // Wait 1 second after page load
             
             // Auto-refresh balance when address is generated
             const originalGenerateNewAddress = window.generateNewAddress;
