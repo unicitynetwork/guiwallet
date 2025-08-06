@@ -522,6 +522,61 @@
                 min-width: auto;
             }
         }
+        
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 700px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        
+        .close-modal {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 20px;
+        }
+        
+        .close-modal:hover,
+        .close-modal:focus {
+            color: #000;
+            text-decoration: none;
+        }
+        
+        .help-link {
+            color: #3b82f6;
+            text-decoration: none;
+            cursor: pointer;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .help-link:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -604,53 +659,15 @@
             </div>
         </div>
         
-        <div class="info-box">
-            <h4>How to use this wallet:</h4>
-            
-            <h5 style="margin-top: 15px; margin-bottom: 10px; color: #333;">Getting Started</h5>
-            <ul style="margin-bottom: 15px;">
-                <li><strong>Create New Wallet:</strong> Click "Create Wallet" to generate a new wallet with a secure private key</li>
-                <li><strong>Import Existing Wallet:</strong> Use "Import Wallet" to restore from a backup file or enter your private key</li>
-                <li><strong>Network Connection:</strong> The wallet automatically connects to the Unicity network when online. You can also manually connect/disconnect using the endpoint controls</li>
-            </ul>
-            
-            <h5 style="margin-top: 15px; margin-bottom: 10px; color: #333;">Security</h5>
-            <ul style="margin-bottom: 15px;">
-                <li><strong>Encrypt Your Wallet:</strong> Click "Encrypt Wallet" and set a strong password. Write it down - there's no recovery if forgotten!</li>
-                <li><strong>Backup Regularly:</strong> Use "Backup Wallet" to save your encrypted wallet data. Store backups in multiple secure locations</li>
-                <li><strong>Offline Mode:</strong> For maximum security, <a href="#" onclick="downloadWalletPage(); return false;">download this page</a> and use it on an offline computer</li>
-            </ul>
-            
-            <h5 style="margin-top: 15px; margin-bottom: 10px; color: #333;">Receiving Funds</h5>
-            <ul style="margin-bottom: 15px;">
-                <li>Your address is displayed in the wallet section</li>
-                <li>Click the QR code icon to show a scannable code</li>
-                <li>Share your address or QR code with the sender</li>
-                <li>When connected, balance updates automatically</li>
-            </ul>
-            
-            <h5 style="margin-top: 15px; margin-bottom: 10px; color: #333;">Sending Funds</h5>
-            <ul style="margin-bottom: 15px;">
-                <li><strong>Online Mode:</strong> Click "Send", enter recipient address and amount, review fees, then broadcast directly</li>
-                <li><strong>Offline Mode:</strong>
-                    <ol style="margin-top: 5px;">
-                        <li>Export UTXOs while online using "Export UTXOs"</li>
-                        <li>Transfer the UTXO file to your offline computer</li>
-                        <li>Import UTXOs and create the transaction offline</li>
-                        <li>Sign and export the transaction</li>
-                        <li>Transfer back online and broadcast using "Import & Broadcast"</li>
-                    </ol>
-                </li>
-            </ul>
-            
-            <h5 style="margin-top: 15px; margin-bottom: 10px; color: #333;">Watch-Only Mode</h5>
-            <ul style="margin-bottom: 15px;">
-                <li>Enter any Alpha address in the watch-only field</li>
-                <li>Monitor balance and transactions without private keys</li>
-                <li>Perfect for cold storage monitoring</li>
-            </ul>
-            
-            <p style="margin-top: 15px;"><em>All wallet data is stored locally on your device. We never have access to your private keys.</em></p>
+        <div style="text-align: center; margin-bottom: 20px;">
+            <a href="#" class="help-link" onclick="showHelpModal(); return false;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                How to use this wallet
+            </a>
         </div>
 
         <div id="wallet-section" class="card-section">
@@ -4393,6 +4410,24 @@ Anyone with your master private key can access all your funds.`;
                 }
             }
             
+            // Show help modal
+            window.showHelpModal = function() {
+                document.getElementById('helpModal').style.display = 'block';
+            }
+            
+            // Close help modal
+            window.closeHelpModal = function() {
+                document.getElementById('helpModal').style.display = 'none';
+            }
+            
+            // Close modal when clicking outside
+            window.onclick = function(event) {
+                const modal = document.getElementById('helpModal');
+                if (event.target == modal) {
+                    modal.style.display = 'none';
+                }
+            }
+            
             // Download the wallet page for offline use
             window.downloadWalletPage = function() {
                 // Get the current page HTML
@@ -5326,6 +5361,61 @@ Anyone with your master private key can access all your funds.`;
                     Confirm & Sign
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="helpModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeHelpModal()">&times;</span>
+            <h2>How to use this wallet</h2>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Getting Started</h3>
+            <ul style="margin-bottom: 20px;">
+                <li><strong>Create New Wallet:</strong> Click "Create Wallet" to generate a new wallet with a secure private key</li>
+                <li><strong>Import Existing Wallet:</strong> Use "Import Wallet" to restore from a backup file or enter your private key</li>
+                <li><strong>Network Connection:</strong> The wallet automatically connects to the Unicity network when online. You can also manually connect/disconnect using the endpoint controls</li>
+            </ul>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Security</h3>
+            <ul style="margin-bottom: 20px;">
+                <li><strong>Encrypt Your Wallet:</strong> Click "Encrypt Wallet" and set a strong password. Write it down - there's no recovery if forgotten!</li>
+                <li><strong>Backup Regularly:</strong> Use "Backup Wallet" to save your encrypted wallet data. Store backups in multiple secure locations</li>
+                <li><strong>Offline Mode:</strong> For maximum security, <a href="#" onclick="downloadWalletPage(); return false;">download this page</a> and use it on an offline computer</li>
+            </ul>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Receiving Funds</h3>
+            <ul style="margin-bottom: 20px;">
+                <li>Your address is displayed in the wallet section</li>
+                <li>Click the QR code icon to show a scannable code</li>
+                <li>Share your address or QR code with the sender</li>
+                <li>When connected, balance updates automatically</li>
+            </ul>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Sending Funds</h3>
+            <ul style="margin-bottom: 20px;">
+                <li><strong>Online Mode:</strong> Click "Send", enter recipient address and amount, review fees, then broadcast directly</li>
+                <li><strong>Offline Mode:</strong>
+                    <ol style="margin-top: 10px;">
+                        <li>Export UTXOs while online using "Export UTXOs"</li>
+                        <li>Transfer the UTXO file to your offline computer</li>
+                        <li>Import UTXOs and create the transaction offline</li>
+                        <li>Sign and export the transaction</li>
+                        <li>Transfer back online and broadcast using "Import & Broadcast"</li>
+                    </ol>
+                </li>
+            </ul>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Watch-Only Mode</h3>
+            <ul style="margin-bottom: 20px;">
+                <li>Enter any Alpha address in the watch-only field</li>
+                <li>Monitor balance and transactions without private keys</li>
+                <li>Perfect for cold storage monitoring</li>
+            </ul>
+            
+            <p style="margin-top: 20px; padding: 15px; background-color: #f0f9ff; border-radius: 4px;">
+                <em>All wallet data is stored locally on your device. We never have access to your private keys.</em>
+            </p>
         </div>
     </div>
 
