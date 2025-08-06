@@ -4425,26 +4425,37 @@ Anyone with your master private key can access all your funds.`;
                 }
                 
                 if (address && address !== '-') {
-                    navigator.clipboard.writeText(address).then(function() {
-                        showInAppNotification('Copied', 'Address copied to clipboard', 'success');
-                    }).catch(function(err) {
-                        // Fallback for older browsers
-                        const textArea = document.createElement("textarea");
-                        textArea.value = address;
-                        textArea.style.position = "fixed";
-                        textArea.style.opacity = "0";
-                        document.body.appendChild(textArea);
-                        textArea.focus();
-                        textArea.select();
-                        try {
-                            document.execCommand('copy');
+                    // Check if clipboard API is available (requires HTTPS)
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(address).then(function() {
                             showInAppNotification('Copied', 'Address copied to clipboard', 'success');
-                        } catch (err) {
-                            showInAppNotification('Failed', 'Failed to copy address', 'error');
-                        }
-                        document.body.removeChild(textArea);
-                    });
+                        }).catch(function(err) {
+                            // If clipboard API fails, use fallback
+                            copyUsingFallback(address);
+                        });
+                    } else {
+                        // Use fallback method for HTTP or older browsers
+                        copyUsingFallback(address);
+                    }
                 }
+            }
+            
+            function copyUsingFallback(text) {
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                textArea.style.position = "fixed";
+                textArea.style.left = "-999999px";
+                textArea.style.top = "-999999px";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    showInAppNotification('Copied', 'Address copied to clipboard', 'success');
+                } catch (err) {
+                    showInAppNotification('Failed', 'Failed to copy address', 'error');
+                }
+                document.body.removeChild(textArea);
             }
             
             // Show help modal
