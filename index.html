@@ -618,6 +618,9 @@
         <div class="qr-content" style="max-width: 500px;">
             <h3>Restore Wallet from Backup</h3>
             <p style="margin: 15px 0; color: #666;">Upload a wallet backup file (.json) or Alpha wallet.dat file to restore your wallet.</p>
+            <div class="warning" style="margin: 10px 0; padding: 10px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px;">
+                <strong>⚠️ Warning:</strong> Alpha wallet.dat import is <strong>HIGHLY EXPERIMENTAL</strong>. Only unencrypted wallet.dat files are supported. Make sure to backup your wallet.dat before attempting import. This feature may not work correctly with all wallet configurations.
+            </div>
             
             <div class="input-group" style="margin-bottom: 15px;">
                 <label for="restoreFileInput">Backup File:</label>
@@ -1985,7 +1988,7 @@ Anyone with your master private key can access all your funds.`;
                     };
                     
                     // Generate first address
-                    generateAddress();
+                    generateNewAddress();
                     
                     // Save the wallet
                     saveWalletData();
@@ -5702,8 +5705,30 @@ Anyone with your master private key can access all your funds.`;
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Getting Started</h3>
             <ul style="margin-bottom: 20px;">
                 <li><strong>Create New Wallet:</strong> Click "Create Wallet" to generate a new wallet with a secure private key</li>
-                <li><strong>Import Existing Wallet:</strong> Restore from a previously exported backup file (.json) or import from Alpha node wallet.dat file</li>
+                <li><strong>Import Existing Wallet:</strong> 
+                    <ul style="margin-top: 5px;">
+                        <li><strong>From backup file (.json):</strong> Restore from a previously exported wallet backup</li>
+                        <li><strong>From Alpha wallet.dat (EXPERIMENTAL):</strong> Import an unencrypted wallet.dat file from Alpha node. This feature is highly experimental and may not work with all wallet configurations. Always backup your wallet.dat before attempting import.</li>
+                    </ul>
+                </li>
                 <li><strong>Network Connection:</strong> The wallet automatically connects to the Unicity network when online. You can also manually connect/disconnect using the endpoint controls</li>
+            </ul>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Importing Wallets</h3>
+            <ul style="margin-bottom: 20px;">
+                <li><strong>Standard Backup Import:</strong> Use the "Restore" button to import .json backup files created by this wallet. If the backup is encrypted, you'll need to enter the password.</li>
+                <li><strong>Alpha wallet.dat Import (EXPERIMENTAL):</strong>
+                    <div style="margin-top: 10px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px;">
+                        <strong>⚠️ Important Notes:</strong>
+                        <ul style="margin-top: 5px;">
+                            <li>Only <strong>unencrypted</strong> wallet.dat files are currently supported</li>
+                            <li>Make a backup copy of your wallet.dat before attempting import</li>
+                            <li>The import extracts the first valid private key found</li>
+                            <li>This feature is experimental and may not work with all wallet types</li>
+                            <li>To decrypt wallet.dat: use <code>alpha-cli walletpassphrase "yourpassword" 600</code> then copy the wallet.dat</li>
+                        </ul>
+                    </div>
+                </li>
             </ul>
             
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Security</h3>
