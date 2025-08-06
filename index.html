@@ -4563,31 +4563,76 @@ Anyone with your master private key can access all your funds.`;
             
             // Download the wallet page for offline use
             window.downloadWalletPage = function() {
-                // Due to CORS restrictions, we'll use a direct download link approach
-                // This avoids the fetch API and CORS issues when running from local servers
+                showInAppNotification('Preparing Download', 'Creating clean wallet file...', 'info');
                 
-                showInAppNotification('Starting Download', 'Your browser will download the wallet file directly', 'info');
+                // Clone the current document
+                const clonedDoc = document.documentElement.cloneNode(true);
                 
-                // Create a direct download link to the raw GitHub content
-                // This bypasses CORS issues and ensures we get the latest version
+                // Remove any dynamic content that shouldn't be saved
+                // Remove any wallet data from displayed elements
+                const elementsToClean = clonedDoc.querySelectorAll([
+                    '#walletAddress',
+                    '#walletBalance', 
+                    '#walletUnconfirmed',
+                    '#watchOnlyAddress',
+                    '#watchOnlyBalance',
+                    '#watchOnlyUnconfirmed',
+                    '#transactionHistoryList',
+                    '#currentUtxoList',
+                    '#recipientAddress',
+                    '#sendAmount'
+                ].join(','));
+                
+                elementsToClean.forEach(el => {
+                    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                        el.value = '';
+                    } else {
+                        if (el.id === 'walletAddress') {
+                            el.textContent = '-';
+                        } else if (el.id === 'walletBalance' || el.id === 'watchOnlyBalance') {
+                            el.textContent = '0.00000000 ALPHA';
+                        } else if (el.id === 'transactionHistoryList') {
+                            el.innerHTML = '<p style="color: #999; text-align: center;">No transactions yet</p>';
+                        } else if (el.id === 'currentUtxoList') {
+                            el.innerHTML = '<p style="color: #999; text-align: center;">No UTXOs loaded</p>';
+                        } else {
+                            el.textContent = '';
+                        }
+                    }
+                });
+                
+                // Reset any inline styles that might have been set dynamically
+                const dynamicElements = clonedDoc.querySelectorAll('[style*="display: block"], [style*="display: none"]');
+                dynamicElements.forEach(el => {
+                    // Reset to original display states
+                    if (el.id === 'watchOnlySection' || el.id === 'transactionHistoryContainer') {
+                        el.style.display = 'none';
+                    }
+                });
+                
+                // Clear any script-injected content
+                const notificationContainer = clonedDoc.querySelector('#notificationContainer');
+                if (notificationContainer) {
+                    notificationContainer.innerHTML = '';
+                }
+                
+                // Get the cleaned HTML
+                const cleanHtml = '<!DOCTYPE html>\n' + clonedDoc.outerHTML;
+                
+                // Create blob and download
+                const blob = new Blob([cleanHtml], { type: 'text/html;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = 'https://raw.githubusercontent.com/unicitynetwork/guiwallet/main/index.html';
+                a.href = url;
                 a.download = 'unicity-wallet.html';
                 a.style.display = 'none';
                 
-                // Add timestamp to prevent caching
-                const timestamp = new Date().getTime();
-                a.href = `https://raw.githubusercontent.com/unicitynetwork/guiwallet/main/index.html?t=${timestamp}`;
-                
-                // Trigger the download
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
+                URL.revokeObjectURL(url);
                 
-                // Show completion message after a short delay
-                setTimeout(() => {
-                    showInAppNotification('Download Started', 'Check your downloads folder for unicity-wallet.html', 'success');
-                }, 1000);
+                showInAppNotification('Download Complete', 'Clean wallet saved as unicity-wallet.html', 'success');
             }
             
             // Show in-browser notification
