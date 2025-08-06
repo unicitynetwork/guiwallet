@@ -701,10 +701,16 @@
             <div id="walletInfo" style="display: none; margin-bottom: 15px; padding: 15px; background-color: rgba(52, 211, 153, 0.05); border-radius: 8px; border: 1px solid rgba(52, 211, 153, 0.2);">
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
                     <div style="display: flex; align-items: center; gap: 15px;">
-                        <div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
                             <a id="walletAddressLink" href="#" target="_blank" style="color: var(--primary-color); text-decoration: none; font-family: monospace;">
                                 <span id="walletAddress">-</span>
                             </a>
+                            <button onclick="copyAddress('wallet')" style="background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center;" title="Copy address">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                            </button>
                         </div>
                         <div>
                             <span id="walletBalance" style="font-weight: 600;">0 ALPHA</span>
@@ -4406,6 +4412,38 @@ Anyone with your master private key can access all your funds.`;
                     } catch (err) {
                         console.error('Error requesting notification permission:', err);
                     }
+                }
+            }
+            
+            // Copy address to clipboard
+            window.copyAddress = function(type) {
+                let address = '';
+                if (type === 'wallet') {
+                    address = document.getElementById('walletAddress').textContent;
+                } else if (type === 'watchonly') {
+                    address = document.getElementById('watchOnlyAddress').value;
+                }
+                
+                if (address && address !== '-') {
+                    navigator.clipboard.writeText(address).then(function() {
+                        showInAppNotification('Copied', 'Address copied to clipboard', 'success');
+                    }).catch(function(err) {
+                        // Fallback for older browsers
+                        const textArea = document.createElement("textarea");
+                        textArea.value = address;
+                        textArea.style.position = "fixed";
+                        textArea.style.opacity = "0";
+                        document.body.appendChild(textArea);
+                        textArea.focus();
+                        textArea.select();
+                        try {
+                            document.execCommand('copy');
+                            showInAppNotification('Copied', 'Address copied to clipboard', 'success');
+                        } catch (err) {
+                            showInAppNotification('Failed', 'Failed to copy address', 'error');
+                        }
+                        document.body.removeChild(textArea);
+                    });
                 }
             }
             
