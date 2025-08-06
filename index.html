@@ -593,27 +593,64 @@
                 </svg>
                 Unicity WEB GUI Wallet
             </h1>
-            <p>A simple offline wallet for storing keys and generating an address</p>
-            <div id="connectionStatus" class="warning" style="display: none; margin-top: 15px;">
+            <p>A comprehensive web-based wallet for sending, receiving, and storing funds while managing hot and cold wallets</p>
+            <div id="securityWarning" class="warning" style="display: none; margin-top: 15px;">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 8px;">
                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
                     <line x1="12" y1="9" x2="12" y2="13"></line>
                     <line x1="12" y1="17" x2="12.01" y2="17"></line>
                 </svg>
-                <span id="connectionStatusText">Checking connection status...</span>
+                <span id="securityWarningText">Checking connection status...</span>
             </div>
         </div>
         
         <div class="info-box">
             <h4>How to use this wallet:</h4>
-            <ol>
-                <li><strong>Save this webpage</strong> - Save this webpage as a file and open in an offline environment</li>
-                <li><strong>Create Wallet</strong> - Click on Create Wallet to generate an address</li>
-                <li><strong>QR Code</strong> - Click on QR code and share the code with mining service  </li>
-                <li><strong>Encrypt Wallet</strong> - Click on Encrypt Wallet. Write your password down!</li>
-                <li><strong>Backup Wallet</strong> - Click on Backup Wallet to store a backup</li>
-            </ol>
-            <p>All wallet data is stored only on your device.</p>
+            
+            <h5 style="margin-top: 15px; margin-bottom: 10px; color: #333;">Getting Started</h5>
+            <ul style="margin-bottom: 15px;">
+                <li><strong>Create New Wallet:</strong> Click "Create Wallet" to generate a new wallet with a secure private key</li>
+                <li><strong>Import Existing Wallet:</strong> Use "Import Wallet" to restore from a backup file or enter your private key</li>
+                <li><strong>Network Connection:</strong> The wallet automatically connects to the Unicity network when online. You can also manually connect/disconnect using the endpoint controls</li>
+            </ul>
+            
+            <h5 style="margin-top: 15px; margin-bottom: 10px; color: #333;">Security</h5>
+            <ul style="margin-bottom: 15px;">
+                <li><strong>Encrypt Your Wallet:</strong> Click "Encrypt Wallet" and set a strong password. Write it down - there's no recovery if forgotten!</li>
+                <li><strong>Backup Regularly:</strong> Use "Backup Wallet" to save your encrypted wallet data. Store backups in multiple secure locations</li>
+                <li><strong>Offline Mode:</strong> For maximum security, <a href="#" onclick="downloadWalletPage(); return false;">download this page</a> and use it on an offline computer</li>
+            </ul>
+            
+            <h5 style="margin-top: 15px; margin-bottom: 10px; color: #333;">Receiving Funds</h5>
+            <ul style="margin-bottom: 15px;">
+                <li>Your address is displayed in the wallet section</li>
+                <li>Click the QR code icon to show a scannable code</li>
+                <li>Share your address or QR code with the sender</li>
+                <li>When connected, balance updates automatically</li>
+            </ul>
+            
+            <h5 style="margin-top: 15px; margin-bottom: 10px; color: #333;">Sending Funds</h5>
+            <ul style="margin-bottom: 15px;">
+                <li><strong>Online Mode:</strong> Click "Send", enter recipient address and amount, review fees, then broadcast directly</li>
+                <li><strong>Offline Mode:</strong>
+                    <ol style="margin-top: 5px;">
+                        <li>Export UTXOs while online using "Export UTXOs"</li>
+                        <li>Transfer the UTXO file to your offline computer</li>
+                        <li>Import UTXOs and create the transaction offline</li>
+                        <li>Sign and export the transaction</li>
+                        <li>Transfer back online and broadcast using "Import & Broadcast"</li>
+                    </ol>
+                </li>
+            </ul>
+            
+            <h5 style="margin-top: 15px; margin-bottom: 10px; color: #333;">Watch-Only Mode</h5>
+            <ul style="margin-bottom: 15px;">
+                <li>Enter any Alpha address in the watch-only field</li>
+                <li>Monitor balance and transactions without private keys</li>
+                <li>Perfect for cold storage monitoring</li>
+            </ul>
+            
+            <p style="margin-top: 15px;"><em>All wallet data is stored locally on your device. We never have access to your private keys.</em></p>
         </div>
 
         <div id="wallet-section" class="card-section">
@@ -2316,29 +2353,29 @@ Anyone with your master private key can access all your funds.`;
             
             // Helper to update the connection status UI
             function updateConnectionUI(isOnline, connectionQuality = 'normal') {
-                const connectionStatus = document.getElementById('connectionStatus');
-                const connectionStatusText = document.getElementById('connectionStatusText');
+                const securityWarning = document.getElementById('securityWarning');
+                const securityWarningText = document.getElementById('securityWarningText');
                 
-                connectionStatus.style.display = 'block';
+                securityWarning.style.display = 'block';
                 
                 if (isOnline) {
                     // We're online - display warning
-                    connectionStatus.style.backgroundColor = 'rgba(255, 0, 110, 0.05)';
-                    connectionStatus.style.borderLeftColor = 'var(--danger-color)';
+                    securityWarning.style.backgroundColor = 'rgba(255, 0, 110, 0.05)';
+                    securityWarning.style.borderLeftColor = 'var(--danger-color)';
                     
                     let message = '<strong>Warning:</strong> This wallet is currently running in an online environment. ' +
-                        'For maximum security, save this page and open it when you are offline.';
+                        'For maximum security, <a href="#" onclick="downloadWalletPage(); return false;" style="color: #ffba08; text-decoration: underline;">download this page</a> and open it when you are offline.';
                         
                     if (connectionQuality === 'slow') {
                         message += ' Network connection appears to be slow or limited.';
                     }
                     
-                    connectionStatusText.innerHTML = message;
+                    securityWarningText.innerHTML = message;
                 } else {
                     // We're offline - display confirmation
-                    connectionStatus.style.backgroundColor = 'rgba(6, 214, 160, 0.05)';
-                    connectionStatus.style.borderLeftColor = 'var(--success-color)';
-                    connectionStatusText.innerHTML = '<strong>Secure:</strong> This wallet is running in an offline environment.';
+                    securityWarning.style.backgroundColor = 'rgba(6, 214, 160, 0.05)';
+                    securityWarning.style.borderLeftColor = 'var(--success-color)';
+                    securityWarningText.innerHTML = '<strong>Secure:</strong> This wallet is running in an offline environment.';
                 }
             }
             
@@ -4354,6 +4391,30 @@ Anyone with your master private key can access all your funds.`;
                         console.error('Error requesting notification permission:', err);
                     }
                 }
+            }
+            
+            // Download the wallet page for offline use
+            window.downloadWalletPage = function() {
+                // Get the current page HTML
+                const html = document.documentElement.outerHTML;
+                
+                // Create a blob with the HTML content
+                const blob = new Blob([html], { type: 'text/html' });
+                
+                // Create download link
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'unicity-wallet.html';
+                
+                // Trigger download
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                // Show notification
+                showInAppNotification('Download Started', 'Wallet saved as unicity-wallet.html', 'success');
             }
             
             // Show in-browser notification
