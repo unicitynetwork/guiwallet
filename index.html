@@ -4564,26 +4564,40 @@ Anyone with your master private key can access all your funds.`;
             
             // Download the wallet page for offline use
             window.downloadWalletPage = function() {
-                // Get the current page HTML
-                const html = document.documentElement.outerHTML;
+                // Show loading notification
+                showInAppNotification('Downloading...', 'Fetching clean wallet file from server', 'info');
                 
-                // Create a blob with the HTML content
-                const blob = new Blob([html], { type: 'text/html' });
-                
-                // Create download link
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'unicity-wallet.html';
-                
-                // Trigger download
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-                
-                // Show notification
-                showInAppNotification('Download Started', 'Wallet saved as unicity-wallet.html', 'success');
+                // Fetch the clean HTML from GitHub Pages
+                fetch('https://unicitynetwork.github.io/guiwallet/')
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Failed to fetch wallet file');
+                        }
+                        return response.text();
+                    })
+                    .then(html => {
+                        // Create a blob with the HTML content
+                        const blob = new Blob([html], { type: 'text/html' });
+                        
+                        // Create download link
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'unicity-wallet.html';
+                        
+                        // Trigger download
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        window.URL.revokeObjectURL(url);
+                        
+                        // Show notification
+                        showInAppNotification('Download Complete', 'Clean wallet saved as unicity-wallet.html', 'success');
+                    })
+                    .catch(error => {
+                        console.error('Download failed:', error);
+                        showInAppNotification('Download Failed', 'Could not fetch wallet file. Please try downloading directly from the repository.', 'error');
+                    });
             }
             
             // Show in-browser notification
