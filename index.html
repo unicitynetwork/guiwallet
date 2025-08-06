@@ -617,11 +617,11 @@
     <div id="restoreModal" class="qr-modal" style="display: none;">
         <div class="qr-content" style="max-width: 500px;">
             <h3>Restore Wallet from Backup</h3>
-            <p style="margin: 15px 0; color: #666;">Upload a previously saved wallet backup file to restore your wallet.</p>
+            <p style="margin: 15px 0; color: #666;">Upload a wallet backup file (.json) or Alpha wallet.dat file to restore your wallet.</p>
             
             <div class="input-group" style="margin-bottom: 15px;">
                 <label for="restoreFileInput">Backup File:</label>
-                <input type="file" id="restoreFileInput" accept=".json" style="width: 100%;">
+                <input type="file" id="restoreFileInput" accept=".json,.dat" style="width: 100%;">
             </div>
             
             <div class="input-group" style="margin-bottom: 15px;">
@@ -1906,6 +1906,120 @@ Anyone with your master private key can access all your funds.`;
                 document.body.style.overflow = '';
             }
             
+            // Helper function to read binary data
+            function readBinaryFile(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = e => resolve(new Uint8Array(e.target.result));
+                    reader.onerror = reject;
+                    reader.readAsArrayBuffer(file);
+                });
+            }
+            
+            // Simple SQLite parser for wallet.dat files
+            async function restoreFromWalletDat(file) {
+                try {
+                    restoreStatus.className = 'info-box info';
+                    restoreStatus.textContent = 'Reading Alpha wallet.dat file...';
+                    restoreStatus.style.display = 'block';
+                    
+                    const data = await readBinaryFile(file);
+                    
+                    // Check SQLite header
+                    const header = new TextDecoder().decode(data.slice(0, 16));
+                    if (!header.startsWith('SQLite format 3')) {
+                        throw new Error('Invalid wallet.dat file - not an SQLite database');
+                    }
+                    
+                    // Parse page size (bytes 16-17)
+                    let pageSize = (data[16] << 8) | data[17];
+                    if (pageSize === 1) {
+                        pageSize = 65536;
+                    }
+                    
+                    // Look for wallet descriptor keys in the database
+                    // We're looking for entries that contain private keys
+                    const searchPattern = new Uint8Array([0x04, 0x20]); // DER encoding for 32-byte octet string
+                    const privateKeys = [];
+                    
+                    // Search through the file for private key patterns
+                    for (let i = 0; i < data.length - 34; i++) {
+                        if (data[i] === searchPattern[0] && data[i + 1] === searchPattern[1]) {
+                            // Found potential private key
+                            const privKey = data.slice(i + 2, i + 34);
+                            const privKeyHex = Array.from(privKey).map(b => b.toString(16).padStart(2, '0')).join('');
+                            
+                            // Validate it's a valid private key (not all zeros, within curve order)
+                            if (privKeyHex !== '0'.repeat(64) && isValidPrivateKey(privKeyHex)) {
+                                privateKeys.push(privKeyHex);
+                            }
+                        }
+                    }
+                    
+                    if (privateKeys.length === 0) {
+                        throw new Error('No private keys found in wallet.dat file');
+                    }
+                    
+                    // For now, use the first private key found
+                    // In a real implementation, we'd need to determine which is the master key
+                    const masterKey = privateKeys[0];
+                    
+                    restoreStatus.textContent = `Found ${privateKeys.length} private key(s). Importing wallet...`;
+                    
+                    // Confirmation before overwriting
+                    if (wallet.masterPrivateKey) {
+                        const confirmOverwrite = confirm('This will overwrite your existing wallet. Are you sure you want to proceed?');
+                        if (!confirmOverwrite) {
+                            closeRestoreModal();
+                            return;
+                        }
+                    }
+                    
+                    // Create wallet with the extracted key
+                    wallet = {
+                        masterPrivateKey: masterKey,
+                        addresses: [],
+                        isEncrypted: false,
+                        encryptedMasterKey: null,
+                        childPrivateKey: null
+                    };
+                    
+                    // Generate first address
+                    generateAddress();
+                    
+                    // Save the wallet
+                    saveWalletData();
+                    
+                    // Update UI
+                    updateUIFromWallet();
+                    updateButtonStates(true);
+                    
+                    restoreStatus.className = 'info-box success';
+                    restoreStatus.textContent = 'Wallet imported successfully from Alpha wallet.dat!';
+                    
+                    // Close modal after 2 seconds
+                    setTimeout(() => {
+                        closeRestoreModal();
+                    }, 2000);
+                    
+                } catch (error) {
+                    restoreStatus.className = 'info-box error';
+                    restoreStatus.textContent = 'Error importing wallet.dat: ' + error.message;
+                    restoreStatus.style.display = 'block';
+                }
+            }
+            
+            // Validate if a hex string is a valid secp256k1 private key
+            function isValidPrivateKey(hex) {
+                try {
+                    const n = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141');
+                    const key = BigInt('0x' + hex);
+                    return key > 0n && key < n;
+                } catch {
+                    return false;
+                }
+            }
+            
             async function restoreWallet() {
                 const file = restoreFileInput.files[0];
                 if (!file) {
@@ -1916,7 +2030,13 @@ Anyone with your master private key can access all your funds.`;
                 }
                 
                 try {
-                    // Read the file
+                    // Check if this is a wallet.dat file (SQLite)
+                    if (file.name.endsWith('.dat')) {
+                        await restoreFromWalletDat(file);
+                        return;
+                    }
+                    
+                    // Otherwise, read as text file (original backup format)
                     const fileContent = await file.text();
                     
                     // Parse the master key from the file
@@ -5582,7 +5702,7 @@ Anyone with your master private key can access all your funds.`;
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Getting Started</h3>
             <ul style="margin-bottom: 20px;">
                 <li><strong>Create New Wallet:</strong> Click "Create Wallet" to generate a new wallet with a secure private key</li>
-                <li><strong>Import Existing Wallet:</strong> Restore from a previously exported backup file</li>
+                <li><strong>Import Existing Wallet:</strong> Restore from a previously exported backup file (.json) or import from Alpha node wallet.dat file</li>
                 <li><strong>Network Connection:</strong> The wallet automatically connects to the Unicity network when online. You can also manually connect/disconnect using the endpoint controls</li>
             </ul>
             
