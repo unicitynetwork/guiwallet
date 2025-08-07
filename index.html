@@ -1660,9 +1660,11 @@ Anyone with your master private key can access all your funds.`;
                     saveWalletData();
                     
                     // Update UI
-                    encryptionStatus.style.display = 'block';
+                    // encryptionStatus.style.display = 'block'; // Removed with Security section
                     // Clear password strength indicator when wallet is encrypted
-                    passwordStrength.innerHTML = '';
+                    if (passwordStrength) {
+                        passwordStrength.innerHTML = '';
+                    }
                     
                     showInAppNotification('Wallet Encrypted', 'Your private key is now protected by your password', 'success');
                 } catch (e) {
