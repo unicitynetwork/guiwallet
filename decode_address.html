@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Decode Target Address</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body>
+    <h1>Decode Target Address</h1>
+    <pre id="output"></pre>
+    
+    <script>
+        // Bech32 implementation
+        const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+        
+        function bech32_polymod(values) {
+            const GENERATOR = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+            let chk = 1;
+            for (let p = 0; p < values.length; ++p) {
+                const top = chk >> 25;
+                chk = (chk & 0x1ffffff) << 5 ^ values[p];
+                for (let i = 0; i < 5; ++i) {
+                    if ((top >> i) & 1) {
+                        chk ^= GENERATOR[i];
+                    }
+                }
+            }
+            return chk;
+        }
+        
+        function bech32_hrp_expand(hrp) {
+            const ret = [];
+            for (let p = 0; p < hrp.length; ++p) {
+                ret.push(hrp.charCodeAt(p) >> 5);
+            }
+            ret.push(0);
+            for (let p = 0; p < hrp.length; ++p) {
+                ret.push(hrp.charCodeAt(p) & 31);
+            }
+            return ret;
+        }
+        
+        function bech32_verify_checksum(hrp, data) {
+            return bech32_polymod(bech32_hrp_expand(hrp).concat(data)) === 1;
+        }
+        
+        function bech32_decode(bech32) {
+            let p;
+            let has_lower = false;
+            let has_upper = false;
+            for (p = 0; p < bech32.length; ++p) {
+                if (bech32.charCodeAt(p) < 33 || bech32.charCodeAt(p) > 126) {
+                    return null;
+                }
+                if (bech32.charCodeAt(p) >= 97 && bech32.charCodeAt(p) <= 122) {
+                    has_lower = true;
+                }
+                if (bech32.charCodeAt(p) >= 65 && bech32.charCodeAt(p) <= 90) {
+                    has_upper = true;
+                }
+            }
+            if (has_lower && has_upper) {
+                return null;
+            }
+            bech32 = bech32.toLowerCase();
+            const pos = bech32.lastIndexOf('1');
+            if (pos < 1 || pos + 7 > bech32.length || bech32.length > 90) {
+                return null;
+            }
+            const hrp = bech32.substring(0, pos);
+            const data = [];
+            for (p = pos + 1; p < bech32.length; ++p) {
+                const d = CHARSET.indexOf(bech32.charAt(p));
+                if (d === -1) {
+                    return null;
+                }
+                data.push(d);
+            }
+            if (!bech32_verify_checksum(hrp, data)) {
+                return null;
+            }
+            return {hrp: hrp, data: data.slice(0, data.length - 6)};
+        }
+        
+        function convertbits(data, frombits, tobits, pad) {
+            let acc = 0;
+            let bits = 0;
+            const ret = [];
+            const maxv = (1 << tobits) - 1;
+            for (let p = 0; p < data.length; ++p) {
+                const value = data[p];
+                if (value < 0 || (value >> frombits) !== 0) {
+                    return null;
+                }
+                acc = (acc << frombits) | value;
+                bits += frombits;
+                while (bits >= tobits) {
+                    bits -= tobits;
+                    ret.push((acc >> bits) & maxv);
+                }
+            }
+            if (pad) {
+                if (bits > 0) {
+                    ret.push((acc << (tobits - bits)) & maxv);
+                }
+            } else if (bits >= frombits || ((acc << (tobits - bits)) & maxv)) {
+                return null;
+            }
+            return ret;
+        }
+        
+        const output = document.getElementById('output');
+        const targetAddress = 'alpha1q64c7vmezvqd43l4g0hg8l72uttc0sc5cqrhpqz';
+        
+        output.textContent = `Decoding address: ${targetAddress}\n\n`;
+        
+        const decoded = bech32_decode(targetAddress);
+        if (decoded) {
+            output.textContent += `HRP: ${decoded.hrp}\n`;
+            output.textContent += `Data (5-bit): ${decoded.data.join(', ')}\n`;
+            
+            const witver = decoded.data[0];
+            const witprog = convertbits(decoded.data.slice(1), 5, 8, false);
+            
+            if (witprog) {
+                const pubkeyHash = witprog.map(b => b.toString(16).padStart(2, '0')).join('');
+                output.textContent += `\nWitness version: ${witver}\n`;
+                output.textContent += `Pubkey hash: ${pubkeyHash}\n`;
+                output.textContent += `Hash length: ${witprog.length} bytes\n`;
+                
+                // What public key would generate this hash?
+                output.textContent += `\n=== Analysis ===\n`;
+                output.textContent += `The address decodes to pubkey hash: ${pubkeyHash}\n`;
+                output.textContent += `None of the wallet.dat keys generate this hash.\n`;
+                output.textContent += `\nPossible explanations:\n`;
+                output.textContent += `1. The wallet.dat is from a different wallet\n`;
+                output.textContent += `2. The expected address is wrong\n`;
+                output.textContent += `3. There's another key in wallet.dat we haven't found\n`;
+                output.textContent += `4. The address uses a different derivation method\n`;
+            }
+        } else {
+            output.textContent += 'Failed to decode address!\n';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Working BIP32 for wallet.dat</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/elliptic/6.5.4/elliptic.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body>
+    <h1>BIP32 Key Derivation</h1>
+    <pre id="output"></pre>
+    
+    <script>
+        // Bech32 implementation
+        const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+        
+        function bech32_polymod(values) {
+            const GENERATOR = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+            let chk = 1;
+            for (let p = 0; p < values.length; ++p) {
+                const top = chk >> 25;
+                chk = (chk & 0x1ffffff) << 5 ^ values[p];
+                for (let i = 0; i < 5; ++i) {
+                    if ((top >> i) & 1) {
+                        chk ^= GENERATOR[i];
+                    }
+                }
+            }
+            return chk;
+        }
+        
+        function bech32_hrp_expand(hrp) {
+            const ret = [];
+            for (let p = 0; p < hrp.length; ++p) {
+                ret.push(hrp.charCodeAt(p) >> 5);
+            }
+            ret.push(0);
+            for (let p = 0; p < hrp.length; ++p) {
+                ret.push(hrp.charCodeAt(p) & 31);
+            }
+            return ret;
+        }
+        
+        function bech32_create_checksum(hrp, data) {
+            const values = bech32_hrp_expand(hrp).concat(data).concat([0, 0, 0, 0, 0, 0]);
+            const mod = bech32_polymod(values) ^ 1;
+            const ret = [];
+            for (let p = 0; p < 6; ++p) {
+                ret.push((mod >> 5 * (5 - p)) & 31);
+            }
+            return ret;
+        }
+        
+        function bech32_encode(hrp, data) {
+            const combined = data.concat(bech32_create_checksum(hrp, data));
+            let ret = hrp + '1';
+            for (let p = 0; p < combined.length; ++p) {
+                ret += CHARSET.charAt(combined[p]);
+            }
+            return ret;
+        }
+        
+        function segwit_addr_encode(hrp, witver, witprog) {
+            const ret = bech32_encode(hrp, [witver].concat(convertbits(witprog, 8, 5)));
+            return ret;
+        }
+        
+        function convertbits(data, frombits, tobits, pad = true) {
+            let acc = 0;
+            let bits = 0;
+            const ret = [];
+            const maxv = (1 << tobits) - 1;
+            for (let p = 0; p < data.length; ++p) {
+                const value = data[p];
+                acc = (acc << frombits) | value;
+                bits += frombits;
+                while (bits >= tobits) {
+                    bits -= tobits;
+                    ret.push((acc >> bits) & maxv);
+                }
+            }
+            if (pad) {
+                if (bits > 0) {
+                    ret.push((acc << (tobits - bits)) & maxv);
+                }
+            }
+            return ret;
+        }
+        
+        // Helper function to add two hex numbers modulo secp256k1 n
+        function addPrivateKeys(key1Hex, key2Hex) {
+            // secp256k1 curve order
+            const n = BigInt('0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141');
+            
+            const key1 = BigInt('0x' + key1Hex);
+            const key2 = BigInt('0x' + key2Hex);
+            
+            let sum = (key1 + key2) % n;
+            if (sum < 0n) sum += n;
+            
+            return sum.toString(16).padStart(64, '0');
+        }
+        
+        // BIP32 derivation
+        function deriveBIP32Path(masterKeyHex, path) {
+            const ec = new elliptic.ec('secp256k1');
+            
+            // Initial master key derivation
+            const seedData = CryptoJS.enc.Hex.parse(masterKeyHex);
+            const hmac = CryptoJS.HmacSHA512(seedData, 'Bitcoin seed');
+            const hmacHex = hmac.toString();
+            
+            let currentKey = hmacHex.substring(0, 64);
+            let currentChainCode = hmacHex.substring(64);
+            
+            console.log('Master seed derivation:');
+            console.log('  Key:', currentKey);
+            console.log('  Chain code:', currentChainCode);
+            
+            // Derive each level
+            for (let i = 0; i < path.length; i++) {
+                const index = path[i];
+                const hardened = index >= 0x80000000;
+                
+                console.log(`\nLevel ${i}: index ${index} (${hardened ? 'hardened' : 'non-hardened'})`);
+                
+                let data;
+                if (hardened) {
+                    // Hardened: 0x00 || key || index
+                    data = '00' + currentKey + index.toString(16).padStart(8, '0');
+                } else {
+                    // Non-hardened: pubkey || index
+                    const kp = ec.keyFromPrivate(currentKey, 'hex');
+                    const pubKey = kp.getPublic(true, 'hex');
+                    data = pubKey + index.toString(16).padStart(8, '0');
+                }
+                
+                // HMAC-SHA512
+                const hmac = CryptoJS.HmacSHA512(
+                    CryptoJS.enc.Hex.parse(data),
+                    CryptoJS.enc.Hex.parse(currentChainCode)
+                );
+                const hmacResult = hmac.toString();
+                
+                const childKey = hmacResult.substring(0, 64);
+                const childChainCode = hmacResult.substring(64);
+                
+                // Add keys modulo n
+                currentKey = addPrivateKeys(currentKey, childKey);
+                currentChainCode = childChainCode;
+                
+                console.log('  Derived key:', currentKey);
+            }
+            
+            return currentKey;
+        }
+        
+        const output = document.getElementById('output');
+        const masterKey = '44af427cc3e4eca15633682c50383df02f5598ff70ae972060b32529106efea3';
+        const expectedAddress = 'alpha1q64c7vmezvqd43l4g0hg8l72uttc0sc5cqrhpqz';
+        
+        output.textContent = '=== BIP32 Derivation ===\n\n';
+        output.textContent += `Master key: ${masterKey}\n`;
+        output.textContent += `Target: ${expectedAddress}\n\n`;
+        
+        // Test multiple paths
+        const paths = [
+            {
+                name: 'm/84\'/1\'/0\'/0/0',
+                indices: [0x80000054, 0x80000001, 0x80000000, 0, 0]
+            },
+            {
+                name: 'm/84\'/0\'/0\'/0/0',
+                indices: [0x80000054, 0x80000000, 0x80000000, 0, 0]
+            }
+        ];
+        
+        const ec = new elliptic.ec('secp256k1');
+        
+        paths.forEach(({ name, indices }) => {
+            output.textContent += `\n=== Testing path ${name} ===\n`;
+            
+            try {
+                const derivedKey = deriveBIP32Path(masterKey, indices);
+                output.textContent += `\nDerived private key: ${derivedKey}\n`;
+                
+                // Generate address
+                const kp = ec.keyFromPrivate(derivedKey, 'hex');
+                const pubKey = kp.getPublic(true, 'hex');
+                
+                const sha256 = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(pubKey));
+                const ripemd160 = CryptoJS.RIPEMD160(sha256);
+                const pubkeyHash = ripemd160.toString();
+                
+                const hashBytes = [];
+                for (let i = 0; i < pubkeyHash.length; i += 2) {
+                    hashBytes.push(parseInt(pubkeyHash.substr(i, 2), 16));
+                }
+                
+                const address = segwit_addr_encode('alpha', 0, hashBytes);
+                
+                output.textContent += `Public key: ${pubKey}\n`;
+                output.textContent += `Address: ${address}\n`;
+                output.textContent += `Match: ${address === expectedAddress ? 'YES! ✓' : 'NO'}\n`;
+                
+                if (address === expectedAddress) {
+                    output.textContent += '\n*** FOUND! ***\n';
+                    output.textContent += `Private key for import: ${derivedKey}\n`;
+                }
+                
+            } catch (error) {
+                output.textContent += `Error: ${error.message}\n`;
+            }
+        });
+        
+        // Also check if we should be using the master key differently
+        output.textContent += '\n\n=== Alternative: Direct master key usage ===\n';
+        output.textContent += 'Maybe wallet.dat stores the BIP32 root key directly?\n\n';
+        
+        // Try using the master key as the root key directly
+        const rootKey = masterKey;
+        const rootPath = [0x80000054, 0x80000001, 0x80000000, 0, 0]; // m/84'/1'/0'/0/0
+        
+        try {
+            // Skip the "Bitcoin seed" step and use key directly
+            let currentKey = rootKey;
+            // Derive a chain code from the key itself
+            const chainCodeHmac = CryptoJS.HmacSHA512(CryptoJS.enc.Hex.parse(rootKey), 'BIP32seed');
+            let currentChainCode = chainCodeHmac.toString().substring(0, 64);
+            
+            output.textContent += 'Using master key as root directly:\n';
+            output.textContent += `Root key: ${currentKey}\n`;
+            output.textContent += `Chain code: ${currentChainCode}\n\n`;
+            
+            // Derive path
+            for (let i = 0; i < rootPath.length; i++) {
+                const index = rootPath[i];
+                const hardened = index >= 0x80000000;
+                
+                let data;
+                if (hardened) {
+                    data = '00' + currentKey + index.toString(16).padStart(8, '0');
+                } else {
+                    const kp = ec.keyFromPrivate(currentKey, 'hex');
+                    const pubKey = kp.getPublic(true, 'hex');
+                    data = pubKey + index.toString(16).padStart(8, '0');
+                }
+                
+                const hmac = CryptoJS.HmacSHA512(
+                    CryptoJS.enc.Hex.parse(data),
+                    CryptoJS.enc.Hex.parse(currentChainCode)
+                );
+                const hmacResult = hmac.toString();
+                
+                const childKey = hmacResult.substring(0, 64);
+                const childChainCode = hmacResult.substring(64);
+                
+                currentKey = addPrivateKeys(currentKey, childKey);
+                currentChainCode = childChainCode;
+            }
+            
+            output.textContent += `Final key: ${currentKey}\n`;
+            
+            // Test this key
+            const kp = ec.keyFromPrivate(currentKey, 'hex');
+            const pubKey = kp.getPublic(true, 'hex');
+            const sha256 = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(pubKey));
+            const ripemd160 = CryptoJS.RIPEMD160(sha256);
+            const pubkeyHash = ripemd160.toString();
+            
+            const hashBytes = [];
+            for (let i = 0; i < pubkeyHash.length; i += 2) {
+                hashBytes.push(parseInt(pubkeyHash.substr(i, 2), 16));
+            }
+            
+            const address = segwit_addr_encode('alpha', 0, hashBytes);
+            output.textContent += `Address: ${address}\n`;
+            output.textContent += `Match: ${address === expectedAddress ? 'YES! ✓' : 'NO'}\n`;
+            
+        } catch (error) {
+            output.textContent += `Error: ${error.message}\n`;
+        }
+    </script>
+</body>
+</html>

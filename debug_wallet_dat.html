@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Wallet.dat Import</title>
+</head>
+<body>
+    <h1>Debug Wallet.dat Import</h1>
+    <button onclick="checkWallet()">Check Wallet Data</button>
+    <button onclick="clearWallet()">Clear Wallet</button>
+    <pre id="output"></pre>
+    
+    <script>
+        function checkWallet() {
+            // Check both IndexedDB and localStorage
+            const output = document.getElementById('output');
+            let result = '';
+            
+            // Check IndexedDB
+            const request = indexedDB.open("AlphaWalletDB", 1);
+            
+            request.onsuccess = function(event) {
+                const db = event.target.result;
+                const transaction = db.transaction(['wallet'], 'readonly');
+                const store = transaction.objectStore('wallet');
+                const getRequest = store.get('main-wallet');
+                
+                getRequest.onsuccess = function() {
+                    if (getRequest.result) {
+                        const wallet = getRequest.result;
+                        result += '=== IndexedDB Wallet ===\n';
+                        result += 'isImportedFromDat: ' + wallet.isImportedFromDat + '\n';
+                        result += 'derivationType: ' + wallet.derivationType + '\n';
+                        result += 'childPrivateKey: ' + (wallet.childPrivateKey ? wallet.childPrivateKey.substring(0, 10) + '...' : 'null') + '\n';
+                        
+                        if (wallet.addresses && wallet.addresses[0]) {
+                            const addr = wallet.addresses[0];
+                            result += '\nFirst Address:\n';
+                            result += '  address: ' + addr.address + '\n';
+                            result += '  privateKey: ' + (addr.privateKey ? addr.privateKey.substring(0, 10) + '...' : 'null') + '\n';
+                            result += '  path: ' + addr.path + '\n';
+                            result += '\nExpected: alpha1q64c7vmezvqd43l4g0hg8l72uttc0sc5cqrhpqz\n';
+                            result += 'Match: ' + (addr.address === 'alpha1q64c7vmezvqd43l4g0hg8l72uttc0sc5cqrhpqz' ? 'YES' : 'NO') + '\n';
+                        }
+                        
+                        result += '\n=== Full Wallet Data ===\n';
+                        result += JSON.stringify(wallet, null, 2);
+                    } else {
+                        result += 'No wallet in IndexedDB\n';
+                    }
+                    
+                    output.textContent = result;
+                };
+            };
+        }
+        
+        function clearWallet() {
+            if (confirm('Are you sure you want to clear the wallet?')) {
+                // Clear IndexedDB
+                const request = indexedDB.open("AlphaWalletDB", 1);
+                request.onsuccess = function(event) {
+                    const db = event.target.result;
+                    const transaction = db.transaction(['wallet'], 'readwrite');
+                    const store = transaction.objectStore('wallet');
+                    store.delete('main-wallet');
+                    
+                    transaction.oncomplete = function() {
+                        // Also clear localStorage
+                        localStorage.removeItem('alphaWallet');
+                        alert('Wallet cleared from both IndexedDB and localStorage');
+                        document.getElementById('output').textContent = 'Wallet cleared';
+                    };
+                };
+            }
+        }
+    </script>
+</body>
+</html>

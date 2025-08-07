@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Check Address</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body>
+    <h1>Check Address Balance and History</h1>
+    <button onclick="checkAddress()">Check Address</button>
+    <pre id="output"></pre>
+    
+    <script>
+        let ws = null;
+        let requestId = 1;
+        let callbacks = {};
+        
+        function addressToScriptHash(address) {
+            // Bech32 decode implementation
+            const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+            
+            function bech32_polymod(values) {
+                const GENERATOR = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+                let chk = 1;
+                for (let p = 0; p < values.length; ++p) {
+                    const top = chk >> 25;
+                    chk = (chk & 0x1ffffff) << 5 ^ values[p];
+                    for (let i = 0; i < 5; ++i) {
+                        if ((top >> i) & 1) {
+                            chk ^= GENERATOR[i];
+                        }
+                    }
+                }
+                return chk;
+            }
+            
+            function bech32_hrp_expand(hrp) {
+                const ret = [];
+                for (let p = 0; p < hrp.length; ++p) {
+                    ret.push(hrp.charCodeAt(p) >> 5);
+                }
+                ret.push(0);
+                for (let p = 0; p < hrp.length; ++p) {
+                    ret.push(hrp.charCodeAt(p) & 31);
+                }
+                return ret;
+            }
+            
+            function bech32_verify_checksum(hrp, data) {
+                return bech32_polymod(bech32_hrp_expand(hrp).concat(data)) === 1;
+            }
+            
+            function bech32_decode(bech32) {
+                let p;
+                let has_lower = false;
+                let has_upper = false;
+                for (p = 0; p < bech32.length; ++p) {
+                    if (bech32.charCodeAt(p) < 33 || bech32.charCodeAt(p) > 126) {
+                        return null;
+                    }
+                    if (bech32.charCodeAt(p) >= 97 && bech32.charCodeAt(p) <= 122) {
+                        has_lower = true;
+                    }
+                    if (bech32.charCodeAt(p) >= 65 && bech32.charCodeAt(p) <= 90) {
+                        has_upper = true;
+                    }
+                }
+                if (has_lower && has_upper) {
+                    return null;
+                }
+                bech32 = bech32.toLowerCase();
+                const pos = bech32.lastIndexOf('1');
+                if (pos < 1 || pos + 7 > bech32.length || bech32.length > 90) {
+                    return null;
+                }
+                const hrp = bech32.substring(0, pos);
+                const data = [];
+                for (p = pos + 1; p < bech32.length; ++p) {
+                    const d = CHARSET.indexOf(bech32.charAt(p));
+                    if (d === -1) {
+                        return null;
+                    }
+                    data.push(d);
+                }
+                if (!bech32_verify_checksum(hrp, data)) {
+                    return null;
+                }
+                return {hrp: hrp, data: data.slice(0, data.length - 6)};
+            }
+            
+            function convertbits(data, frombits, tobits, pad) {
+                let acc = 0;
+                let bits = 0;
+                const ret = [];
+                const maxv = (1 << tobits) - 1;
+                for (let p = 0; p < data.length; ++p) {
+                    const value = data[p];
+                    if (value < 0 || (value >> frombits) !== 0) {
+                        return null;
+                    }
+                    acc = (acc << frombits) | value;
+                    bits += frombits;
+                    while (bits >= tobits) {
+                        bits -= tobits;
+                        ret.push((acc >> bits) & maxv);
+                    }
+                }
+                if (pad) {
+                    if (bits > 0) {
+                        ret.push((acc << (tobits - bits)) & maxv);
+                    }
+                } else if (bits >= frombits || ((acc << (tobits - bits)) & maxv)) {
+                    return null;
+                }
+                return ret;
+            }
+            
+            const decoded = bech32_decode(address);
+            if (!decoded) return null;
+            
+            const converted = convertbits(decoded.data.slice(1), 5, 8, false);
+            if (!converted) return null;
+            
+            const pubkeyHash = new Uint8Array(converted);
+            const script = new Uint8Array(22);
+            script[0] = 0x00; // OP_0
+            script[1] = 0x14; // Push 20 bytes
+            script.set(pubkeyHash, 2);
+            
+            const scriptHash = CryptoJS.SHA256(CryptoJS.lib.WordArray.create(script));
+            const reversedHash = scriptHash.toString().match(/.{2}/g).reverse().join('');
+            
+            return reversedHash;
+        }
+        
+        function makeRequest(method, params, callback) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                callback(null, 'Not connected');
+                return;
+            }
+            
+            const id = requestId++;
+            const request = {
+                id: id,
+                method: method,
+                params: params
+            };
+            
+            callbacks[id] = callback;
+            ws.send(JSON.stringify(request));
+        }
+        
+        function checkAddress() {
+            const output = document.getElementById('output');
+            const address = "alpha1q64c7vmezvqd43l4g0hg8l72uttc0sc5cqrhpqz";
+            
+            output.textContent = `Checking address: ${address}\n`;
+            
+            // Connect to Fulcrum server
+            ws = new WebSocket('wss://fulcrum.unicity.com:50002');
+            
+            ws.onopen = function() {
+                output.textContent += `Connected to Fulcrum server\n\n`;
+                
+                const scriptHash = addressToScriptHash(address);
+                output.textContent += `Script hash: ${scriptHash}\n\n`;
+                
+                // Get balance
+                makeRequest('blockchain.scripthash.get_balance', [scriptHash], function(result, error) {
+                    if (error) {
+                        output.textContent += `Balance error: ${error}\n`;
+                    } else {
+                        output.textContent += `Balance: ${JSON.stringify(result)}\n`;
+                    }
+                });
+                
+                // Get history
+                makeRequest('blockchain.scripthash.get_history', [scriptHash], function(result, error) {
+                    if (error) {
+                        output.textContent += `History error: ${error}\n`;
+                    } else {
+                        output.textContent += `History: ${JSON.stringify(result)}\n`;
+                    }
+                });
+            };
+            
+            ws.onmessage = function(event) {
+                const response = JSON.parse(event.data);
+                if (response.id && callbacks[response.id]) {
+                    if (response.error) {
+                        callbacks[response.id](null, response.error.message || response.error);
+                    } else {
+                        callbacks[response.id](response.result);
+                    }
+                    delete callbacks[response.id];
+                }
+            };
+            
+            ws.onerror = function(error) {
+                output.textContent += `WebSocket error: ${error}\n`;
+            };
+        }
+    </script>
+</body>
+</html>

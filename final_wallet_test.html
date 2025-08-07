@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Final Wallet.dat Key Test</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/elliptic/6.5.4/elliptic.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .success { color: green; font-weight: bold; }
+        .fail { color: red; }
+        .key-info { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>Final Test: Which wallet.dat key generates alpha1q64c7vmezvqd43l4g0hg8l72uttc0sc5cqrhpqz?</h1>
+    <div id="output"></div>
+    
+    <script>
+        // Bech32 implementation (same as index.html)
+        const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+        
+        function bech32_polymod(values) {
+            const GENERATOR = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+            let chk = 1;
+            for (let p = 0; p < values.length; ++p) {
+                const top = chk >> 25;
+                chk = (chk & 0x1ffffff) << 5 ^ values[p];
+                for (let i = 0; i < 5; ++i) {
+                    if ((top >> i) & 1) {
+                        chk ^= GENERATOR[i];
+                    }
+                }
+            }
+            return chk;
+        }
+        
+        function bech32_hrp_expand(hrp) {
+            const ret = [];
+            for (let p = 0; p < hrp.length; ++p) {
+                ret.push(hrp.charCodeAt(p) >> 5);
+            }
+            ret.push(0);
+            for (let p = 0; p < hrp.length; ++p) {
+                ret.push(hrp.charCodeAt(p) & 31);
+            }
+            return ret;
+        }
+        
+        function bech32_create_checksum(hrp, data) {
+            const values = bech32_hrp_expand(hrp).concat(data).concat([0, 0, 0, 0, 0, 0]);
+            const mod = bech32_polymod(values) ^ 1;
+            const ret = [];
+            for (let p = 0; p < 6; ++p) {
+                ret.push((mod >> 5 * (5 - p)) & 31);
+            }
+            return ret;
+        }
+        
+        function bech32_encode(hrp, data) {
+            const combined = data.concat(bech32_create_checksum(hrp, data));
+            let ret = hrp + '1';
+            for (let p = 0; p < combined.length; ++p) {
+                ret += CHARSET.charAt(combined[p]);
+            }
+            return ret;
+        }
+        
+        function segwit_addr_encode(hrp, witver, witprog) {
+            const ret = bech32_encode(hrp, [witver].concat(convertbits(witprog, 8, 5)));
+            return ret;
+        }
+        
+        function convertbits(data, frombits, tobits, pad = true) {
+            let acc = 0;
+            let bits = 0;
+            const ret = [];
+            const maxv = (1 << tobits) - 1;
+            for (let p = 0; p < data.length; ++p) {
+                const value = data[p];
+                acc = (acc << frombits) | value;
+                bits += frombits;
+                while (bits >= tobits) {
+                    bits -= tobits;
+                    ret.push((acc >> bits) & maxv);
+                }
+            }
+            if (pad) {
+                if (bits > 0) {
+                    ret.push((acc << (tobits - bits)) & maxv);
+                }
+            }
+            return ret;
+        }
+        
+        // Test function
+        function testKey(keyName, privateKeyHex) {
+            // Check if elliptic is loaded
+            if (typeof elliptic === 'undefined') {
+                console.error('Elliptic library not loaded!');
+                const div = document.createElement('div');
+                div.innerHTML = '<div class="fail">Error: Elliptic library not loaded. Try refreshing the page.</div>';
+                return div;
+            }
+            
+            const ec = new elliptic.ec('secp256k1');
+            
+            const div = document.createElement('div');
+            div.className = 'key-info';
+            div.innerHTML = `<h3>Testing ${keyName}</h3>`;
+            
+            try {
+                // Generate public key
+                const kp = ec.keyFromPrivate(privateKeyHex);
+                const publicKey = kp.getPublic(true, 'hex');
+                
+                // Generate address
+                const sha256 = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(publicKey));
+                const ripemd160 = CryptoJS.RIPEMD160(sha256);
+                const pubkeyHash = ripemd160.toString();
+                
+                // Convert to bytes for bech32
+                const hashBytes = [];
+                for (let i = 0; i < pubkeyHash.length; i += 2) {
+                    hashBytes.push(parseInt(pubkeyHash.substr(i, 2), 16));
+                }
+                
+                const address = segwit_addr_encode('alpha', 0, hashBytes);
+                
+                div.innerHTML += `Private key: ${privateKeyHex}<br>`;
+                div.innerHTML += `Public key: ${publicKey}<br>`;
+                div.innerHTML += `Pubkey hash: ${pubkeyHash}<br>`;
+                div.innerHTML += `Generated address: ${address}<br>`;
+                
+                const expectedAddress = 'alpha1q64c7vmezvqd43l4g0hg8l72uttc0sc5cqrhpqz';
+                const expectedHash = 'd571e66f22601b58fea87dd07ff95c5af0f86298';
+                
+                if (address === expectedAddress) {
+                    div.innerHTML += `<div class="success">✓ SUCCESS! This key generates the correct address!</div>`;
+                    div.innerHTML += `<div class="success">USE THIS KEY: ${privateKeyHex}</div>`;
+                } else {
+                    div.innerHTML += `<div class="fail">✗ Wrong address (expected ${expectedAddress})</div>`;
+                }
+                
+            } catch (error) {
+                div.innerHTML += `<div class="fail">Error: ${error.message}</div>`;
+            }
+            
+            return div;
+        }
+        
+        // Main test
+        window.addEventListener('load', function() {
+            const output = document.getElementById('output');
+            
+            // Debug: Check what's loaded
+            console.log('Elliptic loaded:', typeof elliptic !== 'undefined');
+            console.log('CryptoJS loaded:', typeof CryptoJS !== 'undefined');
+            
+            output.innerHTML = '<h2>Target: alpha1q64c7vmezvqd43l4g0hg8l72uttc0sc5cqrhpqz</h2>';
+            output.innerHTML += '<p>Testing wallet.dat keys to find which one generates this address...</p>';
+            
+            // Test both keys from wallet.dat
+            const keys = [
+                { name: 'First Key (Master)', key: '44af427cc3e4eca15633682c50383df02f5598ff70ae972060b32529106efea3' },
+                { name: 'Second Key', key: '11395f88d9dd258680a74ad1be8c7a350332859769eb99b5bbba592ea53e3200' }
+            ];
+            
+            keys.forEach(keyInfo => {
+                output.appendChild(testKey(keyInfo.name, keyInfo.key));
+            });
+            
+            // Also test the derived key from Python to show it's wrong
+            const comparisonHeader = document.createElement('h2');
+            comparisonHeader.textContent = 'For comparison: Python\'s derived key';
+            output.appendChild(comparisonHeader);
+            output.appendChild(testKey('Python Derived Key', 'f3f19a6c29abaa38fce2d00ac8737fcb50bc52720ddf67d8c59caf0bd0af6726'));
+        });
+    </script>
+</body>
+</html>

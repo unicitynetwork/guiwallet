@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Elliptic Issue</title>
+    <script src="https://cdn.jsdelivr.net/npm/elliptic@6.5.4/dist/elliptic.min.js"></script>
+</head>
+<body>
+    <h1>Debug Elliptic Library Issue</h1>
+    <pre id="output"></pre>
+    
+    <script>
+        // The private key we derived correctly
+        const privateKey = "f3f19a6c29abaa38fce2d00ac8737fcb50bc52720ddf67d8c59caf0bd0af6726";
+        
+        const ec = new elliptic.ec('secp256k1');
+        
+        // Try different ways of creating the key
+        const output = document.getElementById('output');
+        output.textContent = `Private key: ${privateKey}\n\n`;
+        
+        // Method 1: Direct from hex string
+        try {
+            const kp1 = ec.keyFromPrivate(privateKey);
+            const pub1 = kp1.getPublic(true, 'hex');
+            output.textContent += `Method 1 - keyFromPrivate(hex string):\n`;
+            output.textContent += `Public key: ${pub1}\n\n`;
+        } catch (e) {
+            output.textContent += `Method 1 failed: ${e}\n\n`;
+        }
+        
+        // Method 2: From hex string with explicit 'hex' parameter
+        try {
+            const kp2 = ec.keyFromPrivate(privateKey, 'hex');
+            const pub2 = kp2.getPublic(true, 'hex');
+            output.textContent += `Method 2 - keyFromPrivate(hex string, 'hex'):\n`;
+            output.textContent += `Public key: ${pub2}\n\n`;
+        } catch (e) {
+            output.textContent += `Method 2 failed: ${e}\n\n`;
+        }
+        
+        // Method 3: From byte array
+        try {
+            const bytes = privateKey.match(/.{1,2}/g).map(byte => parseInt(byte, 16));
+            const kp3 = ec.keyFromPrivate(bytes);
+            const pub3 = kp3.getPublic(true, 'hex');
+            output.textContent += `Method 3 - keyFromPrivate(byte array):\n`;
+            output.textContent += `Public key: ${pub3}\n\n`;
+        } catch (e) {
+            output.textContent += `Method 3 failed: ${e}\n\n`;
+        }
+        
+        // Check the actual key object
+        const keyPair = ec.keyFromPrivate(privateKey);
+        output.textContent += `=== Key Details ===\n`;
+        output.textContent += `Private key (from object): ${keyPair.getPrivate('hex')}\n`;
+        output.textContent += `Private key matches input: ${keyPair.getPrivate('hex') === privateKey}\n\n`;
+        
+        // Get public key components
+        const pubPoint = keyPair.getPublic();
+        output.textContent += `Public key X: ${pubPoint.getX().toString(16)}\n`;
+        output.textContent += `Public key Y: ${pubPoint.getY().toString(16)}\n`;
+        output.textContent += `Y is even: ${pubPoint.getY().isEven()}\n\n`;
+        
+        output.textContent += `Expected public key: 02006abf41ba147951f55579a2f7d3683f7334e9466df8ffa38a486813651ffb77\n`;
+        output.textContent += `Expected X: 006abf41ba147951f55579a2f7d3683f7334e9466df8ffa38a486813651ffb77\n`;
+    </script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Stored Wallet</title>
+</head>
+<body>
+    <h1>Test Stored Wallet Data</h1>
+    <pre id="output"></pre>
+    
+    <script>
+        // Open IndexedDB and check the wallet data
+        const request = indexedDB.open("AlphaWalletDB", 1);
+        
+        request.onsuccess = function(event) {
+            const db = event.target.result;
+            const transaction = db.transaction(['wallet'], 'readonly');
+            const store = transaction.objectStore('wallet');
+            const getRequest = store.get('main-wallet');
+            
+            getRequest.onsuccess = function() {
+                if (getRequest.result) {
+                    const wallet = getRequest.result;
+                    const output = document.getElementById('output');
+                    output.textContent = JSON.stringify(wallet, null, 2);
+                    
+                    if (wallet.addresses && wallet.addresses[0]) {
+                        const addr = wallet.addresses[0];
+                        console.log('Address:', addr.address);
+                        console.log('Has privateKey:', !!addr.privateKey);
+                        console.log('privateKey:', addr.privateKey);
+                        console.log('isImportedFromDat:', wallet.isImportedFromDat);
+                        console.log('derivationType:', wallet.derivationType);
+                    }
+                } else {
+                    document.getElementById('output').textContent = 'No wallet found in IndexedDB';
+                }
+            };
+        };
+        
+        request.onerror = function() {
+            // Try localStorage
+            const savedWallet = localStorage.getItem('alphaWallet');
+            if (savedWallet) {
+                const wallet = JSON.parse(savedWallet);
+                document.getElementById('output').textContent = 'From localStorage:\n' + JSON.stringify(wallet, null, 2);
+            } else {
+                document.getElementById('output').textContent = 'No wallet found';
+            }
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Master Key to xpub</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/elliptic/6.5.4/elliptic.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body>
+    <h1>Test if private keys generate the xpub</h1>
+    <pre id="output"></pre>
+    
+    <script>
+        // Base58 encoding for xpub/xprv
+        const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+        
+        function base58Encode(buffer) {
+            const digits = [0];
+            for (let i = 0; i < buffer.length; i++) {
+                let carry = buffer[i];
+                for (let j = 0; j < digits.length; j++) {
+                    carry += digits[j] << 8;
+                    digits[j] = carry % 58;
+                    carry = (carry / 58) | 0;
+                }
+                while (carry > 0) {
+                    digits.push(carry % 58);
+                    carry = (carry / 58) | 0;
+                }
+            }
+            // Convert digits to base58 string
+            let result = '';
+            for (let i = digits.length - 1; i >= 0; i--) {
+                result += ALPHABET[digits[i]];
+            }
+            // Add leading zeros
+            for (let i = 0; i < buffer.length && buffer[i] === 0; i++) {
+                result = '1' + result;
+            }
+            return result;
+        }
+        
+        function sha256Double(data) {
+            const first = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(data));
+            return CryptoJS.SHA256(first).toString();
+        }
+        
+        function generateXpub(privateKeyHex) {
+            const ec = new elliptic.ec('secp256k1');
+            
+            try {
+                // Generate public key
+                const kp = ec.keyFromPrivate(privateKeyHex);
+                const pubKey = kp.getPublic(true, 'hex');
+                
+                // Create xpub data (mainnet public key)
+                // Version bytes for xpub (mainnet): 0488B21E
+                const version = '0488b21e';
+                const depth = '00';
+                const parentFingerprint = '00000000';
+                const childNumber = '00000000';
+                
+                // For master key, chain code is derived from HMAC-SHA512("Bitcoin seed", private_key)
+                const seedData = CryptoJS.enc.Hex.parse(privateKeyHex);
+                const hmac = CryptoJS.HmacSHA512(seedData, 'Bitcoin seed');
+                const hmacHex = hmac.toString();
+                const chainCode = hmacHex.substring(64); // Second 32 bytes
+                
+                // Construct xpub
+                const xpubData = version + depth + parentFingerprint + childNumber + chainCode + pubKey;
+                
+                // Add checksum
+                const checksum = sha256Double(xpubData).substring(0, 8);
+                const fullData = xpubData + checksum;
+                
+                // Convert to base58
+                const bytes = [];
+                for (let i = 0; i < fullData.length; i += 2) {
+                    bytes.push(parseInt(fullData.substr(i, 2), 16));
+                }
+                
+                return base58Encode(new Uint8Array(bytes));
+                
+            } catch (error) {
+                return `Error: ${error.message}`;
+            }
+        }
+        
+        const output = document.getElementById('output');
+        const expectedXpub = 'xpub661MyMwAqRbcGvo3ScFFZaTDc4LqgMm2yt2HHPp5UTwGM69DK5FNbukRSuC7dv6h5EU4EpwT32rxpHtdtn9fVyB9HCLnL9VmFMzyMfYCWGV';
+        
+        output.textContent = `Expected xpub from wallet.dat:\n${expectedXpub}\n\n`;
+        
+        // Test both private keys
+        const keys = [
+            { name: 'First key', key: '44af427cc3e4eca15633682c50383df02f5598ff70ae972060b32529106efea3' },
+            { name: 'Second key', key: '11395f88d9dd258680a74ad1be8c7a350332859769eb99b5bbba592ea53e3200' }
+        ];
+        
+        keys.forEach(keyInfo => {
+            output.textContent += `\n=== Testing ${keyInfo.name} ===\n`;
+            output.textContent += `Private key: ${keyInfo.key}\n`;
+            
+            const xpub = generateXpub(keyInfo.key);
+            output.textContent += `Generated xpub: ${xpub}\n`;
+            output.textContent += `Match: ${xpub === expectedXpub ? 'YES!' : 'NO'}\n`;
+        });
+        
+        output.textContent += '\n=== Conclusion ===\n';
+        output.textContent += 'The challenge is that Bitcoin Core descriptor wallets use a more complex\n';
+        output.textContent += 'key derivation scheme. The private keys we found might be:\n';
+        output.textContent += '1. Encrypted or encoded differently\n';
+        output.textContent += '2. Child keys rather than the master\n';
+        output.textContent += '3. Part of a different wallet structure\n\n';
+        
+        output.textContent += 'Since the wallet.dat references alpha1q64c7vmezvqd43l4g0hg8l72uttc0sc5cqrhpqz\n';
+        output.textContent += 'and contains descriptors with the xpub, we need to find how to:\n';
+        output.textContent += '1. Extract the master private key that generates this xpub\n';
+        output.textContent += '2. Or find the specific private key for the address directly';
+    </script>
+</body>
+</html>

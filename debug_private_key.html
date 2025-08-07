@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Private Key to Address</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/elliptic/6.5.4/elliptic.min.js"></script>
+</head>
+<body>
+    <h1>Debug Private Key to Address Generation</h1>
+    <div id="results"></div>
+
+    <script>
+        const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+        
+        function hexToBytes(hex) {
+            const bytes = [];
+            for (let i = 0; i < hex.length; i += 2) {
+                bytes.push(parseInt(hex.substring(i, i + 2), 16));
+            }
+            return new Uint8Array(bytes);
+        }
+        
+        function convertBits(data, fromBits, toBits, pad) {
+            let acc = 0;
+            let bits = 0;
+            const ret = [];
+            const maxv = (1 << toBits) - 1;
+            
+            for (let i = 0; i < data.length; ++i) {
+                const value = data[i];
+                if (value < 0 || (value >> fromBits) !== 0) {
+                    return null;
+                }
+                acc = (acc << fromBits) | value;
+                bits += fromBits;
+                while (bits >= toBits) {
+                    bits -= toBits;
+                    ret.push((acc >> bits) & maxv);
+                }
+            }
+            
+            if (pad) {
+                if (bits > 0) {
+                    ret.push((acc << (toBits - bits)) & maxv);
+                }
+            } else if (bits >= fromBits || ((acc << (toBits - bits)) & maxv)) {
+                return null;
+            }
+            
+            return ret;
+        }
+        
+        function bech32Polymod(values) {
+            const GENERATOR = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+            let chk = 1;
+            for (let i = 0; i < values.length; ++i) {
+                const b = chk >> 25;
+                chk = (chk & 0x1ffffff) << 5 ^ values[i];
+                for (let j = 0; j < 5; ++j) {
+                    if ((b >> j) & 1) {
+                        chk ^= GENERATOR[j];
+                    }
+                }
+            }
+            return chk;
+        }
+        
+        function hrpExpand(hrp) {
+            const ret = [];
+            for (let i = 0; i < hrp.length; ++i) {
+                ret.push(hrp.charCodeAt(i) >> 5);
+            }
+            ret.push(0);
+            for (let i = 0; i < hrp.length; ++i) {
+                ret.push(hrp.charCodeAt(i) & 31);
+            }
+            return ret;
+        }
+        
+        function bech32Checksum(hrp, data) {
+            const values = hrpExpand(hrp).concat(data).concat([0, 0, 0, 0, 0, 0]);
+            const polymod = bech32Polymod(values) ^ 1;
+            const ret = [];
+            for (let i = 0; i < 6; ++i) {
+                ret.push((polymod >> 5 * (5 - i)) & 31);
+            }
+            return ret;
+        }
+        
+        function createBech32(hrp, witnessVersion, data) {
+            const data5bit = convertBits(Array.from(data), 8, 5, true);
+            const values = [witnessVersion].concat(data5bit);
+            const checksum = bech32Checksum(hrp, values);
+            const combined = values.concat(checksum);
+            
+            let result = hrp + '1';
+            for (let i = 0; i < combined.length; i++) {
+                result += CHARSET.charAt(combined[i]);
+            }
+            
+            return result;
+        }
+        
+        // Decode bech32 address to get pubkey hash
+        function decodeBech32(expectedHrp, address) {
+            const sepIndex = address.lastIndexOf('1');
+            if (sepIndex === -1) {
+                throw new Error('Invalid Bech32 address - no separator');
+            }
+            
+            const hrp = address.substring(0, sepIndex);
+            const data = address.substring(sepIndex + 1);
+            
+            if (hrp !== expectedHrp) {
+                throw new Error(`Invalid HRP. Expected ${expectedHrp}, got ${hrp}`);
+            }
+            
+            const decoded = [];
+            for (let i = 0; i < data.length; ++i) {
+                const value = CHARSET.indexOf(data.charAt(i));
+                if (value === -1) {
+                    throw new Error('Invalid character');
+                }
+                decoded.push(value);
+            }
+            
+            const hrpExpanded = hrpExpand(hrp);
+            const polymod = bech32Polymod(hrpExpanded.concat(decoded));
+            if (polymod !== 1) {
+                throw new Error('Invalid checksum');
+            }
+            
+            if (decoded.length < 6) {
+                throw new Error('Data too short');
+            }
+            
+            const witnessVersion = decoded[0];
+            const program = convertBits(decoded.slice(1, -6), 5, 8, false);
+            
+            return {
+                witnessVersion: witnessVersion,
+                program: program
+            };
+        }
+        
+        function testPrivateKey() {
+            const privateKeyHex = '44af427cc3e4eca15633682c50383df02f5598ff70ae972060b32529106efea3';
+            const expectedAddress = 'alpha1q64c7vmezvqd43l4g0hg8l72uttc0sc5cqrhpqz';
+            const expectedPubkeyHashHex = 'd571e66f22601b58fea87dd07ff95c5af0f86298';
+            
+            const results = document.getElementById('results');
+            let output = '';
+            
+            output += `<h2>Input Data</h2>`;
+            output += `Private Key: ${privateKeyHex}<br>`;
+            output += `Expected Address: ${expectedAddress}<br>`;
+            output += `Expected Pubkey Hash: ${expectedPubkeyHashHex}<br><br>`;
+            
+            // Test 1: Direct use of private key (what Alpha-qt might be doing)
+            output += `<h2>Test 1: Direct Private Key Usage</h2>`;
+            try {
+                const ec = new elliptic.ec('secp256k1');
+                const keyPair = ec.keyFromPrivate(privateKeyHex);
+                const publicKey = keyPair.getPublic(true, 'hex');
+                
+                output += `Public Key (compressed): ${publicKey}<br>`;
+                
+                const sha256Hash = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(publicKey));
+                const sha256Hex = sha256Hash.toString(CryptoJS.enc.Hex);
+                output += `SHA256 of Public Key: ${sha256Hex}<br>`;
+                
+                const ripemd160Hash = CryptoJS.RIPEMD160(sha256Hash);
+                const ripemd160Hex = ripemd160Hash.toString(CryptoJS.enc.Hex);
+                output += `RIPEMD160 of SHA256: ${ripemd160Hex}<br>`;
+                
+                const address = createBech32('alpha', 0, hexToBytes(ripemd160Hex));
+                output += `Generated Address: ${address}<br>`;
+                output += `Matches Expected: ${address === expectedAddress ? 'YES' : 'NO'}<br>`;
+                output += `Pubkey Hash Matches: ${ripemd160Hex === expectedPubkeyHashHex ? 'YES' : 'NO'}<br><br>`;
+            } catch (error) {
+                output += `Error: ${error.message}<br><br>`;
+            }
+            
+            // Test 2: HD wallet derivation (what the offline wallet is doing)
+            output += `<h2>Test 2: HD Wallet Derivation (Offline Wallet Method)</h2>`;
+            try {
+                // Simulate the offline wallet's deriveChildKeyForIndex for index 0
+                const masterPrivateKey = privateKeyHex;
+                
+                // First, derive master key and chain code from the master private key
+                const seedHmac = CryptoJS.HmacSHA512(
+                    CryptoJS.enc.Hex.parse(masterPrivateKey),
+                    CryptoJS.enc.Utf8.parse("Bitcoin seed")
+                );
+                const seedHmacHex = seedHmac.toString(CryptoJS.enc.Hex);
+                
+                // Extract master private key and chain code
+                let currentKey = seedHmacHex.substring(0, 64);
+                let currentChainCode = seedHmacHex.substring(64, 128);
+                
+                output += `Master Key from HMAC: ${currentKey}<br>`;
+                output += `Chain Code from HMAC: ${currentChainCode}<br>`;
+                
+                // BIP32 constants
+                const HARDENED_OFFSET = 0x80000000;
+                const addressIndex = 0;
+                
+                // Parse the derivation path and derive each level: m/44'/0'/0'
+                const pathComponents = [44 + HARDENED_OFFSET, 0 + HARDENED_OFFSET, addressIndex + HARDENED_OFFSET];
+                
+                for (let i = 0; i < pathComponents.length; i++) {
+                    const index = pathComponents[i];
+                    // Hardened derivation: 0x00 || parent_private_key || index
+                    const data = '00' + currentKey + index.toString(16).padStart(8, '0');
+                    
+                    // HMAC-SHA512(parent_chain_code, data)
+                    const hmac = CryptoJS.HmacSHA512(
+                        CryptoJS.enc.Hex.parse(data),
+                        CryptoJS.enc.Hex.parse(currentChainCode)
+                    );
+                    const hmacHex = hmac.toString(CryptoJS.enc.Hex);
+                    
+                    // Split result: left 32 bytes = child key material, right 32 bytes = child chain code
+                    const childKeyMaterial = hmacHex.substring(0, 64);
+                    currentChainCode = hmacHex.substring(64, 128);
+                    
+                    // Add child key material to parent private key (mod n)
+                    const childKeyMaterialBN = new elliptic.bn(childKeyMaterial, 16);
+                    const currentKeyBN = new elliptic.bn(currentKey, 16);
+                    const secp256k1N = new elliptic.bn('FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141', 16);
+                    
+                    const childPrivateKeyBN = childKeyMaterialBN.add(currentKeyBN).mod(secp256k1N);
+                    currentKey = childPrivateKeyBN.toString(16).padStart(64, '0');
+                    
+                    output += `Step ${i+1} (index ${index}): ${currentKey}<br>`;
+                }
+                
+                const childPrivateKey = currentKey;
+                output += `Final Child Private Key: ${childPrivateKey}<br>`;
+                
+                const ec = new elliptic.ec('secp256k1');
+                const keyPair = ec.keyFromPrivate(childPrivateKey);
+                const publicKey = keyPair.getPublic(true, 'hex');
+                
+                output += `Child Public Key: ${publicKey}<br>`;
+                
+                const sha256Hash = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(publicKey));
+                const sha256Hex = sha256Hash.toString(CryptoJS.enc.Hex);
+                output += `SHA256 of Child Public Key: ${sha256Hex}<br>`;
+                
+                const ripemd160Hash = CryptoJS.RIPEMD160(sha256Hash);
+                const ripemd160Hex = ripemd160Hash.toString(CryptoJS.enc.Hex);
+                output += `RIPEMD160 of SHA256: ${ripemd160Hex}<br>`;
+                
+                const address = createBech32('alpha', 0, hexToBytes(ripemd160Hex));
+                output += `Generated Address: ${address}<br>`;
+                output += `Matches Expected: ${address === expectedAddress ? 'YES' : 'NO'}<br>`;
+                output += `Pubkey Hash Matches: ${ripemd160Hex === expectedPubkeyHashHex ? 'YES' : 'NO'}<br><br>`;
+            } catch (error) {
+                output += `Error: ${error.message}<br><br>`;
+            }
+            
+            // Test 3: Decode expected address to verify pubkey hash
+            output += `<h2>Test 3: Decode Expected Address</h2>`;
+            try {
+                const decoded = decodeBech32('alpha', expectedAddress);
+                const programHex = Array.from(decoded.program).map(b => b.toString(16).padStart(2, '0')).join('');
+                output += `Witness Version: ${decoded.witnessVersion}<br>`;
+                output += `Program (Pubkey Hash): ${programHex}<br>`;
+                output += `Program matches expected: ${programHex === expectedPubkeyHashHex ? 'YES' : 'NO'}<br>`;
+            } catch (error) {
+                output += `Error: ${error.message}<br>`;
+            }
+            
+            results.innerHTML = output;
+        }
+        
+        // Run the test when page loads
+        window.onload = testPrivateKey;
+    </script>
+</body>
+</html>

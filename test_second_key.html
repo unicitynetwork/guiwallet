@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Second Key</title>
+    <script src="https://cdn.jsdelivr.net/npm/elliptic@6.5.4/dist/elliptic.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body>
+    <h1>Test Second Key from wallet.dat</h1>
+    <pre id="output"></pre>
+    
+    <script>
+        // Bech32 implementation (from index.html)
+        const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+        
+        function bech32_polymod(values) {
+            const GENERATOR = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+            let chk = 1;
+            for (let p = 0; p < values.length; ++p) {
+                const top = chk >> 25;
+                chk = (chk & 0x1ffffff) << 5 ^ values[p];
+                for (let i = 0; i < 5; ++i) {
+                    if ((top >> i) & 1) {
+                        chk ^= GENERATOR[i];
+                    }
+                }
+            }
+            return chk;
+        }
+        
+        function bech32_hrp_expand(hrp) {
+            const ret = [];
+            for (let p = 0; p < hrp.length; ++p) {
+                ret.push(hrp.charCodeAt(p) >> 5);
+            }
+            ret.push(0);
+            for (let p = 0; p < hrp.length; ++p) {
+                ret.push(hrp.charCodeAt(p) & 31);
+            }
+            return ret;
+        }
+        
+        function bech32_verify_checksum(hrp, data) {
+            return bech32_polymod(bech32_hrp_expand(hrp).concat(data)) === 1;
+        }
+        
+        function bech32_create_checksum(hrp, data) {
+            const values = bech32_hrp_expand(hrp).concat(data).concat([0, 0, 0, 0, 0, 0]);
+            const mod = bech32_polymod(values) ^ 1;
+            const ret = [];
+            for (let p = 0; p < 6; ++p) {
+                ret.push((mod >> 5 * (5 - p)) & 31);
+            }
+            return ret;
+        }
+        
+        function bech32_encode(hrp, data) {
+            const combined = data.concat(bech32_create_checksum(hrp, data));
+            let ret = hrp + '1';
+            for (let p = 0; p < combined.length; ++p) {
+                ret += CHARSET.charAt(combined[p]);
+            }
+            return ret;
+        }
+        
+        function segwit_addr_encode(hrp, witver, witprog) {
+            const ret = bech32_encode(hrp, [witver].concat(convertbits(witprog, 8, 5)));
+            if (bech32_decode(ret) === null) {
+                return null;
+            }
+            return ret;
+        }
+        
+        function convertbits(data, frombits, tobits, pad = true) {
+            let acc = 0;
+            let bits = 0;
+            const ret = [];
+            const maxv = (1 << tobits) - 1;
+            for (let p = 0; p < data.length; ++p) {
+                const value = data[p];
+                if (value < 0 || (value >> frombits) !== 0) {
+                    return null;
+                }
+                acc = (acc << frombits) | value;
+                bits += frombits;
+                while (bits >= tobits) {
+                    bits -= tobits;
+                    ret.push((acc >> bits) & maxv);
+                }
+            }
+            if (pad) {
+                if (bits > 0) {
+                    ret.push((acc << (tobits - bits)) & maxv);
+                }
+            } else if (bits >= frombits || ((acc << (tobits - bits)) & maxv)) {
+                return null;
+            }
+            return ret;
+        }
+        
+        function bech32_decode(bech32) {
+            let p;
+            let has_lower = false;
+            let has_upper = false;
+            for (p = 0; p < bech32.length; ++p) {
+                if (bech32.charCodeAt(p) < 33 || bech32.charCodeAt(p) > 126) {
+                    return null;
+                }
+                if (bech32.charCodeAt(p) >= 97 && bech32.charCodeAt(p) <= 122) {
+                    has_lower = true;
+                }
+                if (bech32.charCodeAt(p) >= 65 && bech32.charCodeAt(p) <= 90) {
+                    has_upper = true;
+                }
+            }
+            if (has_lower && has_upper) {
+                return null;
+            }
+            bech32 = bech32.toLowerCase();
+            const pos = bech32.lastIndexOf('1');
+            if (pos < 1 || pos + 7 > bech32.length || bech32.length > 90) {
+                return null;
+            }
+            const hrp = bech32.substring(0, pos);
+            const data = [];
+            for (p = pos + 1; p < bech32.length; ++p) {
+                const d = CHARSET.indexOf(bech32.charAt(p));
+                if (d === -1) {
+                    return null;
+                }
+                data.push(d);
+            }
+            if (!bech32_verify_checksum(hrp, data)) {
+                return null;
+            }
+            return {hrp: hrp, data: data.slice(0, data.length - 6)};
+        }
+        
+        const ec = new elliptic.ec('secp256k1');
+        const output = document.getElementById('output');
+        
+        // Test the second key from wallet.dat
+        const secondKey = "11395f88d9dd258680a74ad1be8c7a350332859769eb99b5bbba592ea53e3200";
+        const expectedAddress = "alpha1q64c7vmezvqd43l4g0hg8l72uttc0sc5cqrhpqz";
+        
+        output.textContent = "=== Testing Second Key from wallet.dat ===\n\n";
+        
+        const kp = ec.keyFromPrivate(secondKey);
+        const pubKey = kp.getPublic(true, 'hex');
+        output.textContent += `Private key: ${secondKey}\n`;
+        output.textContent += `Public key:  ${pubKey}\n\n`;
+        
+        // Generate address
+        const sha256 = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(pubKey));
+        const ripemd160 = CryptoJS.RIPEMD160(sha256);
+        const pubkeyHash = ripemd160.toString();
+        
+        output.textContent += `Pubkey hash: ${pubkeyHash}\n`;
+        output.textContent += `Expected:    d571e66f22601b58fea87dd07ff95c5af0f86298\n\n`;
+        
+        // Convert to bytes for bech32
+        const hashBytes = [];
+        for (let i = 0; i < pubkeyHash.length; i += 2) {
+            hashBytes.push(parseInt(pubkeyHash.substr(i, 2), 16));
+        }
+        
+        const address = segwit_addr_encode('alpha', 0, hashBytes);
+        output.textContent += `Generated address: ${address}\n`;
+        output.textContent += `Expected address:  ${expectedAddress}\n`;
+        output.textContent += `Match: ${address === expectedAddress ? 'YES!' : 'NO'}\n\n`;
+        
+        // Also test our derived key
+        const derivedKey = "f3f19a6c29abaa38fce2d00ac8737fcb50bc52720ddf67d8c59caf0bd0af6726";
+        output.textContent += "=== Testing Derived Key ===\n\n";
+        
+        const kp2 = ec.keyFromPrivate(derivedKey);
+        const pubKey2 = kp2.getPublic(true, 'hex');
+        output.textContent += `Private key: ${derivedKey}\n`;
+        output.textContent += `Public key:  ${pubKey2}\n`;
+        
+        const sha256_2 = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(pubKey2));
+        const ripemd160_2 = CryptoJS.RIPEMD160(sha256_2);
+        const pubkeyHash2 = ripemd160_2.toString();
+        output.textContent += `Pubkey hash: ${pubkeyHash2}\n`;
+        
+        const hashBytes2 = [];
+        for (let i = 0; i < pubkeyHash2.length; i += 2) {
+            hashBytes2.push(parseInt(pubkeyHash2.substr(i, 2), 16));
+        }
+        
+        const address2 = segwit_addr_encode('alpha', 0, hashBytes2);
+        output.textContent += `Generated address: ${address2}\n`;
+    </script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Native Wallet Key Generation</title>
+    <script src="https://cdn.jsdelivr.net/npm/elliptic@6.5.4/dist/elliptic.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body>
+    <h1>Test Native Wallet vs wallet.dat</h1>
+    <pre id="output"></pre>
+    
+    <script>
+        // Test if the issue is specific to the derived key or general
+        const ec = new elliptic.ec('secp256k1');
+        
+        // Test 1: The derived key from wallet.dat
+        const walletDatKey = "f3f19a6c29abaa38fce2d00ac8737fcb50bc52720ddf67d8c59caf0bd0af6726";
+        const kp1 = ec.keyFromPrivate(walletDatKey);
+        const pub1 = kp1.getPublic(true, 'hex');
+        
+        // Test 2: A random test key
+        const testKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        const kp2 = ec.keyFromPrivate(testKey);
+        const pub2 = kp2.getPublic(true, 'hex');
+        
+        // Test 3: Generate address from wallet.dat key
+        const sha256 = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(pub1));
+        const ripemd160 = CryptoJS.RIPEMD160(sha256);
+        const hash1 = ripemd160.toString();
+        
+        const output = document.getElementById('output');
+        output.textContent = `=== Wallet.dat Key Test ===\n`;
+        output.textContent += `Private key: ${walletDatKey}\n`;
+        output.textContent += `Public key:  ${pub1}\n`;
+        output.textContent += `Expected:    02006abf41ba147951f55579a2f7d3683f7334e9466df8ffa38a486813651ffb77\n`;
+        output.textContent += `Match: ${pub1 === '02006abf41ba147951f55579a2f7d3683f7334e9466df8ffa38a486813651ffb77' ? 'YES' : 'NO'}\n\n`;
+        
+        output.textContent += `Pubkey hash: ${hash1}\n`;
+        output.textContent += `Expected:    d571e66f22601b58fea87dd07ff95c5af0f86298\n\n`;
+        
+        output.textContent += `=== Test Key ===\n`;
+        output.textContent += `Private key: ${testKey}\n`;
+        output.textContent += `Public key:  ${pub2}\n\n`;
+        
+        // Check if it's a library version issue
+        output.textContent += `=== Library Info ===\n`;
+        output.textContent += `Elliptic curve: ${ec.curve.type}\n`;
+        output.textContent += `CryptoJS available: ${typeof CryptoJS !== 'undefined'}\n`;
+    </script>
+</body>
+</html>

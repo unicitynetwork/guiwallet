@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Public Key Generation</title>
+    <script src="https://cdn.jsdelivr.net/npm/elliptic@6.5.4/dist/elliptic.min.js"></script>
+</head>
+<body>
+    <h1>Test Public Key Generation</h1>
+    <pre id="output"></pre>
+    
+    <script>
+        // The correct private key we derived
+        const privateKey = "f3f19a6c29abaa38fce2d00ac8737fcb50bc52720ddf67d8c59caf0bd0af6726";
+        
+        // Expected public key from Python
+        const expectedPubKey = "02006abf41ba147951f55579a2f7d3683f7334e9466df8ffa38a486813651ffb77";
+        
+        // Create EC instance
+        const ec = new elliptic.ec('secp256k1');
+        
+        // Generate key pair
+        const keyPair = ec.keyFromPrivate(privateKey);
+        
+        // Get public key
+        const pubKeyCompressed = keyPair.getPublic(true, 'hex');
+        const pubKeyUncompressed = keyPair.getPublic(false, 'hex');
+        const pubKeyPoint = keyPair.getPublic();
+        
+        const output = document.getElementById('output');
+        output.textContent = `Private key: ${privateKey}\n\n`;
+        output.textContent += `Public key (compressed): ${pubKeyCompressed}\n`;
+        output.textContent += `Expected public key:     ${expectedPubKey}\n`;
+        output.textContent += `Match: ${pubKeyCompressed === expectedPubKey ? 'YES' : 'NO'}\n\n`;
+        
+        output.textContent += `Public key (uncompressed): ${pubKeyUncompressed}\n`;
+        output.textContent += `Public key X: ${pubKeyPoint.getX().toString(16)}\n`;
+        output.textContent += `Public key Y: ${pubKeyPoint.getY().toString(16)}\n`;
+        
+        // Try different approaches
+        output.textContent += `\n=== Debugging ===\n`;
+        
+        // Check if the private key is being interpreted correctly
+        const privKeyBN = keyPair.getPrivate();
+        output.textContent += `Private key as BigNumber: ${privKeyBN.toString(16)}\n`;
+        
+        // Check if there's an issue with the curve
+        output.textContent += `Curve name: ${ec.curve.type}\n`;
+        output.textContent += `Curve order: ${ec.n.toString(16)}\n`;
+        
+        // Manual verification
+        const expectedX = "006abf41ba147951f55579a2f7d3683f7334e9466df8ffa38a486813651ffb77";
+        const actualX = pubKeyPoint.getX().toString(16).padStart(64, '0');
+        output.textContent += `\nExpected X: ${expectedX}\n`;
+        output.textContent += `Actual X:   ${actualX}\n`;
+        output.textContent += `X Match: ${actualX === expectedX ? 'YES' : 'NO'}\n`;
+    </script>
+</body>
+</html>

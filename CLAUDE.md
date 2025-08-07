@@ -56,6 +56,7 @@ The wallet uses several embedded cryptographic libraries:
 2. **Watch-Only Mode**: Monitor addresses without private keys
 3. **Online Mode**: Connected to Fulcrum for real-time data
 4. **Offline Mode**: Create and sign transactions without internet
+5. **Wallet.dat Import Mode**: Import from Alpha-qt wallet files (experimental)
 
 ## Key Functions and Flow
 
@@ -65,10 +66,29 @@ The wallet uses several embedded cryptographic libraries:
 - Automatically generates first address after wallet creation
 
 ### Address Generation (`generateNewAddress`)
-- Derives child private key using HMAC-SHA512(masterKey, derivationPath)
+- **Updated to use proper BIP32 derivation** (previously used incorrect HMAC method)
+- Derives child private key following BIP32 standard:
+  - Master seed derived using HMAC-SHA512(masterKey, "Bitcoin seed")
+  - Hardened derivation path: m/44'/0'/addressIndex'
+  - Proper chain code handling and key addition modulo curve order
 - Generates public key using elliptic curve multiplication
 - Creates P2WPKH (Pay-to-Witness-Public-Key-Hash) address
 - Encodes as Bech32 with `alpha1` prefix
+
+### Wallet.dat Import (`restoreFromWalletDat`)
+- Imports wallets from Alpha-qt SQLite database files
+- Extracts master key from DER-encoded private keys
+- Uses full BIP44 derivation path: m/44'/0'/0'/0/0
+- **IMPORTANT WARNING**: This is an experimental feature with critical limitations:
+  - **Spending funds is safe** - The wallet can correctly sign and broadcast transactions
+  - **Receiving funds is NOT recommended** - The derivation path implementation may be unstable
+  - **Risk**: If you receive funds to a wallet.dat imported address, the derivation path might change in future updates, making those funds potentially unrecoverable
+  - **Recommendation**: Only use wallet.dat imports for spending existing funds, then transfer to a native wallet
+  - The UI displays a warning and disables the copy button for these addresses
+- Technical details:
+  - Wallet.dat uses 5-level BIP44 path vs native wallet's 3-level path
+  - Imported wallets are marked with `isImportedFromDat` flag
+  - Address generation is disabled for imported wallets
 
 ### Transaction Management
 - `createTransaction`: Build transactions with UTXO selection

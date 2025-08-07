@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Elliptic Public Key</title>
+    <script src="https://cdn.jsdelivr.net/npm/elliptic@6.5.4/dist/elliptic.min.js"></script>
+</head>
+<body>
+    <h1>Test Elliptic Public Key Generation</h1>
+    <pre id="output"></pre>
+    
+    <script>
+        // Test private key from level 3
+        const privateKey = "e6c1f7f38ef252a24528f0e680f9c0450b359fbf630806020a2102c7d15909b7";
+        
+        // Create EC instance
+        const ec = new elliptic.ec('secp256k1');
+        
+        // Generate key pair
+        const keyPair = ec.keyFromPrivate(privateKey);
+        
+        // Get public key in different formats
+        const pubKeyCompressed = keyPair.getPublic(true, 'hex');
+        const pubKeyUncompressed = keyPair.getPublic(false, 'hex');
+        const pubKeyPoint = keyPair.getPublic();
+        
+        const output = document.getElementById('output');
+        output.textContent = `Private key: ${privateKey}\n\n`;
+        output.textContent += `Public key (compressed): ${pubKeyCompressed}\n`;
+        output.textContent += `Public key (uncompressed): ${pubKeyUncompressed}\n`;
+        output.textContent += `Public key X: ${pubKeyPoint.getX().toString(16)}\n`;
+        output.textContent += `Public key Y: ${pubKeyPoint.getY().toString(16)}\n`;
+        output.textContent += `\nExpected compressed: 02a96e5e8c7b17e5a30ad7c13c6f4761e38e56d5c3beacdc89bec37e83a3034b7e\n`;
+        output.textContent += `JavaScript got: 03bcd7b7d8dc639aa4776dee0f31f87aadb5ce9f4660d6859515d2835d09f096d5\n`;
+        
+        // Test with a known key
+        const testKey = "f3f19a6c29abaa38fce2d00ac8737fcb50bc52720ddf67d8c59caf0bd0af6726";
+        const testPair = ec.keyFromPrivate(testKey);
+        const testPub = testPair.getPublic(true, 'hex');
+        
+        output.textContent += `\nTest with expected final key:\n`;
+        output.textContent += `Private: ${testKey}\n`;
+        output.textContent += `Public: ${testPub}\n`;
+        output.textContent += `Expected: 02006abf41ba147951f55579a2f7d3683f7334e9466df8ffa38a486813651ffb77\n`;
+    </script>
+</body>
+</html>

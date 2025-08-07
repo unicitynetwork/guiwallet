@@ -1,0 +1,26 @@
+# Alpha CLI Commands to Extract Private Keys from wallet.dat
+
+# Assuming you have alpha-cli and alphad installed and wallet.dat loaded
+
+# 1. List all addresses in the wallet
+alpha-cli listaddressgroupings
+
+# 2. Get information about the specific address
+alpha-cli getaddressinfo "alpha1q64c7vmezvqd43l4g0hg8l72uttc0sc5cqrhpqz"
+
+# 3. Dump the private key for the address
+alpha-cli dumpprivkey "alpha1q64c7vmezvqd43l4g0hg8l72uttc0sc5cqrhpqz"
+
+# 4. Dump all wallet keys to a file
+alpha-cli dumpwallet "/path/to/wallet_dump.txt"
+# Then search the file for your address:
+grep "alpha1q64c7vmezvqd43l4g0hg8l72uttc0sc5cqrhpqz" /path/to/wallet_dump.txt
+
+# 5. List wallet descriptors (for descriptor wallets)
+alpha-cli listdescriptors
+
+# 6. Get a specific descriptor's info
+alpha-cli getdescriptorinfo "wpkh(xpub661MyMwAqRbcGvo3ScFFZaTDc4LqgMm2yt2HHPp5UTwGM69DK5FNbukRSuC7dv6h5EU4EpwT32rxpHtdtn9fVyB9HCLnL9VmFMzyMfYCWGV/84h/1h/0h/1/*)"
+
+# Note: If the wallet is encrypted, you'll need to unlock it first:
+alpha-cli walletpassphrase "your_passphrase" 60

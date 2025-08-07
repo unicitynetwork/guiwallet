@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test CryptoJS HMAC Order</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body>
+    <h1>Test CryptoJS HMAC Parameter Order</h1>
+    <pre id="output"></pre>
+    
+    <script>
+        // Test to determine CryptoJS.HmacSHA512 parameter order
+        const masterKey = "44af427cc3e4eca15633682c50383df02f5598ff70ae972060b32529106efea3";
+        
+        // Test 1: HmacSHA512(masterKey, "Bitcoin seed")
+        const test1 = CryptoJS.HmacSHA512(
+            CryptoJS.enc.Hex.parse(masterKey),
+            CryptoJS.enc.Utf8.parse("Bitcoin seed")
+        );
+        
+        // Test 2: HmacSHA512("Bitcoin seed", masterKey) 
+        const test2 = CryptoJS.HmacSHA512(
+            CryptoJS.enc.Utf8.parse("Bitcoin seed"),
+            CryptoJS.enc.Hex.parse(masterKey)
+        );
+        
+        const output = document.getElementById('output');
+        output.textContent = `Master key: ${masterKey}\n\n`;
+        output.textContent += `Test 1 - HmacSHA512(masterKey, "Bitcoin seed"):\n`;
+        output.textContent += `${test1.toString()}\n\n`;
+        output.textContent += `Test 2 - HmacSHA512("Bitcoin seed", masterKey):\n`;
+        output.textContent += `${test2.toString()}\n\n`;
+        output.textContent += `Expected (from Python): 2f351f201f210447430b18b1314abf16f8ab71d8d80dc48a02d98a670a4aa798518b1777bdcec20603903dcbb35d53877b4fe19ba30b72a99774e0ef05102894\n\n`;
+        
+        if (test1.toString() === '2f351f201f210447430b18b1314abf16f8ab71d8d80dc48a02d98a670a4aa798518b1777bdcec20603903dcbb35d53877b4fe19ba30b72a99774e0ef05102894') {
+            output.textContent += 'RESULT: CryptoJS.HmacSHA512(data, key) - first param is data/message, second is key';
+        } else if (test2.toString() === '2f351f201f210447430b18b1314abf16f8ab71d8d80dc48a02d98a670a4aa798518b1777bdcec20603903dcbb35d53877b4fe19ba30b72a99774e0ef05102894') {
+            output.textContent += 'RESULT: CryptoJS.HmacSHA512(key, data) - first param is key, second is data/message';
+        }
+    </script>
+</body>
+</html>
