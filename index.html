@@ -683,7 +683,7 @@
             <!-- Compact Endpoint Section -->
             <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 15px; padding: 6px 8px; background-color: #f8f9fa; border-radius: 4px;">
                 <label for="rpcServer" style="margin: 0; font-weight: 600; white-space: nowrap; font-size: 10px;">Endpoint:</label>
-                <input type="text" id="rpcServer" placeholder="wss://unicorn.unicity.network:50004" value="wss://unicorn.unicity.network:50004" style="flex: 1; padding: 3px 6px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px;">
+                <input type="text" id="rpcServer" placeholder="wss://fulcrum.unicity.network:50004" value="wss://fulcrum.unicity.network:50004" style="flex: 1; padding: 3px 6px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px;">
                 <button id="connectRpcBtn" class="wallet-button">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
@@ -3067,7 +3067,7 @@ Anyone with your master private key can access all your funds.`;
             
             // Auto-connect to default endpoint on page load
             function tryAutoConnect() {
-                const defaultEndpoint = 'wss://unicorn.unicity.network:50004';
+                const defaultEndpoint = 'wss://fulcrum.unicity.network:50004';
                 
                 // Only auto-connect if we're not already connected and the input has the default value
                 if (!electrumConnected && rpcServerInput.value === defaultEndpoint) {
