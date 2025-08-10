@@ -900,6 +900,8 @@
             let broadcastQueue = [];
             let isQueueProcessing = false;
             let lastBroadcastBlock = null;
+            let transactionsInCurrentBlock = 0;
+            const MAX_TRANSACTIONS_PER_BLOCK = 3;
             let queueStatusElement = null;
             let autoClearTimeout = null;
             
@@ -5871,6 +5873,14 @@ Anyone with your master private key can access all your funds.`;
                             item && item.tx && item.tx.raw && item.tx.txid
                         );
                     }
+                    
+                    // Load broadcast state
+                    const savedState = localStorage.getItem('broadcastState');
+                    if (savedState) {
+                        const state = JSON.parse(savedState);
+                        lastBroadcastBlock = state.lastBroadcastBlock || null;
+                        transactionsInCurrentBlock = state.transactionsInCurrentBlock || 0;
+                    }
                 } catch (e) {
                     console.error('Error loading broadcast queue:', e);
                     broadcastQueue = [];
@@ -5889,6 +5899,12 @@ Anyone with your master private key can access all your funds.`;
             function saveQueue() {
                 try {
                     localStorage.setItem('broadcastQueue', JSON.stringify(broadcastQueue));
+                    
+                    // Save broadcast state
+                    localStorage.setItem('broadcastState', JSON.stringify({
+                        lastBroadcastBlock: lastBroadcastBlock,
+                        transactionsInCurrentBlock: transactionsInCurrentBlock
+                    }));
                 } catch (e) {
                     console.error('Error saving broadcast queue:', e);
                 }
@@ -5971,10 +5987,17 @@ Anyone with your master private key can access all your funds.`;
                 
                 isQueueProcessing = true;
                 
-                // Check if we can broadcast in current block
-                if (lastBroadcastBlock === currentBlockHeight) {
+                // Check if block has changed since last broadcast
+                if (lastBroadcastBlock !== currentBlockHeight) {
+                    // New block, reset counter
+                    transactionsInCurrentBlock = 0;
+                    lastBroadcastBlock = currentBlockHeight;
+                }
+                
+                // Check if we've reached the limit for this block
+                if (transactionsInCurrentBlock >= MAX_TRANSACTIONS_PER_BLOCK) {
                     // Wait for next block
-                    console.log(`Waiting for next block. Current: ${currentBlockHeight}, Last broadcast: ${lastBroadcastBlock}`);
+                    console.log(`Reached limit of ${MAX_TRANSACTIONS_PER_BLOCK} transactions for block ${currentBlockHeight}. Waiting for next block.`);
                     isQueueProcessing = false;
                     updateQueueDisplay();
                     return;
@@ -6022,8 +6045,9 @@ Anyone with your master private key can access all your funds.`;
                         nextItem.broadcastBlock = currentBlockHeight;
                         nextItem.completedAt = new Date().toISOString();
                         lastBroadcastBlock = currentBlockHeight;
+                        transactionsInCurrentBlock++;
                         
-                        console.log('Transaction broadcast:', result);
+                        console.log(`Transaction broadcast (${transactionsInCurrentBlock}/${MAX_TRANSACTIONS_PER_BLOCK} this block):`, result);
                         showInAppNotification('Transaction Sent', 
                             `Successfully broadcast transaction: ${nextItem.tx.txid.substring(0, 16)}...`, 
                             'success');
@@ -6041,9 +6065,15 @@ Anyone with your master private key can access all your funds.`;
                     // Continue processing
                     isQueueProcessing = false;
                     
-                    // If we successfully broadcast this block, wait for next block
+                    // Continue processing based on status
                     if (nextItem.status === 'complete') {
-                        // Will resume on next block
+                        // Check if we can broadcast more in this block
+                        if (transactionsInCurrentBlock < MAX_TRANSACTIONS_PER_BLOCK && 
+                            broadcastQueue.some(item => item.status === 'pending')) {
+                            // Continue with next transaction
+                            setTimeout(() => processQueue(), 1000);
+                        }
+                        // Otherwise will resume on next block
                     } else {
                         // Try next item immediately if this one failed
                         setTimeout(() => processQueue(), 1000);
@@ -6065,6 +6095,7 @@ Anyone with your master private key can access all your funds.`;
                 // If queue is now empty, clear from localStorage
                 if (broadcastQueue.length === 0) {
                     localStorage.removeItem('broadcastQueue');
+                    localStorage.removeItem('broadcastState');
                 } else {
                     saveQueue();
                 }
@@ -6170,10 +6201,16 @@ Anyone with your master private key can access all your funds.`;
                     `;
                 }
                 
-                if (lastBroadcastBlock === currentBlockHeight && pendingCount > 0) {
+                if (lastBroadcastBlock === currentBlockHeight && transactionsInCurrentBlock >= MAX_TRANSACTIONS_PER_BLOCK && pendingCount > 0) {
                     const nextBlock = currentBlockHeight ? currentBlockHeight + 1 : 'next';
                     const transactionText = pendingCount === 1 ? 'transaction' : 'transactions';
-                    statusHTML += `<br><em style="color: #666;">${pendingCount} more ${transactionText} to go, waiting for block ${nextBlock} to continue...</em>`;
+                    statusHTML += `<br><em style="color: #666;">Limit reached (${MAX_TRANSACTIONS_PER_BLOCK} per block). ${pendingCount} more ${transactionText} to go, waiting for block ${nextBlock}...</em>`;
+                } else if (pendingCount > 0 && transactionsInCurrentBlock > 0) {
+                    const remaining = MAX_TRANSACTIONS_PER_BLOCK - transactionsInCurrentBlock;
+                    const canBroadcast = Math.min(remaining, pendingCount);
+                    if (canBroadcast > 0) {
+                        statusHTML += `<br><em style="color: #666;">Can broadcast ${canBroadcast} more transaction${canBroadcast > 1 ? 's' : ''} in current block</em>`;
+                    }
                 }
                 
                 statusHTML += '</div>';
@@ -6229,6 +6266,7 @@ Anyone with your master private key can access all your funds.`;
                 // If queue is now empty, clear from localStorage
                 if (broadcastQueue.length === 0) {
                     localStorage.removeItem('broadcastQueue');
+                    localStorage.removeItem('broadcastState');
                 } else {
                     saveQueue();
                 }
@@ -6269,6 +6307,7 @@ Anyone with your master private key can access all your funds.`;
                 // If queue is now empty, clear from localStorage
                 if (broadcastQueue.length === 0) {
                     localStorage.removeItem('broadcastQueue');
+                    localStorage.removeItem('broadcastState');
                 } else {
                     saveQueue();
                 }
