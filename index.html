@@ -892,6 +892,8 @@
             let currentBlockTime = null;
             let lastUpdateBlockHeight = null;
             let currentUtxos = [];
+            let offlineUtxoData = null;
+            let electrumConnected = false;
             let broadcastQueue = [];
             let isQueueProcessing = false;
             let lastBroadcastBlock = null;
@@ -2560,7 +2562,7 @@ Anyone with your master private key can access all your funds.`;
             let electrumSocket = null;
             let electrumRequestId = 1;
             let electrumCallbacks = {};
-            let electrumConnected = false;
+            // electrumConnected already declared at top
             let currentScriptHashSubscription = null;
             let headerSubscriptionActive = false;
             
@@ -3141,7 +3143,7 @@ Anyone with your master private key can access all your funds.`;
             // ===== UTXO EXPORT/IMPORT FUNCTIONALITY =====
             
             // Store for offline UTXO data
-            let offlineUtxoData = null;
+            // offlineUtxoData already declared at top
             // currentUtxos already declared at top
             let currentTransactions = [];
             let transactionDetailsCache = {}; // Cache for transaction details
