@@ -6233,6 +6233,15 @@ Anyone with your master private key can access all your funds.`;
                             <strong>Status:</strong> Cancelled by user<br>
                             <strong>Cancelled at:</strong> ${new Date(item.cancelledAt).toLocaleString()}
                         </div>`;
+                        
+                        // Add action buttons for cancelled transactions
+                        modalContent += `
+                            <div style="margin-top: 10px; display: flex; gap: 10px;">
+                                <button onclick="resendTransaction('${txid}')" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Resend</button>
+                                <button onclick="saveSingleTransaction('${txid}')" style="padding: 6px 12px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Save</button>
+                                <button onclick="deleteTransaction('${txid}')" style="padding: 6px 12px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                            </div>
+                        `;
                     }
                     
                     modalContent += '</div></div>';
@@ -6256,6 +6265,16 @@ Anyone with your master private key can access all your funds.`;
                     `;
                 }
                 
+                // Add bulk action buttons for cancelled transactions
+                if (status === 'cancelled' && filteredItems.length > 0) {
+                    modalContent += `
+                        <div style="margin-top: 20px; padding: 15px; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; text-align: center;">
+                            <button onclick="resendAllCancelled()" style="padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; margin-right: 10px;">Resend All</button>
+                            <button onclick="deleteAllCancelled()" style="padding: 8px 16px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Delete All</button>
+                        </div>
+                    `;
+                }
+                
                 // Add close button
                 modalContent += `
                     <div style="margin-top: 20px; text-align: center;">
@@ -6264,6 +6283,169 @@ Anyone with your master private key can access all your funds.`;
                 `;
                 
                 showModal(modalContent);
+            };
+            
+            // Resend a single cancelled transaction
+            window.resendTransaction = function(txid) {
+                // Check if connected
+                if (!electrumConnected) {
+                    showInAppNotification('Not Connected', 'Please connect to Fulcrum server first', 'warning');
+                    return;
+                }
+                
+                // Find the transaction
+                const item = broadcastQueue.find(item => item.tx.txid === txid);
+                if (!item || item.status !== 'cancelled') {
+                    showInAppNotification('Error', 'Transaction not found or not cancelled', 'error');
+                    return;
+                }
+                
+                // Update status to pending
+                item.status = 'pending';
+                item.attempts = 0;
+                item.cancelledAt = null;
+                
+                saveQueue();
+                updateQueueDisplay();
+                closeQueueModal();
+                
+                showInAppNotification('Transaction Requeued', 'Transaction has been queued for broadcast', 'success');
+                
+                // Start processing if not already running
+                if (!isQueueProcessing) {
+                    processQueue();
+                }
+            };
+            
+            // Save a single transaction
+            window.saveSingleTransaction = function(txid) {
+                const item = broadcastQueue.find(item => item.tx.txid === txid);
+                if (!item) {
+                    showInAppNotification('Error', 'Transaction not found', 'error');
+                    return;
+                }
+                
+                const exportData = {
+                    version: '1.0',
+                    timestamp: new Date().toISOString(),
+                    network: 'alpha',
+                    transactions: [{
+                        raw: item.tx.raw,
+                        txid: item.tx.txid,
+                        details: item.tx.details ? {
+                            recipient: item.tx.details.outputs?.[0]?.address || 'Unknown',
+                            amount: item.tx.details.outputs?.[0]?.value || 0,
+                            fee: item.tx.details.fee || 0,
+                            change: item.tx.details.changeAmount || 0
+                        } : null,
+                        status: item.status,
+                        error: item.error || null,
+                        attempts: item.attempts || 0,
+                        cancelledAt: item.cancelledAt || null,
+                        failedAt: item.failedAt || null
+                    }]
+                };
+                
+                const dataStr = JSON.stringify(exportData, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `transaction_${txid.substring(0, 8)}_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                URL.revokeObjectURL(url);
+                
+                showInAppNotification('Saved', 'Transaction saved to file', 'info');
+            };
+            
+            // Delete a transaction from the queue
+            window.deleteTransaction = function(txid) {
+                if (confirm('Are you sure you want to delete this transaction?')) {
+                    broadcastQueue = broadcastQueue.filter(item => item.tx.txid !== txid);
+                    
+                    // Update localStorage
+                    if (broadcastQueue.length === 0) {
+                        localStorage.removeItem('broadcastQueue');
+                    } else {
+                        saveQueue();
+                    }
+                    
+                    updateQueueDisplay();
+                    
+                    // Refresh the modal to show updated list
+                    const remainingCancelled = broadcastQueue.filter(item => item.status === 'cancelled').length;
+                    if (remainingCancelled > 0) {
+                        closeQueueModal();
+                        showQueueDetails('cancelled');
+                    } else {
+                        closeQueueModal();
+                    }
+                    
+                    showInAppNotification('Deleted', 'Transaction removed from queue', 'info');
+                }
+            };
+            
+            // Resend all cancelled transactions
+            window.resendAllCancelled = function() {
+                // Check if connected
+                if (!electrumConnected) {
+                    showInAppNotification('Not Connected', 'Please connect to Fulcrum server first', 'warning');
+                    return;
+                }
+                
+                const cancelledItems = broadcastQueue.filter(item => item.status === 'cancelled');
+                if (cancelledItems.length === 0) {
+                    showInAppNotification('No Cancelled Transactions', 'No cancelled transactions to resend', 'info');
+                    return;
+                }
+                
+                // Update all cancelled transactions to pending
+                cancelledItems.forEach(item => {
+                    item.status = 'pending';
+                    item.attempts = 0;
+                    item.cancelledAt = null;
+                });
+                
+                saveQueue();
+                updateQueueDisplay();
+                closeQueueModal();
+                
+                showInAppNotification('Transactions Requeued', `${cancelledItems.length} transaction(s) have been queued for broadcast`, 'success');
+                
+                // Start processing if not already running
+                if (!isQueueProcessing) {
+                    processQueue();
+                }
+            };
+            
+            // Delete all cancelled transactions
+            window.deleteAllCancelled = function() {
+                const cancelledCount = broadcastQueue.filter(item => item.status === 'cancelled').length;
+                
+                if (cancelledCount === 0) {
+                    showInAppNotification('No Cancelled Transactions', 'No cancelled transactions to delete', 'info');
+                    return;
+                }
+                
+                if (confirm(`Are you sure you want to delete all ${cancelledCount} cancelled transaction(s)?`)) {
+                    broadcastQueue = broadcastQueue.filter(item => item.status !== 'cancelled');
+                    
+                    // Update localStorage
+                    if (broadcastQueue.length === 0) {
+                        localStorage.removeItem('broadcastQueue');
+                    } else {
+                        saveQueue();
+                    }
+                    
+                    updateQueueDisplay();
+                    closeQueueModal();
+                    
+                    showInAppNotification('Deleted', `${cancelledCount} cancelled transaction(s) removed from queue`, 'info');
+                }
             };
             
             // Export failed or cancelled transactions
