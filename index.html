@@ -892,6 +892,9 @@
             let currentBlockTime = null;
             let lastUpdateBlockHeight = null;
             let currentUtxos = [];
+            let currentTransactions = [];
+            let currentTransactionPage = 1;
+            let currentUtxoPage = 1;
             let offlineUtxoData = null;
             let electrumConnected = false;
             let broadcastQueue = [];
@@ -933,6 +936,8 @@
             const restoreWalletBtn = document.getElementById('restoreWalletBtn');
             const migrateWalletBtn = document.getElementById('migrateWalletBtn');
             const backupWalletBtn = document.getElementById('backupWalletBtn');
+            const importUtxoBtn = document.getElementById('importUtxoBtn');
+            const clearUtxoBtn = document.getElementById('clearUtxoBtn');
             
             // Password Modal Elements
             const passwordModal = document.getElementById('passwordModal');
@@ -3137,21 +3142,20 @@ Anyone with your master private key can access all your funds.`;
             // Store for offline UTXO data
             // offlineUtxoData already declared at top
             // currentUtxos already declared at top
-            let currentTransactions = [];
+            // currentTransactions already declared at top
             let transactionDetailsCache = {}; // Cache for transaction details
             let isInitialLoad = true;  // Track if this is the first load
             
             // Pagination state
             const ITEMS_PER_PAGE = 20;
-            let currentTransactionPage = 1;
-            let currentUtxoPage = 1;
+            // currentTransactionPage and currentUtxoPage already declared at top
             // lastUpdateBlockHeight, currentBlockHeight and currentBlockTime already declared at top
             let blockPollInterval = null;
             
             // Export button element
             const exportUtxoBtn = document.getElementById('exportUtxoBtn');
-            const importUtxoBtn = document.getElementById('importUtxoBtn');
-            const clearUtxoBtn = document.getElementById('clearUtxoBtn');
+            // importUtxoBtn is declared at the top with other elements
+            // clearUtxoBtn is declared at the top with other elements
             const utxoFileInput = document.getElementById('utxoFileInput');
             // const offlineBalanceDisplay = document.getElementById('offlineBalanceDisplay'); // Removed with Cold Wallet reorganization
             // const offlineBalanceAmount = document.getElementById('offlineBalanceAmount'); // Removed with Cold Wallet reorganization
@@ -3421,6 +3425,23 @@ Anyone with your master private key can access all your funds.`;
             }
             
             // Update common balance display
+            // Get list of UTXOs consumed by pending or complete transactions in queue
+            function getConsumedUtxos() {
+                const consumedUtxos = new Set();
+                
+                broadcastQueue.forEach(item => {
+                    // Only consider pending, broadcasting, and complete transactions
+                    if (item.status === 'pending' || item.status === 'broadcasting' || item.status === 'complete') {
+                        // Add the consumed UTXO to the set
+                        if (item.tx.input) {
+                            consumedUtxos.add(`${item.tx.input.txid}:${item.tx.input.vout}`);
+                        }
+                    }
+                });
+                
+                return consumedUtxos;
+            }
+            
             function updateCommonBalance() {
                 let confirmedBalance = 0;
                 let unconfirmedBalance = 0;
@@ -3428,13 +3449,20 @@ Anyone with your master private key can access all your funds.`;
                 let blockHeight = currentBlockHeight || lastUpdateBlockHeight;
                 let lastUpdate = currentBlockTime;
                 
+                // Get consumed UTXOs
+                const consumedUtxos = getConsumedUtxos();
+                
                 // Calculate balances from UTXOs
                 if (currentUtxos && currentUtxos.length > 0) {
                     currentUtxos.forEach(utxo => {
-                        if (utxo.height > 0) {
-                            confirmedBalance += utxo.value;
-                        } else {
-                            unconfirmedBalance += utxo.value;
+                        const utxoKey = `${utxo.txid}:${utxo.vout}`;
+                        // Only count UTXO if it's not consumed
+                        if (!consumedUtxos.has(utxoKey)) {
+                            if (utxo.height > 0) {
+                                confirmedBalance += utxo.value;
+                            } else {
+                                unconfirmedBalance += utxo.value;
+                            }
                         }
                     });
                     utxoSource = 'online';
@@ -3445,10 +3473,14 @@ Anyone with your master private key can access all your funds.`;
                     }
                 } else if (offlineUtxoData && offlineUtxoData.utxos && offlineUtxoData.utxos.length > 0) {
                     offlineUtxoData.utxos.forEach(utxo => {
-                        if (utxo.height > 0) {
-                            confirmedBalance += utxo.value;
-                        } else {
-                            unconfirmedBalance += utxo.value;
+                        const utxoKey = `${utxo.txid}:${utxo.vout}`;
+                        // Only count UTXO if it's not consumed
+                        if (!consumedUtxos.has(utxoKey)) {
+                            if (utxo.height > 0) {
+                                confirmedBalance += utxo.value;
+                            } else {
+                                unconfirmedBalance += utxo.value;
+                            }
                         }
                     });
                     utxoSource = 'offline';
@@ -4511,11 +4543,13 @@ Anyone with your master private key can access all your funds.`;
                 const endIndex = startIndex + ITEMS_PER_PAGE;
                 const pageUtxos = allUtxos.slice(startIndex, endIndex);
                 
+                // Get consumed UTXOs
+                const consumedUtxos = getConsumedUtxos();
+                
                 // Display each UTXO on the current page
                 pageUtxos.forEach((utxo, pageIndex) => {
                     const globalIndex = startIndex + pageIndex;
                     const utxoDiv = document.createElement('div');
-                    utxoDiv.style.cssText = 'padding: 8px; background-color: #f8f9fa; border-radius: 4px; margin-bottom: 6px; font-size: 11px;';
                     
                     const amount = (utxo.value / 100000000).toFixed(8);
                     const txid = utxo.tx_hash || utxo.txid;
@@ -4523,10 +4557,21 @@ Anyone with your master private key can access all your funds.`;
                     const height = utxo.height || 0;
                     const source = utxo.source === 'offline' ? ' (imported)' : '';
                     
+                    // Check if this UTXO is consumed
+                    const utxoKey = `${txid}:${vout}`;
+                    const isConsumed = consumedUtxos.has(utxoKey);
+                    
+                    // Style based on consumption status
+                    if (isConsumed) {
+                        utxoDiv.style.cssText = 'padding: 8px; background-color: #e5e7eb; border-radius: 4px; margin-bottom: 6px; font-size: 11px; opacity: 0.6;';
+                    } else {
+                        utxoDiv.style.cssText = 'padding: 8px; background-color: #f8f9fa; border-radius: 4px; margin-bottom: 6px; font-size: 11px;';
+                    }
+                    
                     utxoDiv.innerHTML = `
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <div style="flex: 1;">
-                                <div style="font-weight: 600; color: #06d6a0;">${amount} ALPHA${source}</div>
+                                <div style="font-weight: 600; color: ${isConsumed ? '#6b7280' : '#06d6a0'};">${amount} ALPHA${source}${isConsumed ? ' (pending)' : ''}</div>
                                 <div style="font-family: monospace; color: #666; word-break: break-all;">
                                     ${txid}:${vout}
                                 </div>
@@ -5064,10 +5109,18 @@ Anyone with your master private key can access all your funds.`;
             window.calculateMaxAmount = function() {
                 // Check if we have UTXOs
                 let availableUtxos = [];
+                const consumedUtxos = getConsumedUtxos();
+                
                 if (currentUtxos && currentUtxos.length > 0) {
-                    availableUtxos = currentUtxos;
+                    availableUtxos = currentUtxos.filter(utxo => {
+                        const utxoKey = `${utxo.txid}:${utxo.vout}`;
+                        return !consumedUtxos.has(utxoKey);
+                    });
                 } else if (offlineUtxoData && offlineUtxoData.utxos && offlineUtxoData.utxos.length > 0) {
-                    availableUtxos = offlineUtxoData.utxos;
+                    availableUtxos = offlineUtxoData.utxos.filter(utxo => {
+                        const utxoKey = `${utxo.txid}:${utxo.vout}`;
+                        return !consumedUtxos.has(utxoKey);
+                    });
                 }
                 
                 if (availableUtxos.length === 0) {
@@ -5140,10 +5193,18 @@ Anyone with your master private key can access all your funds.`;
                 // Check if we have UTXOs
                 // Use currentUtxos (from online query) or offlineUtxoData if available
                 let availableUtxos = [];
+                const consumedUtxos = getConsumedUtxos();
+                
                 if (currentUtxos && currentUtxos.length > 0) {
-                    availableUtxos = currentUtxos;
+                    availableUtxos = currentUtxos.filter(utxo => {
+                        const utxoKey = `${utxo.txid}:${utxo.vout}`;
+                        return !consumedUtxos.has(utxoKey);
+                    });
                 } else if (offlineUtxoData && offlineUtxoData.utxos && offlineUtxoData.utxos.length > 0) {
-                    availableUtxos = offlineUtxoData.utxos;
+                    availableUtxos = offlineUtxoData.utxos.filter(utxo => {
+                        const utxoKey = `${utxo.txid}:${utxo.vout}`;
+                        return !consumedUtxos.has(utxoKey);
+                    });
                 }
                 
                 if (availableUtxos.length === 0) {
@@ -6055,6 +6116,10 @@ Anyone with your master private key can access all your funds.`;
                 statusHTML += '</div>';
                 
                 queueStatusElement.innerHTML = statusHTML;
+                
+                // Update balance and UTXO display when queue changes
+                updateCommonBalance();
+                updateUtxoListDisplay();
             }
             
             // Create queue status element
