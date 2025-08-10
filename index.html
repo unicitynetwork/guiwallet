@@ -5231,12 +5231,17 @@ Anyone with your master private key can access all your funds.`;
                         changeAddress: senderAddress // Send change back to sender address
                     });
                     
-                    // Add change output if needed
-                    if (changeAmount > 0) {
+                    // Add change output if needed (but avoid dust outputs)
+                    // Dust threshold: 546 satoshis is typical for P2WPKH
+                    const DUST_THRESHOLD = 546;
+                    if (changeAmount > DUST_THRESHOLD) {
                         transactions[transactions.length - 1].outputs.push({
                             address: senderAddress,
                             value: changeAmount
                         });
+                    } else if (changeAmount > 0) {
+                        // If change is dust, add it to the fee instead
+                        console.log(`Change amount ${changeAmount} is below dust threshold, adding to fee`);
                     }
                 }
                 
@@ -5247,10 +5252,111 @@ Anyone with your master private key can access all your funds.`;
                     };
                 }
                 
+                // Apply dust rebalancing
+                const rebalancedTransactions = rebalanceDustOutputs(transactions, recipientAddress, senderAddress, sortedUtxos, feePerTx);
+                
                 return {
                     success: true,
-                    transactions: transactions
+                    transactions: rebalancedTransactions
                 };
+            }
+            
+            // Rebalance transactions to avoid dust outputs
+            function rebalanceDustOutputs(transactions, recipientAddress, senderAddress, availableUtxos, feePerTx) {
+                const DUST_THRESHOLD = 546;
+                
+                // First pass: rebalance recipient dust outputs across transactions
+                for (let i = 0; i < transactions.length; i++) {
+                    const tx = transactions[i];
+                    const recipientOutput = tx.outputs.find(o => o.address === recipientAddress);
+                    
+                    if (recipientOutput && recipientOutput.value < DUST_THRESHOLD && transactions.length > 1) {
+                        // Find another transaction to rebalance with
+                        for (let j = 0; j < transactions.length; j++) {
+                            if (i === j) continue;
+                            
+                            const otherTx = transactions[j];
+                            const otherRecipientOutput = otherTx.outputs.find(o => o.address === recipientAddress);
+                            
+                            if (otherRecipientOutput) {
+                                // Calculate how much we need to move to make both outputs non-dust
+                                const totalAmount = recipientOutput.value + otherRecipientOutput.value;
+                                const halfAmount = Math.floor(totalAmount / 2);
+                                
+                                if (halfAmount > DUST_THRESHOLD) {
+                                    // Rebalance the outputs
+                                    recipientOutput.value = halfAmount;
+                                    otherRecipientOutput.value = totalAmount - halfAmount;
+                                    console.log(`Rebalanced dust recipient outputs: ${halfAmount} and ${totalAmount - halfAmount}`);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Second pass: handle dust change outputs
+                const finalTransactions = [];
+                const usedUtxos = new Set(transactions.map(tx => `${tx.input.txid}:${tx.input.vout}`));
+                
+                for (const tx of transactions) {
+                    finalTransactions.push(tx);
+                    
+                    // Check if we have dust change that needs to be handled
+                    if (tx.changeAmount > 0 && tx.changeAmount <= DUST_THRESHOLD) {
+                        const recipientOutput = tx.outputs.find(o => o.address === recipientAddress);
+                        
+                        if (recipientOutput && recipientOutput.value > DUST_THRESHOLD * 2) {
+                            // Split the recipient output to create non-dust change
+                            const halfRecipientAmount = Math.floor(recipientOutput.value / 2);
+                            recipientOutput.value = halfRecipientAmount;
+                            
+                            // Create proper change output
+                            const newChangeAmount = tx.input.value - halfRecipientAmount - tx.fee;
+                            if (newChangeAmount > DUST_THRESHOLD) {
+                                tx.outputs.push({
+                                    address: senderAddress,
+                                    value: newChangeAmount
+                                });
+                                tx.changeAmount = newChangeAmount;
+                                
+                                // Now we need to create a follow-up transaction for the remaining recipient amount
+                                // Find an unused UTXO
+                                const nextUtxo = availableUtxos.find(utxo => 
+                                    !usedUtxos.has(`${utxo.txid}:${utxo.vout}`)
+                                );
+                                
+                                if (nextUtxo) {
+                                    // Create follow-up transaction
+                                    const remainingRecipientAmount = recipientOutput.value;
+                                    const followUpTx = {
+                                        input: nextUtxo,
+                                        outputs: [
+                                            { address: recipientAddress, value: remainingRecipientAmount }
+                                        ],
+                                        fee: feePerTx,
+                                        changeAmount: nextUtxo.value - remainingRecipientAmount - feePerTx,
+                                        changeAddress: senderAddress
+                                    };
+                                    
+                                    // Add change output if non-dust
+                                    if (followUpTx.changeAmount > DUST_THRESHOLD) {
+                                        followUpTx.outputs.push({
+                                            address: senderAddress,
+                                            value: followUpTx.changeAmount
+                                        });
+                                    }
+                                    
+                                    finalTransactions.push(followUpTx);
+                                    usedUtxos.add(`${nextUtxo.txid}:${nextUtxo.vout}`);
+                                    console.log(`Created follow-up transaction to handle dust change rebalancing`);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                return finalTransactions;
             }
             
             // Show transaction confirmation modal
