@@ -5774,6 +5774,8 @@ Anyone with your master private key can access all your funds.`;
             }
             
             // Update queue display
+            let autoClearTimeout = null;
+            
             function updateQueueDisplay() {
                 if (!queueStatusElement) {
                     // Create queue status element if it doesn't exist
@@ -5787,32 +5789,74 @@ Anyone with your master private key can access all your funds.`;
                 
                 if (broadcastQueue.length === 0) {
                     queueStatusElement.style.display = 'none';
+                    // Clear any pending auto-clear timeout
+                    if (autoClearTimeout) {
+                        clearTimeout(autoClearTimeout);
+                        autoClearTimeout = null;
+                    }
                     return;
                 }
                 
                 queueStatusElement.style.display = 'block';
                 
+                // Check if all transactions are complete (no pending, no broadcasting, no failed)
+                if (pendingCount === 0 && broadcastingCount === 0 && failedCount === 0 && completeCount > 0) {
+                    // Schedule auto-clear after 10 seconds
+                    if (!autoClearTimeout) {
+                        autoClearTimeout = setTimeout(() => {
+                            clearCompletedQueue();
+                            showInAppNotification('Queue Cleared', 'All completed transactions have been cleared from the queue', 'info');
+                            autoClearTimeout = null;
+                        }, 10000);
+                    }
+                } else {
+                    // Cancel auto-clear if there are pending, broadcasting, or failed transactions
+                    if (autoClearTimeout) {
+                        clearTimeout(autoClearTimeout);
+                        autoClearTimeout = null;
+                    }
+                }
+                
                 let statusHTML = '<div style="padding: 10px; background: #f8f9fa; border-radius: 4px; margin-bottom: 10px;">';
                 statusHTML += '<h4 style="margin: 0 0 10px 0;">Broadcast Queue</h4>';
                 
-                // Summary
+                // Calculate amounts for each status
+                const pendingAmount = broadcastQueue
+                    .filter(item => item.status === 'pending')
+                    .reduce((sum, item) => sum + (item.tx.details.outputs[0].value || 0), 0);
+                const broadcastingAmount = broadcastQueue
+                    .filter(item => item.status === 'broadcasting')
+                    .reduce((sum, item) => sum + (item.tx.details.outputs[0].value || 0), 0);
+                const completeAmount = broadcastQueue
+                    .filter(item => item.status === 'complete')
+                    .reduce((sum, item) => sum + (item.tx.details.outputs[0].value || 0), 0);
+                const failedAmount = broadcastQueue
+                    .filter(item => item.status === 'failed')
+                    .reduce((sum, item) => sum + (item.tx.details.outputs[0].value || 0), 0);
+                
+                const totalAmount = pendingAmount + broadcastingAmount + completeAmount + failedAmount;
+                
+                // Summary with clickable items
                 statusHTML += '<div style="margin-bottom: 10px; font-size: 12px;">';
                 if (broadcastingCount > 0) {
-                    statusHTML += `<span style="color: #0066cc;">● Broadcasting now...</span><br>`;
+                    statusHTML += `<span style="color: #0066cc;">● Broadcasting now... (${(broadcastingAmount / 100000000).toFixed(8)} ALPHA)</span><br>`;
                 }
                 if (pendingCount > 0) {
-                    statusHTML += `<span style="color: #666;">◯ ${pendingCount} pending</span><br>`;
+                    statusHTML += `<a href="#" onclick="showQueueDetails('pending'); return false;" style="color: #666; text-decoration: none; cursor: pointer;">◯ ${pendingCount} pending (${(pendingAmount / 100000000).toFixed(8)} ALPHA)</a><br>`;
                 }
                 if (completeCount > 0) {
-                    statusHTML += `<span style="color: #00a000;">✓ ${completeCount} complete</span><br>`;
+                    statusHTML += `<a href="#" onclick="showQueueDetails('complete'); return false;" style="color: #00a000; text-decoration: none; cursor: pointer;">✓ ${completeCount} complete (${(completeAmount / 100000000).toFixed(8)} ALPHA)</a><br>`;
                 }
                 if (failedCount > 0) {
-                    statusHTML += `<span style="color: #cc0000;">✗ ${failedCount} failed</span><br>`;
+                    statusHTML += `<a href="#" onclick="showQueueDetails('failed'); return false;" style="color: #cc0000; text-decoration: none; cursor: pointer;">✗ ${failedCount} failed (${(failedAmount / 100000000).toFixed(8)} ALPHA)</a><br>`;
                 }
+                
+                statusHTML += `<br><strong>Total queued: ${(totalAmount / 100000000).toFixed(8)} ALPHA</strong>`;
                 
                 if (lastBroadcastBlock === currentBlockHeight && pendingCount > 0) {
                     statusHTML += `<br><em style="color: #666;">Waiting for block ${(currentBlockHeight || 0) + 1} to continue...</em>`;
                 }
+                
                 statusHTML += '</div>';
                 
                 // Clear queue button
@@ -5863,6 +5907,110 @@ Anyone with your master private key can access all your funds.`;
                     processQueue();
                 }
             }
+            
+            // Show queue details modal
+            window.showQueueDetails = function(status) {
+                const filteredItems = broadcastQueue.filter(item => item.status === status);
+                if (filteredItems.length === 0) return;
+                
+                let modalContent = '';
+                let modalTitle = '';
+                
+                switch(status) {
+                    case 'pending':
+                        modalTitle = 'Pending Transactions';
+                        break;
+                    case 'complete':
+                        modalTitle = 'Completed Transactions';
+                        break;
+                    case 'failed':
+                        modalTitle = 'Failed Transactions';
+                        break;
+                }
+                
+                modalContent = `<h3>${modalTitle}</h3>`;
+                modalContent += '<div style="max-height: 400px; overflow-y: auto;">';
+                
+                filteredItems.forEach((item, index) => {
+                    const amount = (item.tx.details.outputs[0].value / 100000000).toFixed(8);
+                    const recipient = item.tx.details.outputs[0].address;
+                    const txid = item.tx.txid;
+                    
+                    modalContent += `
+                        <div style="border: 1px solid #e5e7eb; border-radius: 4px; padding: 10px; margin-bottom: 10px;">
+                            <div><strong>Transaction ${index + 1}</strong></div>
+                            <div style="font-size: 12px; margin-top: 5px;">
+                                <div>Amount: ${amount} ALPHA</div>
+                                <div>To: <span style="font-family: monospace; font-size: 11px;">${recipient}</span></div>
+                                <div>TxID: <span style="font-family: monospace; font-size: 11px;">${txid}</span></div>
+                                <div>Added: ${new Date(item.addedAt).toLocaleString()}</div>
+                    `;
+                    
+                    if (status === 'complete') {
+                        modalContent += `<div style="margin-top: 5px;"><a href="https://www.unicity.network/tx/${txid}" target="_blank" style="color: #0066cc;">View on Explorer →</a></div>`;
+                    } else if (status === 'failed') {
+                        modalContent += `<div style="color: #cc0000; margin-top: 5px;">Error: ${item.error || 'Unknown error'}</div>`;
+                        modalContent += `<div>Attempts: ${item.attempts}</div>`;
+                    }
+                    
+                    modalContent += '</div></div>';
+                });
+                
+                modalContent += '</div>';
+                
+                // Add export button for failed transactions
+                if (status === 'failed') {
+                    modalContent += `
+                        <div style="margin-top: 20px; padding: 15px; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 4px;">
+                            <button onclick="exportFailedTransactions()" style="padding: 8px 16px; background: #f59e0b; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Export Failed Transactions</button>
+                            <p style="margin: 10px 0 0 0; font-size: 12px; color: #92400e;">
+                                Please email the exported file to <strong>vladimir@unicity-labs.com</strong> for investigation.
+                            </p>
+                        </div>
+                    `;
+                }
+                
+                showModal(modalContent);
+            };
+            
+            // Export failed transactions
+            window.exportFailedTransactions = function() {
+                const failedItems = broadcastQueue.filter(item => item.status === 'failed');
+                if (failedItems.length === 0) return;
+                
+                const exportData = {
+                    version: '1.0',
+                    timestamp: new Date().toISOString(),
+                    network: 'alpha',
+                    transactions: failedItems.map(item => ({
+                        raw: item.tx.raw,
+                        txid: item.tx.txid,
+                        details: {
+                            recipient: item.tx.details.outputs[0].address,
+                            amount: item.tx.details.outputs[0].value,
+                            fee: item.tx.details.fee,
+                            change: item.tx.details.changeAmount
+                        },
+                        error: item.error,
+                        attempts: item.attempts
+                    }))
+                };
+                
+                const dataStr = JSON.stringify(exportData, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `failed_transactions_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                URL.revokeObjectURL(url);
+                
+                showInAppNotification('Exported', 'Failed transactions exported. Please email to vladimir@unicity-labs.com', 'info');
+            };
             
             // Save transactions for offline broadcast
             function saveTransactionsOffline(signedTransactions) {
