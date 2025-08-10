@@ -5756,12 +5756,40 @@ Anyone with your master private key can access all your funds.`;
             // Add transactions to queue
             function broadcastTransactions(signedTransactions) {
                 // Validate and add to queue
+                let addedCount = 0;
+                let skippedCount = 0;
+                
                 for (const signedTx of signedTransactions) {
                     // Ensure we have a hex string, not JSON
                     if (typeof signedTx.raw === 'object') {
                         console.error('ERROR: Transaction is JSON object, not hex string:', signedTx.raw);
                         showInAppNotification('Invalid Transaction', 'Transaction format is invalid. Must be a hex string.', 'error');
                         continue;
+                    }
+                    
+                    // Check for duplicate transactions
+                    const existingTx = broadcastQueue.find(item => item.tx.txid === signedTx.txid);
+                    
+                    if (existingTx) {
+                        if (existingTx.status === 'cancelled') {
+                            // Remove from cancelled and add as pending
+                            broadcastQueue = broadcastQueue.filter(item => item.tx.txid !== signedTx.txid);
+                            console.log(`Removed cancelled transaction ${signedTx.txid} from queue`);
+                        } else if (existingTx.status === 'pending' || existingTx.status === 'complete' || existingTx.status === 'broadcasting') {
+                            // Skip if already pending, broadcasting, or complete
+                            console.log(`Skipping duplicate transaction ${signedTx.txid} (status: ${existingTx.status})`);
+                            skippedCount++;
+                            continue;
+                        } else if (existingTx.status === 'failed') {
+                            // Reset failed transaction for retry
+                            existingTx.status = 'pending';
+                            existingTx.attempts = 0;
+                            existingTx.error = null;
+                            existingTx.failedAt = null;
+                            console.log(`Resetting failed transaction ${signedTx.txid} for retry`);
+                            addedCount++;
+                            continue;
+                        }
                     }
                     
                     // Add to queue with metadata
@@ -5771,18 +5799,25 @@ Anyone with your master private key can access all your funds.`;
                         attempts: 0,
                         status: 'pending'
                     });
+                    addedCount++;
                 }
                 
                 saveQueue();
                 updateQueueDisplay();
                 
-                // Show notification
-                showInAppNotification('Queued for Broadcast', 
-                    `Added ${signedTransactions.length} transaction(s) to broadcast queue`, 
-                    'info');
+                // Show notification about import results
+                if (addedCount > 0 && skippedCount > 0) {
+                    showInAppNotification('Import Complete', `Added ${addedCount} transaction(s), skipped ${skippedCount} duplicate(s)`, 'info');
+                } else if (skippedCount > 0) {
+                    showInAppNotification('No New Transactions', `All ${skippedCount} transaction(s) already in queue`, 'warning');
+                } else if (addedCount > 0) {
+                    showInAppNotification('Queued for Broadcast', 
+                        `Added ${addedCount} transaction(s) to broadcast queue`, 
+                        'info');
+                }
                 
                 // Start processing if not already running
-                if (!isQueueProcessing && electrumConnected) {
+                if (!isQueueProcessing && electrumConnected && addedCount > 0) {
                     processQueue();
                 }
             }
@@ -5943,19 +5978,19 @@ Anyone with your master private key can access all your funds.`;
                 // Calculate amounts for each status
                 const pendingAmount = broadcastQueue
                     .filter(item => item.status === 'pending')
-                    .reduce((sum, item) => sum + (item.tx.details.outputs[0].value || 0), 0);
+                    .reduce((sum, item) => sum + (item.tx.details?.outputs?.[0]?.value || 0), 0);
                 const broadcastingAmount = broadcastQueue
                     .filter(item => item.status === 'broadcasting')
-                    .reduce((sum, item) => sum + (item.tx.details.outputs[0].value || 0), 0);
+                    .reduce((sum, item) => sum + (item.tx.details?.outputs?.[0]?.value || 0), 0);
                 const completeAmount = broadcastQueue
                     .filter(item => item.status === 'complete')
-                    .reduce((sum, item) => sum + (item.tx.details.outputs[0].value || 0), 0);
+                    .reduce((sum, item) => sum + (item.tx.details?.outputs?.[0]?.value || 0), 0);
                 const failedAmount = broadcastQueue
                     .filter(item => item.status === 'failed')
-                    .reduce((sum, item) => sum + (item.tx.details.outputs[0].value || 0), 0);
+                    .reduce((sum, item) => sum + (item.tx.details?.outputs?.[0]?.value || 0), 0);
                 const cancelledAmount = broadcastQueue
                     .filter(item => item.status === 'cancelled')
-                    .reduce((sum, item) => sum + (item.tx.details.outputs[0].value || 0), 0);
+                    .reduce((sum, item) => sum + (item.tx.details?.outputs?.[0]?.value || 0), 0);
                 
                 const totalAmount = pendingAmount + broadcastingAmount + completeAmount + failedAmount + cancelledAmount;
                 
@@ -6170,8 +6205,10 @@ Anyone with your master private key can access all your funds.`;
                     <div style="max-height: 400px; overflow-y: auto;">`;
                 
                 filteredItems.forEach((item, index) => {
-                    const amount = (item.tx.details.outputs[0].value / 100000000).toFixed(8);
-                    const recipient = item.tx.details.outputs[0].address;
+                    const amount = item.tx.details?.outputs?.[0]?.value ? 
+                        (item.tx.details.outputs[0].value / 100000000).toFixed(8) : 
+                        'Unknown';
+                    const recipient = item.tx.details?.outputs?.[0]?.address || 'Unknown';
                     const txid = item.tx.txid;
                     
                     modalContent += `
@@ -6243,12 +6280,12 @@ Anyone with your master private key can access all your funds.`;
                     transactions: exportItems.map(item => ({
                         raw: item.tx.raw,
                         txid: item.tx.txid,
-                        details: {
-                            recipient: item.tx.details.outputs[0].address,
-                            amount: item.tx.details.outputs[0].value,
-                            fee: item.tx.details.fee,
-                            change: item.tx.details.changeAmount
-                        },
+                        details: item.tx.details ? {
+                            recipient: item.tx.details.outputs?.[0]?.address || 'Unknown',
+                            amount: item.tx.details.outputs?.[0]?.value || 0,
+                            fee: item.tx.details.fee || 0,
+                            change: item.tx.details.changeAmount || 0
+                        } : null,
                         status: item.status,
                         error: item.error || null,
                         attempts: item.attempts || 0,
@@ -6360,7 +6397,8 @@ Anyone with your master private key can access all your funds.`;
                                 
                                 return {
                                     raw: tx.raw,
-                                    txid: tx.txid
+                                    txid: tx.txid,
+                                    details: tx.details || null
                                 };
                             });
                             broadcastTransactions(rawTransactions);
