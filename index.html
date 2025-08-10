@@ -5867,6 +5867,21 @@ Anyone with your master private key can access all your funds.`;
                 
                 statusHTML += `<br><strong>Total queued: ${(totalAmount / 100000000).toFixed(8)} ALPHA</strong>`;
                 
+                // Progress bar
+                if (totalAmount > 0) {
+                    const progressPercent = (completeAmount / totalAmount) * 100;
+                    statusHTML += `
+                        <div style="margin-top: 10px;">
+                            <div style="background: #e0e0e0; height: 20px; border-radius: 10px; overflow: hidden; position: relative;">
+                                <div style="background: #10b981; height: 100%; width: ${progressPercent}%; transition: width 0.3s ease;"></div>
+                                <div style="position: absolute; top: 0; left: 0; right: 0; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600;">
+                                    ${(completeAmount / 100000000).toFixed(8)} / ${(totalAmount / 100000000).toFixed(8)} ALPHA (${progressPercent.toFixed(1)}%)
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
                 if (lastBroadcastBlock === currentBlockHeight && pendingCount > 0) {
                     statusHTML += `<br><em style="color: #666;">Waiting for block ${(currentBlockHeight || 0) + 1} to continue...</em>`;
                 }
