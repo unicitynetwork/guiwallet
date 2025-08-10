@@ -6111,9 +6111,13 @@ Anyone with your master private key can access all your funds.`;
             // Helper function to display modal
             function showModal(content) {
                 const modal = document.createElement('div');
-                modal.className = 'qr-modal';
-                modal.style.display = 'flex';
-                modal.innerHTML = content;
+                modal.style.cssText = 'display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;';
+                
+                const modalInner = document.createElement('div');
+                modalInner.style.cssText = 'position: relative; margin: 50px auto; max-width: 600px; max-height: 80vh; overflow-y: auto; background: white; border-radius: 12px; padding: 30px;';
+                modalInner.innerHTML = content;
+                
+                modal.appendChild(modalInner);
                 document.body.appendChild(modal);
                 
                 // Close on background click
@@ -6150,10 +6154,14 @@ Anyone with your master private key can access all your funds.`;
                     case 'failed':
                         modalTitle = 'Failed Transactions';
                         break;
+                    case 'cancelled':
+                        modalTitle = 'Cancelled Transactions';
+                        break;
                 }
                 
-                modalContent = `<h3>${modalTitle}</h3>`;
-                modalContent += '<div style="max-height: 400px; overflow-y: auto;">';
+                modalContent = `
+                    <h2 style="margin-bottom: 20px; color: #111827;">${modalTitle}</h2>
+                    <div style="max-height: 400px; overflow-y: auto;">`;
                 
                 filteredItems.forEach((item, index) => {
                     const amount = (item.tx.details.outputs[0].value / 100000000).toFixed(8);
@@ -6161,20 +6169,27 @@ Anyone with your master private key can access all your funds.`;
                     const txid = item.tx.txid;
                     
                     modalContent += `
-                        <div style="border: 1px solid #e5e7eb; border-radius: 4px; padding: 10px; margin-bottom: 10px;">
-                            <div><strong>Transaction ${index + 1}</strong></div>
-                            <div style="font-size: 12px; margin-top: 5px;">
-                                <div>Amount: ${amount} ALPHA</div>
-                                <div>To: <span style="font-family: monospace; font-size: 11px;">${recipient}</span></div>
-                                <div>TxID: <span style="font-family: monospace; font-size: 11px;">${txid}</span></div>
-                                <div>Added: ${new Date(item.addedAt).toLocaleString()}</div>
+                        <div style="margin-top: 15px; padding: 15px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+                            <div style="color: #111827; font-weight: 600; margin-bottom: 10px;">Transaction ${index + 1}</div>
+                            <div style="font-size: 14px; color: #374151;">
+                                <div style="margin-bottom: 5px;"><strong>Amount:</strong> ${amount} ALPHA</div>
+                                <div style="margin-bottom: 5px;"><strong>To:</strong> <span style="font-family: monospace; word-break: break-all; color: #6b7280;">${recipient}</span></div>
+                                <div style="margin-bottom: 5px;"><strong>TxID:</strong> <span style="font-family: monospace; word-break: break-all; color: #6b7280;">${txid}</span></div>
+                                <div style="margin-bottom: 5px;"><strong>Added:</strong> ${new Date(item.addedAt).toLocaleString()}</div>
                     `;
                     
                     if (status === 'complete') {
-                        modalContent += `<div style="margin-top: 5px;"><a href="https://www.unicity.network/tx/${txid}" target="_blank" style="color: #0066cc;">View on Explorer →</a></div>`;
+                        modalContent += `<div style="margin-top: 10px;"><a href="https://www.unicity.network/tx/${txid}" target="_blank" style="color: #0066cc; text-decoration: none; font-weight: 500;">View on Explorer →</a></div>`;
                     } else if (status === 'failed') {
-                        modalContent += `<div style="color: #cc0000; margin-top: 5px;">Error: ${item.error || 'Unknown error'}</div>`;
-                        modalContent += `<div>Attempts: ${item.attempts}</div>`;
+                        modalContent += `<div style="color: #dc2626; margin-top: 10px; padding: 10px; background: #fee2e2; border-radius: 4px;">
+                            <strong>Error:</strong> ${item.error || 'Unknown error'}<br>
+                            <strong>Attempts:</strong> ${item.attempts}
+                        </div>`;
+                    } else if (status === 'cancelled') {
+                        modalContent += `<div style="color: #d97706; margin-top: 10px; padding: 10px; background: #fef3c7; border-radius: 4px;">
+                            <strong>Status:</strong> Cancelled by user<br>
+                            <strong>Cancelled at:</strong> ${new Date(item.cancelledAt).toLocaleString()}
+                        </div>`;
                     }
                     
                     modalContent += '</div></div>';
@@ -6197,6 +6212,13 @@ Anyone with your master private key can access all your funds.`;
                         </div>
                     `;
                 }
+                
+                // Add close button
+                modalContent += `
+                    <div style="margin-top: 20px; text-align: center;">
+                        <button onclick="document.querySelector('[style*=\\"z-index: 1000\\"]').remove()" style="padding: 10px 30px; background: #6b7280; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">Close</button>
+                    </div>
+                `;
                 
                 showModal(modalContent);
             };
