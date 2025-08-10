@@ -3313,7 +3313,11 @@ Anyone with your master private key can access all your funds.`;
                         // Always update if UTXOs changed OR if we cleared them OR if result is empty
                         const shouldUpdate = hasArrayChanged(currentUtxos, result) || currentUtxos.length === 0 || result.length === 0;
                         if (shouldUpdate) {
-                            currentUtxos = result;
+                            // Add address to each UTXO
+                            currentUtxos = result.map(utxo => ({
+                                ...utxo,
+                                address: address
+                            }));
                             
                             // Calculate balances
                             let confirmed = 0;
@@ -3620,29 +3624,60 @@ Anyone with your master private key can access all your funds.`;
                     senderAddress = result.senderAddress;
                     
                     // Set direction text and colors based on transaction type
-                    directionText = isIncoming ? '↓ Received' : '↑ Sent';
-                    directionColor = isIncoming ? '#34d399' : '#ef4444';
-                    amountColor = isIncoming ? '#34d399' : '#333';
-                    amountSign = isIncoming ? '+' : '-';
+                    if (!ourAddress) {
+                        // No wallet loaded - show neutral transaction
+                        directionText = '→ Transaction';
+                        directionColor = '#6b7280';
+                        amountColor = '#333';
+                        amountSign = '';
+                    } else {
+                        directionText = isIncoming ? '↓ Received' : '↑ Sent';
+                        directionColor = isIncoming ? '#34d399' : '#ef4444';
+                        amountColor = isIncoming ? '#34d399' : '#333';
+                        amountSign = isIncoming ? '+' : '-';
+                    }
                 }
                 
                 let addressHtml = '';
                 if (isLoading) {
                     // Show loading state for address
                     addressHtml = '<div style="margin-top: 5px; font-size: 12px; color: #9ca3af;">Loading...</div>';
-                } else if (isIncoming && senderAddress) {
-                    // Show sender for incoming transactions
-                    const truncAddr = senderAddress.substring(0, 11) + '...' + senderAddress.substring(senderAddress.length - 6);
-                    addressHtml = `<div style="margin-top: 5px; font-size: 12px; color: #666;">From: <a href="https://www.unicity.network/address/${senderAddress}" target="_blank" style="color: #3b82f6; text-decoration: none;">${truncAddr}</a></div>`;
-                } else if (!isIncoming && destinations.length > 0) {
-                    // Show recipients for outgoing transactions
-                    addressHtml = '<div style="margin-top: 5px; font-size: 12px; color: #666;">To: ';
-                    destinations.forEach((dest, idx) => {
-                        if (idx > 0) addressHtml += ', ';
-                        const truncAddr = dest.address.substring(0, 11) + '...' + dest.address.substring(dest.address.length - 6);
-                        addressHtml += `<a href="https://www.unicity.network/address/${dest.address}" target="_blank" style="color: #3b82f6; text-decoration: none;">${truncAddr}</a>`;
-                    });
-                    addressHtml += '</div>';
+                } else {
+                    // Always show From address if available
+                    let fromAddresses = txDetails._fromAddresses || [];
+                    if (fromAddresses.length > 0) {
+                        // Remove duplicates
+                        fromAddresses = [...new Set(fromAddresses)];
+                        
+                        addressHtml += '<div style="margin-top: 5px; font-size: 12px; color: #666;">From: ';
+                        fromAddresses.forEach((addr, idx) => {
+                            if (idx > 0) addressHtml += ', ';
+                            const truncAddr = addr.substring(0, 11) + '...' + addr.substring(addr.length - 6);
+                            addressHtml += `<a href="https://www.unicity.network/address/${addr}" target="_blank" style="color: #3b82f6; text-decoration: none;">${truncAddr}</a>`;
+                        });
+                        addressHtml += '</div>';
+                    }
+                    
+                    // For incoming transactions, show sender
+                    if (isIncoming && senderAddress && fromAddresses.length === 0) {
+                        const truncAddr = senderAddress.substring(0, 11) + '...' + senderAddress.substring(senderAddress.length - 6);
+                        addressHtml += `<div style="margin-top: 5px; font-size: 12px; color: #666;">From: <a href="https://www.unicity.network/address/${senderAddress}" target="_blank" style="color: #3b82f6; text-decoration: none;">${truncAddr}</a></div>`;
+                    }
+                    
+                    // Show destinations
+                    if (destinations.length > 0) {
+                        // If no wallet is loaded (ourAddress is null), show all destinations
+                        // Otherwise, only show destinations for outgoing transactions
+                        if (!ourAddress || !isIncoming) {
+                            addressHtml += '<div style="margin-top: 5px; font-size: 12px; color: #666;">To: ';
+                            destinations.forEach((dest, idx) => {
+                                if (idx > 0) addressHtml += ', ';
+                                const truncAddr = dest.address.substring(0, 11) + '...' + dest.address.substring(dest.address.length - 6);
+                                addressHtml += `<a href="https://www.unicity.network/address/${dest.address}" target="_blank" style="color: #3b82f6; text-decoration: none;">${truncAddr}</a>`;
+                            });
+                            addressHtml += '</div>';
+                        }
+                    }
                 }
                 
                 txDiv.innerHTML = `
@@ -3682,9 +3717,10 @@ Anyone with your master private key can access all your funds.`;
                 let destinations = [];
                 let ourOutputs = [];
                 let senderAddress = null;
+                let fromAddresses = [];
                 
                 // Normalize our address to lowercase for comparison
-                const ourAddressLower = ourAddress.toLowerCase();
+                const ourAddressLower = ourAddress ? ourAddress.toLowerCase() : null;
                 
                 // Debug logging
                 const txid = txDetails.txid || txDetails.id || 'unknown';
@@ -3692,6 +3728,9 @@ Anyone with your master private key can access all your funds.`;
                 // Check if sender address was already fetched and passed in
                 if (txDetails._senderAddress) {
                     senderAddress = txDetails._senderAddress;
+                }
+                if (txDetails._fromAddresses) {
+                    fromAddresses = txDetails._fromAddresses;
                 }
                 
                 // First check all outputs to see what we received
@@ -3728,13 +3767,18 @@ Anyone with your master private key can access all your funds.`;
                             }
                             
                             if (outputAddress) {
-                                const isOurs = outputAddress.toLowerCase() === ourAddressLower;
+                                const isOurs = ourAddressLower && outputAddress.toLowerCase() === ourAddressLower;
                                 
                                 if (isOurs) {
                                     outputAmount += value;
                                     ourOutputs.push({vout: index, value: value, address: outputAddress});
                                 } else {
                                     // Track destination addresses for outgoing transactions
+                                    destinations.push({address: outputAddress, value: value});
+                                }
+                                
+                                // If no wallet is loaded, all outputs are destinations
+                                if (!ourAddressLower) {
                                     destinations.push({address: outputAddress, value: value});
                                 }
                             } else {
@@ -3822,36 +3866,48 @@ Anyone with your master private key can access all your funds.`;
                 let isIncoming = false;
                 let netAmount = 0;
                 
-                // Simple logic based on your rules:
-                // 1. If ANY input is from our address -> OUTBOUND transaction
-                // 2. If NO inputs are from our address -> INBOUND transaction
-                
-                if (isOurInput) {
-                    // OUTBOUND transaction
-                    isIncoming = false;
+                // If no wallet is loaded (ourAddressLower is null), show all transactions as neutral
+                if (!ourAddressLower) {
+                    // No wallet loaded - can't determine direction
+                    isIncoming = false; // Default to false for neutral display
+                    // Sum all outputs as the transaction amount
+                    let totalOutput = 0;
+                    destinations.forEach(dest => {
+                        totalOutput += dest.value;
+                    });
+                    netAmount = totalOutput;
+                } else {
+                    // Simple logic based on your rules:
+                    // 1. If ANY input is from our address -> OUTBOUND transaction
+                    // 2. If NO inputs are from our address -> INBOUND transaction
                     
-                    if (inputAmount > 0) {
-                        // We know the input amount
-                        if (outputAmount > 0) {
-                            // We have change back
-                            netAmount = inputAmount - outputAmount; // What we actually spent (sent + fee)
+                    if (isOurInput) {
+                        // OUTBOUND transaction
+                        isIncoming = false;
+                        
+                        if (inputAmount > 0) {
+                            // We know the input amount
+                            if (outputAmount > 0) {
+                                // We have change back
+                                netAmount = inputAmount - outputAmount; // What we actually spent (sent + fee)
+                            } else {
+                                // No change back - we spent everything
+                                netAmount = inputAmount;
+                            }
                         } else {
-                            // No change back - we spent everything
-                            netAmount = inputAmount;
+                            // We couldn't determine input amount - this is a data issue
+                            // Use the sum of non-our outputs as approximate sent amount
+                            let sentAmount = 0;
+                            destinations.forEach(dest => {
+                                sentAmount += dest.value;
+                            });
+                            netAmount = sentAmount;
                         }
                     } else {
-                        // We couldn't determine input amount - this is a data issue
-                        // Use the sum of non-our outputs as approximate sent amount
-                        let sentAmount = 0;
-                        destinations.forEach(dest => {
-                            sentAmount += dest.value;
-                        });
-                        netAmount = sentAmount;
+                        // INBOUND transaction
+                        isIncoming = true;
+                        netAmount = outputAmount; // Sum of all outputs to our address
                     }
-                } else {
-                    // INBOUND transaction
-                    isIncoming = true;
-                    netAmount = outputAmount; // Sum of all outputs to our address
                 }
                 
                 // Validation: If we found no outputs to our address and no inputs from our address,
@@ -3871,7 +3927,8 @@ Anyone with your master private key can access all your funds.`;
                     isIncoming,
                     netAmount: Math.abs(netAmount),
                     destinations,
-                    senderAddress
+                    senderAddress,
+                    fromAddresses
                 };
             }
             
@@ -4043,26 +4100,42 @@ Anyone with your master private key can access all your funds.`;
                                 // Check if this is an incoming transaction and get sender address
                                 const result = calculateTransactionAmount(txDetails, ourAddress);
                                 
-                                if (result.isIncoming && txDetails.vin && txDetails.vin.length > 0) {
-                                    // Get sender address from cached previous transaction
-                                    const input = txDetails.vin[0];
-                                    const prevTxid = input.txid;
-                                    const prevVout = input.vout;
-                                    const prevTxDetails = transactionDetailsCache[prevTxid];
+                                // Always try to get sender addresses for all transactions
+                                if (txDetails.vin && txDetails.vin.length > 0) {
+                                    const fromAddresses = [];
                                     
-                                    if (prevTxDetails && prevTxDetails.vout && prevTxDetails.vout[prevVout]) {
-                                        const prevOutput = prevTxDetails.vout[prevVout];
-                                        if (prevOutput.scriptPubKey) {
-                                            if (prevOutput.scriptPubKey.addresses && prevOutput.scriptPubKey.addresses.length > 0) {
-                                                result.senderAddress = prevOutput.scriptPubKey.addresses[0];
-                                            } else if (prevOutput.scriptPubKey.address) {
-                                                result.senderAddress = prevOutput.scriptPubKey.address;
+                                    // Collect all sender addresses
+                                    txDetails.vin.forEach(input => {
+                                        const prevTxid = input.txid;
+                                        const prevVout = input.vout;
+                                        const prevTxDetails = transactionDetailsCache[prevTxid];
+                                        
+                                        if (prevTxDetails && prevTxDetails.vout && prevTxDetails.vout[prevVout]) {
+                                            const prevOutput = prevTxDetails.vout[prevVout];
+                                            if (prevOutput.scriptPubKey) {
+                                                let address = null;
+                                                if (prevOutput.scriptPubKey.addresses && prevOutput.scriptPubKey.addresses.length > 0) {
+                                                    address = prevOutput.scriptPubKey.addresses[0];
+                                                } else if (prevOutput.scriptPubKey.address) {
+                                                    address = prevOutput.scriptPubKey.address;
+                                                }
+                                                if (address) {
+                                                    fromAddresses.push(address);
+                                                }
                                             }
                                         }
+                                    });
+                                    
+                                    // For incoming transactions, set the first sender as the main sender
+                                    if (result.isIncoming && fromAddresses.length > 0) {
+                                        result.senderAddress = fromAddresses[0];
                                     }
                                     
                                     // Update with sender info
-                                    const txDetailsWithSender = Object.assign({}, txDetails, {_senderAddress: result.senderAddress});
+                                    const txDetailsWithSender = Object.assign({}, txDetails, {
+                                        _senderAddress: result.senderAddress,
+                                        _fromAddresses: fromAddresses
+                                    });
                                     const updatedElement = formatTransactionDisplay(tx, ourAddress, confirmations, txDetailsWithSender);
                                     const oldElement = historyList.querySelector(`[data-txid="${txid}"]`);
                                     if (oldElement) {
@@ -4225,7 +4298,10 @@ Anyone with your master private key can access all your funds.`;
                                 timestamp: new Date().toISOString(),
                                 exportDate: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString()
                             },
-                            utxos: utxos || [],
+                            utxos: (utxos || []).map(utxo => ({
+                                ...utxo,
+                                address: address
+                            })),
                             transactions: currentTransactions.slice(0, 20), // Last 20 transactions
                             metadata: {
                                 walletVersion: '1.0.0',
@@ -5078,7 +5154,11 @@ Anyone with your master private key can access all your funds.`;
                             if (result) {
                                 // Only update if UTXOs changed
                                 if (hasArrayChanged(currentUtxos, result)) {
-                                    currentUtxos = result;
+                                    // Add address to each UTXO
+                                    currentUtxos = result.map(utxo => ({
+                                        ...utxo,
+                                        address: wallet.addresses[0].address
+                                    }));
                                     updateCommonBalance();
                                     updateUtxoListDisplay();
                                 }
@@ -6270,18 +6350,40 @@ Anyone with your master private key can access all your funds.`;
                     <div style="max-height: 400px; overflow-y: auto;">`;
                 
                 filteredItems.forEach((item, index) => {
-                    const amount = item.tx.details?.outputs?.[0]?.value ? 
-                        (item.tx.details.outputs[0].value / 100000000).toFixed(8) : 
-                        'Unknown';
-                    const recipient = item.tx.details?.outputs?.[0]?.address || 'Unknown';
+                    const details = item.tx.details;
                     const txid = item.tx.txid;
+                    
+                    // Calculate total amount from all outputs (excluding change)
+                    let totalAmount = 0;
+                    const outputs = details?.outputs || [];
+                    let destinations = [];
+                    
+                    outputs.forEach(output => {
+                        if (output.address && output.address !== details?.changeAddress) {
+                            totalAmount += output.value || 0;
+                            destinations.push(output.address);
+                        }
+                    });
+                    
+                    // If no non-change outputs, show all outputs
+                    if (destinations.length === 0) {
+                        destinations = outputs.map(output => output.address).filter(addr => addr);
+                        totalAmount = outputs.reduce((sum, output) => sum + (output.value || 0), 0);
+                    }
+                    
+                    const amount = totalAmount > 0 ? (totalAmount / 100000000).toFixed(8) : 'Unknown';
+                    const recipient = destinations.length > 0 ? destinations.join(', ') : 'Unknown';
+                    
+                    // Get from address from input or change address
+                    const fromAddress = details?.input?.address || details?.changeAddress || 'Unknown';
                     
                     modalContent += `
                         <div style="margin-top: 15px; padding: 15px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
                             <div style="color: #111827; font-weight: 600; margin-bottom: 10px;">Transaction ${index + 1}</div>
                             <div style="font-size: 14px; color: #374151;">
-                                <div style="margin-bottom: 5px;"><strong>Amount:</strong> ${amount} ALPHA</div>
+                                <div style="margin-bottom: 5px;"><strong>From:</strong> <span style="font-family: monospace; word-break: break-all; color: #6b7280;">${fromAddress}</span></div>
                                 <div style="margin-bottom: 5px;"><strong>To:</strong> <span style="font-family: monospace; word-break: break-all; color: #6b7280;">${recipient}</span></div>
+                                <div style="margin-bottom: 5px;"><strong>Amount:</strong> ${amount} ALPHA</div>
                                 <div style="margin-bottom: 5px;"><strong>TxID:</strong> <span style="font-family: monospace; word-break: break-all; color: #6b7280;">${txid}</span></div>
                                 <div style="margin-bottom: 5px;"><strong>Added:</strong> ${new Date(item.addedAt).toLocaleString()}</div>
                     `;
