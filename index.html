@@ -2752,11 +2752,7 @@ Anyone with your master private key can access all your funds.`;
                                         // Also update UTXO list to refresh confirmation counts
                                         updateUtxoListDisplay();
                                         
-                                        // Show notification
-                                        showNotification(
-                                            '🔗 New Block',
-                                            `Block ${newHeight} detected at ${formatBlockTimestamp(currentBlockTime)}`
-                                        );
+                                        // Don't show notification for new blocks - too frequent and redundant
                                     }
                                 }
                                 else if (response.method === 'blockchain.scripthash.subscribe') {
@@ -4787,6 +4783,13 @@ Anyone with your master private key can access all your funds.`;
             // Show in-browser notification
             function showInAppNotification(title, message, type = 'info') {
                 const container = document.getElementById('notificationContainer');
+                
+                // Limit to 3 visible notifications
+                const visibleNotifications = container.querySelectorAll('.notification:not(.removing)');
+                if (visibleNotifications.length >= 3) {
+                    // Remove the oldest notification
+                    removeNotification(visibleNotifications[0]);
+                }
                 
                 // Create notification element
                 const notification = document.createElement('div');
