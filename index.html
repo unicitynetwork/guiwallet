@@ -890,10 +890,13 @@
             // Global variables that need to be available throughout the app
             let currentBlockHeight = null;
             let currentBlockTime = null;
+            let lastUpdateBlockHeight = null;
+            let currentUtxos = [];
             let broadcastQueue = [];
             let isQueueProcessing = false;
             let lastBroadcastBlock = null;
             let queueStatusElement = null;
+            let autoClearTimeout = null;
             
             // HTML elements
             // const masterKeyElement = document.getElementById('masterKey'); // Removed with Security section
@@ -3139,7 +3142,7 @@ Anyone with your master private key can access all your funds.`;
             
             // Store for offline UTXO data
             let offlineUtxoData = null;
-            let currentUtxos = [];
+            // currentUtxos already declared at top
             let currentTransactions = [];
             let transactionDetailsCache = {}; // Cache for transaction details
             let isInitialLoad = true;  // Track if this is the first load
@@ -3148,8 +3151,7 @@ Anyone with your master private key can access all your funds.`;
             const ITEMS_PER_PAGE = 20;
             let currentTransactionPage = 1;
             let currentUtxoPage = 1;
-            let lastUpdateBlockHeight = null;
-            // currentBlockHeight and currentBlockTime already declared at top
+            // lastUpdateBlockHeight, currentBlockHeight and currentBlockTime already declared at top
             let blockPollInterval = null;
             
             // Export button element
@@ -5626,6 +5628,9 @@ Anyone with your master private key can access all your funds.`;
                     broadcastQueue = [];
                 }
                 
+                // Update queue status display
+                updateQueueDisplay();
+                
                 // Start processing if there are items in queue
                 if (broadcastQueue.length > 0 && electrumConnected) {
                     processQueue();
@@ -5714,10 +5719,12 @@ Anyone with your master private key can access all your funds.`;
                             // Transaction already broadcast, mark as complete
                             nextItem.status = 'complete';
                             nextItem.result = 'Already in mempool';
+                            nextItem.completedAt = new Date().toISOString();
                         } else if (nextItem.attempts >= 3) {
                             // Max retries reached
                             nextItem.status = 'failed';
                             nextItem.error = error.message || error;
+                            nextItem.failedAt = new Date().toISOString();
                             showInAppNotification('Broadcast Failed', 
                                 `Failed to broadcast transaction after 3 attempts: ${error.message || error}`, 
                                 'error');
@@ -5730,6 +5737,7 @@ Anyone with your master private key can access all your funds.`;
                         nextItem.status = 'complete';
                         nextItem.result = result;
                         nextItem.broadcastBlock = currentBlockHeight;
+                        nextItem.completedAt = new Date().toISOString();
                         lastBroadcastBlock = currentBlockHeight;
                         
                         console.log('Transaction broadcast:', result);
@@ -5770,12 +5778,16 @@ Anyone with your master private key can access all your funds.`;
                     const itemTime = new Date(item.addedAt);
                     return itemTime > cutoffTime; // Keep recent completed/failed items
                 });
-                saveQueue();
+                
+                // If queue is now empty, clear from localStorage
+                if (broadcastQueue.length === 0) {
+                    localStorage.removeItem('broadcastQueue');
+                } else {
+                    saveQueue();
+                }
             }
             
             // Update queue display
-            let autoClearTimeout = null;
-            
             function updateQueueDisplay() {
                 if (!queueStatusElement) {
                     // Create queue status element if it doesn't exist
@@ -5861,7 +5873,7 @@ Anyone with your master private key can access all your funds.`;
                 
                 // Clear queue button
                 if (completeCount > 0 || failedCount > 0) {
-                    statusHTML += `<button onclick="clearCompletedQueue()" style="padding: 4px 8px; font-size: 11px; background: #e0e0e0; border: none; border-radius: 3px; cursor: pointer;">Clear Completed</button>`;
+                    statusHTML += `<button onclick="clearQueue()" style="padding: 4px 8px; font-size: 11px; background: #6b7280; color: white; border: none; border-radius: 3px; cursor: pointer;">Clear Queue</button>`;
                 }
                 
                 statusHTML += '</div>';
@@ -5887,12 +5899,35 @@ Anyone with your master private key can access all your funds.`;
                 }
             }
             
-            // Clear completed items from queue
-            window.clearCompletedQueue = function() {
+            // Clear all items from queue except pending
+            window.clearQueue = function() {
                 broadcastQueue = broadcastQueue.filter(item => 
                     item.status === 'pending' || item.status === 'broadcasting'
                 );
-                saveQueue();
+                
+                // If queue is now empty, clear from localStorage
+                if (broadcastQueue.length === 0) {
+                    localStorage.removeItem('broadcastQueue');
+                } else {
+                    saveQueue();
+                }
+                
+                updateQueueDisplay();
+            };
+            
+            // Clear completed items from queue (used by auto-clear)
+            window.clearCompletedQueue = function() {
+                broadcastQueue = broadcastQueue.filter(item => 
+                    item.status !== 'complete'
+                );
+                
+                // If queue is now empty, clear from localStorage
+                if (broadcastQueue.length === 0) {
+                    localStorage.removeItem('broadcastQueue');
+                } else {
+                    saveQueue();
+                }
+                
                 updateQueueDisplay();
             };
             
@@ -5906,6 +5941,30 @@ Anyone with your master private key can access all your funds.`;
                     console.log('Resuming queue processing for new block');
                     processQueue();
                 }
+            }
+            
+            // Helper function to display modal
+            function showModal(content) {
+                const modal = document.createElement('div');
+                modal.className = 'qr-modal';
+                modal.style.display = 'flex';
+                modal.innerHTML = content;
+                document.body.appendChild(modal);
+                
+                // Close on background click
+                modal.addEventListener('click', function(e) {
+                    if (e.target === modal) {
+                        modal.remove();
+                    }
+                });
+                
+                // Close on Escape key
+                document.addEventListener('keydown', function escHandler(e) {
+                    if (e.key === 'Escape') {
+                        modal.remove();
+                        document.removeEventListener('keydown', escHandler);
+                    }
+                });
             }
             
             // Show queue details modal
