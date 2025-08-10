@@ -581,7 +581,7 @@
 </head>
 <body>
     <!-- Version Number -->
-    <div style="position: fixed; top: 10px; right: 10px; font-size: 10px; color: #999; z-index: 1000; font-family: monospace;">v0.1.1</div>
+    <div style="position: fixed; top: 10px; right: 10px; font-size: 10px; color: #999; z-index: 1000; font-family: monospace;">v0.1.2</div>
     
     <!-- Notification Container -->
     <div id="notificationContainer" class="notification-container"></div>
@@ -627,7 +627,7 @@
             
             <div class="input-group" style="margin-bottom: 15px;">
                 <label for="restoreFileInput">Backup File:</label>
-                <input type="file" id="restoreFileInput" accept=".json,.dat" style="width: 100%;">
+                <input type="file" id="restoreFileInput" accept=".txt,.dat" style="width: 100%;">
             </div>
             
             <div class="input-group" style="margin-bottom: 15px;">
@@ -832,7 +832,7 @@
             
             <!-- Import & Broadcast Transactions -->
             <div style="margin-top: 20px;">
-                <input type="file" id="txFileInput" accept=".json,.txt" style="display: none;">
+                <input type="file" id="txFileInput" accept=".json" style="display: none;">
                 <button id="importBroadcastBtn" onclick="document.getElementById('txFileInput').click()" class="wallet-button" style="background-color: #fbbf24;" disabled>
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -879,7 +879,7 @@
             </div>
             
             <!-- Hidden file input for UTXO import -->
-            <input type="file" id="utxoFileInput" accept=".json,.txt" style="display: none;">
+            <input type="file" id="utxoFileInput" accept=".json" style="display: none;">
         </div>
         
     </div>
