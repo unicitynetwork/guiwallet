@@ -2768,11 +2768,7 @@ Anyone with your master private key can access all your funds.`;
                                         refreshBalance();
                                     }
                                     
-                                    // Show notification
-                                    showNotification(
-                                        '📨 Address Activity',
-                                        'New activity detected for your address'
-                                    );
+                                    // Don't show notification for address activity - too frequent
                                 }
                             }
                         } catch (err) {
@@ -5909,6 +5905,7 @@ Anyone with your master private key can access all your funds.`;
                 const broadcastingCount = broadcastQueue.filter(item => item.status === 'broadcasting').length;
                 const completeCount = broadcastQueue.filter(item => item.status === 'complete').length;
                 const failedCount = broadcastQueue.filter(item => item.status === 'failed').length;
+                const cancelledCount = broadcastQueue.filter(item => item.status === 'cancelled').length;
                 
                 if (broadcastQueue.length === 0) {
                     queueStatusElement.style.display = 'none';
@@ -5956,8 +5953,11 @@ Anyone with your master private key can access all your funds.`;
                 const failedAmount = broadcastQueue
                     .filter(item => item.status === 'failed')
                     .reduce((sum, item) => sum + (item.tx.details.outputs[0].value || 0), 0);
+                const cancelledAmount = broadcastQueue
+                    .filter(item => item.status === 'cancelled')
+                    .reduce((sum, item) => sum + (item.tx.details.outputs[0].value || 0), 0);
                 
-                const totalAmount = pendingAmount + broadcastingAmount + completeAmount + failedAmount;
+                const totalAmount = pendingAmount + broadcastingAmount + completeAmount + failedAmount + cancelledAmount;
                 
                 // Summary with clickable items
                 statusHTML += '<div style="margin-bottom: 10px; font-size: 12px;">';
@@ -5972,6 +5972,9 @@ Anyone with your master private key can access all your funds.`;
                 }
                 if (failedCount > 0) {
                     statusHTML += `<a href="#" onclick="showQueueDetails('failed'); return false;" style="color: #cc0000; text-decoration: none; cursor: pointer;">✗ ${failedCount} failed (${(failedAmount / 100000000).toFixed(8)} ALPHA)</a><br>`;
+                }
+                if (cancelledCount > 0) {
+                    statusHTML += `<a href="#" onclick="showQueueDetails('cancelled'); return false;" style="color: #f59e0b; text-decoration: none; cursor: pointer;">⊘ ${cancelledCount} cancelled (${(cancelledAmount / 100000000).toFixed(8)} ALPHA)</a><br>`;
                 }
                 
                 statusHTML += `<br><strong>Total queued: ${(totalAmount / 100000000).toFixed(8)} ALPHA</strong>`;
@@ -5999,10 +6002,20 @@ Anyone with your master private key can access all your funds.`;
                 
                 statusHTML += '</div>';
                 
-                // Clear queue button
-                if (completeCount > 0 || failedCount > 0) {
-                    statusHTML += `<button onclick="clearQueue()" style="padding: 4px 8px; font-size: 11px; background: #6b7280; color: white; border: none; border-radius: 3px; cursor: pointer;">Clear Queue</button>`;
+                // Queue control buttons
+                statusHTML += '<div style="margin-top: 10px;">';
+                
+                // Cancel pending button
+                if (pendingCount > 0 || broadcastingCount > 0) {
+                    statusHTML += `<button onclick="cancelPendingTransactions()" style="padding: 4px 8px; font-size: 11px; background: #ef4444; color: white; border: none; border-radius: 3px; cursor: pointer; margin-right: 5px;">Cancel Pending</button>`;
                 }
+                
+                // Clear queue button
+                if (completeCount > 0 || failedCount > 0 || cancelledCount > 0) {
+                    statusHTML += `<button onclick="clearQueue()" style="padding: 4px 8px; font-size: 11px; background: #6b7280; color: white; border: none; border-radius: 3px; cursor: pointer;">Clear History</button>`;
+                }
+                
+                statusHTML += '</div>';
                 
                 statusHTML += '</div>';
                 
@@ -6041,6 +6054,30 @@ Anyone with your master private key can access all your funds.`;
                 }
                 
                 updateQueueDisplay();
+            };
+            
+            // Cancel all pending transactions
+            window.cancelPendingTransactions = function() {
+                // Mark all pending and broadcasting transactions as cancelled
+                broadcastQueue = broadcastQueue.map(item => {
+                    if (item.status === 'pending' || item.status === 'broadcasting') {
+                        return {
+                            ...item,
+                            status: 'cancelled',
+                            cancelledAt: new Date().toISOString()
+                        };
+                    }
+                    return item;
+                });
+                
+                // Stop queue processing
+                isQueueProcessing = false;
+                
+                // Save and update display
+                saveQueue();
+                updateQueueDisplay();
+                
+                showInAppNotification('Queue Cancelled', 'All pending transactions have been cancelled', 'warning');
             };
             
             // Clear completed items from queue (used by auto-clear)
@@ -6145,13 +6182,17 @@ Anyone with your master private key can access all your funds.`;
                 
                 modalContent += '</div>';
                 
-                // Add export button for failed transactions
-                if (status === 'failed') {
+                // Add export button for failed or cancelled transactions
+                if (status === 'failed' || status === 'cancelled') {
+                    const buttonText = status === 'failed' ? 'Export Failed Transactions' : 'Export Cancelled Transactions';
+                    const exportStatus = status === 'failed' ? "['failed']" : "['cancelled']";
                     modalContent += `
                         <div style="margin-top: 20px; padding: 15px; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 4px;">
-                            <button onclick="exportFailedTransactions()" style="padding: 8px 16px; background: #f59e0b; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Export Failed Transactions</button>
+                            <button onclick="exportFailedTransactions(${exportStatus})" style="padding: 8px 16px; background: #f59e0b; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">${buttonText}</button>
                             <p style="margin: 10px 0 0 0; font-size: 12px; color: #92400e;">
-                                Please email the exported file to <strong>vladimir@unicity-labs.com</strong> for investigation.
+                                ${status === 'failed' ? 
+                                    'Please email the exported file to <strong>vladimir@unicity-labs.com</strong> for investigation.' :
+                                    'You can re-import and broadcast these transactions later.'}
                             </p>
                         </div>
                     `;
@@ -6160,16 +6201,18 @@ Anyone with your master private key can access all your funds.`;
                 showModal(modalContent);
             };
             
-            // Export failed transactions
-            window.exportFailedTransactions = function() {
-                const failedItems = broadcastQueue.filter(item => item.status === 'failed');
-                if (failedItems.length === 0) return;
+            // Export failed or cancelled transactions
+            window.exportFailedTransactions = function(includeStatus = ['failed', 'cancelled']) {
+                const exportItems = broadcastQueue.filter(item => 
+                    includeStatus.includes(item.status)
+                );
+                if (exportItems.length === 0) return;
                 
                 const exportData = {
                     version: '1.0',
                     timestamp: new Date().toISOString(),
                     network: 'alpha',
-                    transactions: failedItems.map(item => ({
+                    transactions: exportItems.map(item => ({
                         raw: item.tx.raw,
                         txid: item.tx.txid,
                         details: {
@@ -6178,8 +6221,11 @@ Anyone with your master private key can access all your funds.`;
                             fee: item.tx.details.fee,
                             change: item.tx.details.changeAmount
                         },
-                        error: item.error,
-                        attempts: item.attempts
+                        status: item.status,
+                        error: item.error || null,
+                        attempts: item.attempts || 0,
+                        cancelledAt: item.cancelledAt || null,
+                        failedAt: item.failedAt || null
                     }))
                 };
                 
@@ -6189,7 +6235,9 @@ Anyone with your master private key can access all your funds.`;
                 
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = `failed_transactions_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+                const filePrefix = includeStatus.includes('cancelled') && !includeStatus.includes('failed') ? 
+                    'cancelled_transactions' : 'failed_transactions';
+                link.download = `${filePrefix}_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
