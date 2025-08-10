@@ -6112,6 +6112,7 @@ Anyone with your master private key can access all your funds.`;
             function showModal(content) {
                 const modal = document.createElement('div');
                 modal.style.cssText = 'display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;';
+                modal.id = 'queueDetailsModal';
                 
                 const modalInner = document.createElement('div');
                 modalInner.style.cssText = 'position: relative; margin: 50px auto; max-width: 600px; max-height: 80vh; overflow-y: auto; background: white; border-radius: 12px; padding: 30px;';
@@ -6119,6 +6120,11 @@ Anyone with your master private key can access all your funds.`;
                 
                 modal.appendChild(modalInner);
                 document.body.appendChild(modal);
+                
+                // Add close function to window
+                window.closeQueueModal = function() {
+                    modal.remove();
+                };
                 
                 // Close on background click
                 modal.addEventListener('click', function(e) {
@@ -6216,7 +6222,7 @@ Anyone with your master private key can access all your funds.`;
                 // Add close button
                 modalContent += `
                     <div style="margin-top: 20px; text-align: center;">
-                        <button onclick="document.querySelector('[style*=\\"z-index: 1000\\"]').remove()" style="padding: 10px 30px; background: #6b7280; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">Close</button>
+                        <button onclick="closeQueueModal()" style="padding: 10px 30px; background: #6b7280; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">Close</button>
                     </div>
                 `;
                 
