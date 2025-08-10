@@ -6272,7 +6272,12 @@ Anyone with your master private key can access all your funds.`;
                 
                 URL.revokeObjectURL(url);
                 
-                showInAppNotification('Exported', 'Failed transactions exported. Please email to vladimir@unicity-labs.com', 'info');
+                // Show appropriate notification based on transaction type
+                if (includeStatus.includes('cancelled') && !includeStatus.includes('failed')) {
+                    showInAppNotification('Exported', 'Cancelled transactions exported. You can re-import and broadcast them later.', 'info');
+                } else {
+                    showInAppNotification('Exported', 'Failed transactions exported. Please email to vladimir@unicity-labs.com', 'info');
+                }
             };
             
             // Save transactions for offline broadcast
