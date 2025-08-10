@@ -581,7 +581,7 @@
 </head>
 <body>
     <!-- Version Number -->
-    <div style="position: fixed; top: 10px; right: 10px; font-size: 10px; color: #999; z-index: 1000; font-family: monospace;">v0.1</div>
+    <div style="position: fixed; top: 10px; right: 10px; font-size: 10px; color: #999; z-index: 1000; font-family: monospace;">v0.1.1</div>
     
     <!-- Notification Container -->
     <div id="notificationContainer" class="notification-container"></div>
@@ -6891,6 +6891,31 @@ Anyone with your master private key can access all your funds.`;
                         <strong>Note on Cold Wallets:</strong> The wallet used to create and sign transactions should be stored only at an offline machine (cold wallet). The wallet state (UTXOs into the wallet's address) is read at the online machine in watch-only mode (we provide only public address at the online machine). The full wallet is at the isolated offline machine only. This is a very secure way of storing large funds, since it is not possible to access the offline machine, and thus hack it and spend the owner's funds. On the other hand, it takes more effort to follow this flow every time the owner needs to spend funds. That is why it is called a "Cold wallet". Note however, that we do not need the offline machine in order to receive funds to the cold wallet - it is just enough to inform the sender about the cold wallet's public address. This is absolutely safe to do.
                     </p>
                 </li>
+            </ul>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Transaction Broadcast Queue</h3>
+            <ul style="margin-bottom: 20px;">
+                <li><strong>Automatic Queue Management:</strong> All transactions are added to a broadcast queue for reliable delivery</li>
+                <li><strong>Rate Limiting:</strong> Up to 30 transactions can be broadcast per block to prevent network congestion</li>
+                <li><strong>Queue Features:</strong>
+                    <ul style="margin-top: 5px;">
+                        <li><strong>Visual Progress:</strong> See pending, broadcasting, complete, failed, and cancelled transactions</li>
+                        <li><strong>Persistence:</strong> Queue survives page refreshes and connection drops</li>
+                        <li><strong>Automatic Retry:</strong> Failed transactions retry up to 3 times</li>
+                        <li><strong>UTXO Protection:</strong> Prevents double-spending by tracking consumed UTXOs</li>
+                    </ul>
+                </li>
+                <li><strong>Queue Actions:</strong>
+                    <ul style="margin-top: 5px;">
+                        <li>Click transaction counts to see detailed information</li>
+                        <li>Export failed/cancelled transactions for troubleshooting</li>
+                        <li>Cancel pending transactions if needed</li>
+                        <li>Resend, save, or delete individual cancelled transactions</li>
+                        <li>Clear completed transactions manually or wait for auto-cleanup after 24 hours</li>
+                    </ul>
+                </li>
+                <li><strong>Import & Broadcast:</strong> Import signed transactions from files and they'll be added to the queue</li>
+                <li><strong>Max Available Button:</strong> Quickly calculate the maximum sendable amount accounting for fees</li>
             </ul>
             
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Watch-Only Mode</h3>
