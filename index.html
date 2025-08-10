@@ -886,6 +886,14 @@
         const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
 
         document.addEventListener('DOMContentLoaded', function() {
+            // Global variables that need to be available throughout the app
+            let currentBlockHeight = null;
+            let currentBlockTime = null;
+            let broadcastQueue = [];
+            let isQueueProcessing = false;
+            let lastBroadcastBlock = null;
+            let queueStatusElement = null;
+            
             // HTML elements
             // const masterKeyElement = document.getElementById('masterKey'); // Removed with Security section
             const addressList = document.getElementById('addressList');
@@ -2539,6 +2547,9 @@ Anyone with your master private key can access all your funds.`;
             // Load wallet data and do initial check
             loadWalletData();
             
+            // Initialize broadcast queue
+            initBroadcastQueue();
+            
             // ===== ELECTRUM RPC CLIENT =====
             
             // WebSocket connection for Electrum protocol
@@ -2622,6 +2633,12 @@ Anyone with your master private key can access all your funds.`;
                         connectRpcBtn.style.display = 'none';
                         disconnectRpcBtn.style.display = 'inline-flex';
                         rpcServerInput.disabled = true;
+                        
+                        // Resume broadcast queue if needed
+                        if (broadcastQueue.length > 0 && !isQueueProcessing) {
+                            console.log('Connection established, resuming broadcast queue');
+                            processQueue();
+                        }
                         
                         // Show balance display
                         // balanceDisplay.style.display = 'block'; // Removed duplicate balance display
@@ -2712,6 +2729,9 @@ Anyone with your master private key can access all your funds.`;
                                         
                                         // Update UI and refresh data
                                         updateCommonBalance();
+                                        
+                                        // Handle new block for broadcast queue
+                                        onNewBlock();
                                         
                                         // Refresh appropriate balance
                                         if (watchOnlyMode && watchOnlyAddressValue) {
@@ -3128,8 +3148,7 @@ Anyone with your master private key can access all your funds.`;
             let currentTransactionPage = 1;
             let currentUtxoPage = 1;
             let lastUpdateBlockHeight = null;
-            let currentBlockHeight = null;
-            let currentBlockTime = null;
+            // currentBlockHeight and currentBlockTime already declared at top
             let blockPollInterval = null;
             
             // Export button element
@@ -5549,35 +5568,260 @@ Anyone with your master private key can access all your funds.`;
             }
             
             
-            // Broadcast transactions online
-            function broadcastTransactions(signedTransactions) {
-                let broadcastCount = 0;
+            // Transaction Broadcasting Queue System
+            // Variables already declared at top of DOMContentLoaded
+            
+            // Initialize broadcast queue from localStorage
+            function initBroadcastQueue() {
+                try {
+                    const savedQueue = localStorage.getItem('broadcastQueue');
+                    if (savedQueue) {
+                        broadcastQueue = JSON.parse(savedQueue);
+                        // Validate queue items
+                        broadcastQueue = broadcastQueue.filter(item => 
+                            item && item.tx && item.tx.raw && item.tx.txid
+                        );
+                    }
+                } catch (e) {
+                    console.error('Error loading broadcast queue:', e);
+                    broadcastQueue = [];
+                }
                 
+                // Start processing if there are items in queue
+                if (broadcastQueue.length > 0 && electrumConnected) {
+                    processQueue();
+                }
+            }
+            
+            // Save queue to localStorage
+            function saveQueue() {
+                try {
+                    localStorage.setItem('broadcastQueue', JSON.stringify(broadcastQueue));
+                } catch (e) {
+                    console.error('Error saving broadcast queue:', e);
+                }
+            }
+            
+            // Add transactions to queue
+            function broadcastTransactions(signedTransactions) {
+                // Validate and add to queue
                 for (const signedTx of signedTransactions) {
                     // Ensure we have a hex string, not JSON
                     if (typeof signedTx.raw === 'object') {
                         console.error('ERROR: Transaction is JSON object, not hex string:', signedTx.raw);
-                        alert('Error: Transaction format is invalid. The transaction must be a hex string, not JSON.');
-                        return;
+                        showInAppNotification('Invalid Transaction', 'Transaction format is invalid. Must be a hex string.', 'error');
+                        continue;
                     }
                     
-                    
-                    electrumRequest('blockchain.transaction.broadcast', [signedTx.raw], function(result, error) {
-                        if (error) {
-                            console.error('Broadcast error:', error);
-                            console.error('Failed tx hex:', signedTx.raw);
-                            showInAppNotification('Broadcast Failed', 'Error broadcasting transaction: ' + (error.message || error), 'error');
-                        } else {
-                            broadcastCount++;
-                            console.log('Transaction broadcast:', result);
-                            
-                            if (broadcastCount === signedTransactions.length) {
-                                showInAppNotification('Transaction Sent', `Successfully broadcast ${broadcastCount} transaction(s)`, 'success');
-                                // Refresh balance
-                                refreshBalance();
-                            }
-                        }
+                    // Add to queue with metadata
+                    broadcastQueue.push({
+                        tx: signedTx,
+                        addedAt: new Date().toISOString(),
+                        attempts: 0,
+                        status: 'pending'
                     });
+                }
+                
+                saveQueue();
+                updateQueueDisplay();
+                
+                // Show notification
+                showInAppNotification('Queued for Broadcast', 
+                    `Added ${signedTransactions.length} transaction(s) to broadcast queue`, 
+                    'info');
+                
+                // Start processing if not already running
+                if (!isQueueProcessing && electrumConnected) {
+                    processQueue();
+                }
+            }
+            
+            // Process the broadcast queue
+            function processQueue() {
+                if (isQueueProcessing || !electrumConnected || broadcastQueue.length === 0) {
+                    return;
+                }
+                
+                isQueueProcessing = true;
+                
+                // Check if we can broadcast in current block
+                if (lastBroadcastBlock === currentBlockHeight) {
+                    // Wait for next block
+                    console.log(`Waiting for next block. Current: ${currentBlockHeight}, Last broadcast: ${lastBroadcastBlock}`);
+                    isQueueProcessing = false;
+                    updateQueueDisplay();
+                    return;
+                }
+                
+                // Get next pending transaction
+                const nextItem = broadcastQueue.find(item => item.status === 'pending');
+                if (!nextItem) {
+                    isQueueProcessing = false;
+                    updateQueueDisplay();
+                    return;
+                }
+                
+                // Broadcast the transaction
+                nextItem.status = 'broadcasting';
+                nextItem.attempts++;
+                updateQueueDisplay();
+                
+                electrumRequest('blockchain.transaction.broadcast', [nextItem.tx.raw], function(result, error) {
+                    if (error) {
+                        console.error('Broadcast error:', error);
+                        
+                        // Handle specific errors
+                        if (error.message && error.message.includes('already in mempool')) {
+                            // Transaction already broadcast, mark as complete
+                            nextItem.status = 'complete';
+                            nextItem.result = 'Already in mempool';
+                        } else if (nextItem.attempts >= 3) {
+                            // Max retries reached
+                            nextItem.status = 'failed';
+                            nextItem.error = error.message || error;
+                            showInAppNotification('Broadcast Failed', 
+                                `Failed to broadcast transaction after 3 attempts: ${error.message || error}`, 
+                                'error');
+                        } else {
+                            // Retry later
+                            nextItem.status = 'pending';
+                        }
+                    } else {
+                        // Success
+                        nextItem.status = 'complete';
+                        nextItem.result = result;
+                        nextItem.broadcastBlock = currentBlockHeight;
+                        lastBroadcastBlock = currentBlockHeight;
+                        
+                        console.log('Transaction broadcast:', result);
+                        showInAppNotification('Transaction Sent', 
+                            `Successfully broadcast transaction: ${nextItem.tx.txid.substring(0, 16)}...`, 
+                            'success');
+                        
+                        // Refresh balance
+                        refreshBalance();
+                    }
+                    
+                    saveQueue();
+                    updateQueueDisplay();
+                    
+                    // Clean up completed/failed items periodically
+                    cleanupQueue();
+                    
+                    // Continue processing
+                    isQueueProcessing = false;
+                    
+                    // If we successfully broadcast this block, wait for next block
+                    if (nextItem.status === 'complete') {
+                        // Will resume on next block
+                    } else {
+                        // Try next item immediately if this one failed
+                        setTimeout(() => processQueue(), 1000);
+                    }
+                });
+            }
+            
+            // Clean up old completed/failed items
+            function cleanupQueue() {
+                const cutoffTime = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours
+                broadcastQueue = broadcastQueue.filter(item => {
+                    if (item.status === 'pending' || item.status === 'broadcasting') {
+                        return true; // Keep pending items
+                    }
+                    const itemTime = new Date(item.addedAt);
+                    return itemTime > cutoffTime; // Keep recent completed/failed items
+                });
+                saveQueue();
+            }
+            
+            // Update queue display
+            function updateQueueDisplay() {
+                if (!queueStatusElement) {
+                    // Create queue status element if it doesn't exist
+                    createQueueStatusElement();
+                }
+                
+                const pendingCount = broadcastQueue.filter(item => item.status === 'pending').length;
+                const broadcastingCount = broadcastQueue.filter(item => item.status === 'broadcasting').length;
+                const completeCount = broadcastQueue.filter(item => item.status === 'complete').length;
+                const failedCount = broadcastQueue.filter(item => item.status === 'failed').length;
+                
+                if (broadcastQueue.length === 0) {
+                    queueStatusElement.style.display = 'none';
+                    return;
+                }
+                
+                queueStatusElement.style.display = 'block';
+                
+                let statusHTML = '<div style="padding: 10px; background: #f8f9fa; border-radius: 4px; margin-bottom: 10px;">';
+                statusHTML += '<h4 style="margin: 0 0 10px 0;">Broadcast Queue</h4>';
+                
+                // Summary
+                statusHTML += '<div style="margin-bottom: 10px; font-size: 12px;">';
+                if (broadcastingCount > 0) {
+                    statusHTML += `<span style="color: #0066cc;">● Broadcasting now...</span><br>`;
+                }
+                if (pendingCount > 0) {
+                    statusHTML += `<span style="color: #666;">◯ ${pendingCount} pending</span><br>`;
+                }
+                if (completeCount > 0) {
+                    statusHTML += `<span style="color: #00a000;">✓ ${completeCount} complete</span><br>`;
+                }
+                if (failedCount > 0) {
+                    statusHTML += `<span style="color: #cc0000;">✗ ${failedCount} failed</span><br>`;
+                }
+                
+                if (lastBroadcastBlock === currentBlockHeight && pendingCount > 0) {
+                    statusHTML += `<br><em style="color: #666;">Waiting for block ${(currentBlockHeight || 0) + 1} to continue...</em>`;
+                }
+                statusHTML += '</div>';
+                
+                // Clear queue button
+                if (completeCount > 0 || failedCount > 0) {
+                    statusHTML += `<button onclick="clearCompletedQueue()" style="padding: 4px 8px; font-size: 11px; background: #e0e0e0; border: none; border-radius: 3px; cursor: pointer;">Clear Completed</button>`;
+                }
+                
+                statusHTML += '</div>';
+                
+                queueStatusElement.innerHTML = statusHTML;
+            }
+            
+            // Create queue status element
+            function createQueueStatusElement() {
+                queueStatusElement = document.createElement('div');
+                queueStatusElement.id = 'broadcastQueueStatus';
+                queueStatusElement.style.display = 'none';
+                
+                // Insert after the wallet info section
+                if (walletInfo && walletInfo.nextSibling) {
+                    walletInfo.parentNode.insertBefore(queueStatusElement, walletInfo.nextSibling);
+                } else {
+                    // Fallback: insert at the beginning of the main content
+                    const mainContent = document.querySelector('.container');
+                    if (mainContent) {
+                        mainContent.insertBefore(queueStatusElement, mainContent.firstChild);
+                    }
+                }
+            }
+            
+            // Clear completed items from queue
+            window.clearCompletedQueue = function() {
+                broadcastQueue = broadcastQueue.filter(item => 
+                    item.status === 'pending' || item.status === 'broadcasting'
+                );
+                saveQueue();
+                updateQueueDisplay();
+            };
+            
+            // Handle new blocks
+            function onNewBlock() {
+                console.log(`New block ${currentBlockHeight} detected`);
+                updateQueueDisplay();
+                
+                // Resume queue processing if we were waiting
+                if (broadcastQueue.some(item => item.status === 'pending') && !isQueueProcessing) {
+                    console.log('Resuming queue processing for new block');
+                    processQueue();
                 }
             }
             
