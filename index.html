@@ -6374,8 +6374,9 @@ Anyone with your master private key can access all your funds.`;
                     const amount = totalAmount > 0 ? (totalAmount / 100000000).toFixed(8) : 'Unknown';
                     const recipient = destinations.length > 0 ? destinations.join(', ') : 'Unknown';
                     
-                    // Get from address from input or change address
-                    const fromAddress = details?.input?.address || details?.changeAddress || 'Unknown';
+                    // Get from address - the input is a UTXO that should have an address field
+                    // or we can use the changeAddress which is the sender's address
+                    const fromAddress = details?.changeAddress || details?.input?.address || 'Unknown';
                     
                     modalContent += `
                         <div style="margin-top: 15px; padding: 15px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
@@ -6499,12 +6500,7 @@ Anyone with your master private key can access all your funds.`;
                     transactions: [{
                         raw: item.tx.raw,
                         txid: item.tx.txid,
-                        details: item.tx.details ? {
-                            recipient: item.tx.details.outputs?.[0]?.address || 'Unknown',
-                            amount: item.tx.details.outputs?.[0]?.value || 0,
-                            fee: item.tx.details.fee || 0,
-                            change: item.tx.details.changeAmount || 0
-                        } : null,
+                        details: item.tx.details || null,
                         status: item.status,
                         error: item.error || null,
                         attempts: item.attempts || 0,
@@ -6629,12 +6625,7 @@ Anyone with your master private key can access all your funds.`;
                     transactions: exportItems.map(item => ({
                         raw: item.tx.raw,
                         txid: item.tx.txid,
-                        details: item.tx.details ? {
-                            recipient: item.tx.details.outputs?.[0]?.address || 'Unknown',
-                            amount: item.tx.details.outputs?.[0]?.value || 0,
-                            fee: item.tx.details.fee || 0,
-                            change: item.tx.details.changeAmount || 0
-                        } : null,
+                        details: item.tx.details || null,
                         status: item.status,
                         error: item.error || null,
                         attempts: item.attempts || 0,
@@ -6675,12 +6666,7 @@ Anyone with your master private key can access all your funds.`;
                     transactions: signedTransactions.map(tx => ({
                         raw: tx.raw,
                         txid: tx.txid,
-                        details: {
-                            recipient: tx.details.outputs[0].address,
-                            amount: tx.details.outputs[0].value,
-                            fee: tx.details.fee,
-                            change: tx.details.changeAmount
-                        }
+                        details: tx.details || null
                     }))
                 };
                 
