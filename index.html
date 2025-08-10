@@ -796,6 +796,7 @@
                     <label for="recipientAddress" style="margin: 0; font-weight: 600; white-space: nowrap; font-size: 10px;">Destination:</label>
                     <input type="text" id="recipientAddress" placeholder="alpha1..." style="flex: 1; padding: 3px 6px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px; font-family: monospace;">
                     <input type="number" id="sendAmount" placeholder="0.00000000" step="0.00000001" min="0" style="width: 100px; padding: 3px 6px; border: 1px solid #ddd; border-radius: 3px; font-size: 10px;">
+                    <button onclick="calculateMaxAmount()" class="wallet-button" style="background-color: #60a5fa; font-size: 9px; padding: 4px 8px;" title="Calculate maximum sendable amount">Max</button>
                     <button id="sendTransactionBtn" onclick="prepareSendTransaction()" class="wallet-button" style="background-color: #34d399;">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -5055,6 +5056,44 @@ Anyone with your master private key can access all your funds.`;
             
             // Transaction functionality
             let pendingTransactions = [];
+            
+            // Calculate maximum sendable amount
+            window.calculateMaxAmount = function() {
+                // Check if we have UTXOs
+                let availableUtxos = [];
+                if (currentUtxos && currentUtxos.length > 0) {
+                    availableUtxos = currentUtxos;
+                } else if (offlineUtxoData && offlineUtxoData.utxos && offlineUtxoData.utxos.length > 0) {
+                    availableUtxos = offlineUtxoData.utxos;
+                }
+                
+                if (availableUtxos.length === 0) {
+                    showInAppNotification('No UTXOs', 'No UTXOs available to calculate maximum amount', 'warning');
+                    return;
+                }
+                
+                // Calculate total available
+                const totalAvailable = availableUtxos.reduce((sum, utxo) => sum + utxo.value, 0);
+                
+                // Calculate fees - we need one transaction per UTXO in Alpha
+                const feePerTx = 10000; // 0.0001 ALPHA fee per transaction
+                const totalFees = availableUtxos.length * feePerTx;
+                
+                // Calculate maximum sendable amount
+                const maxSendable = totalAvailable - totalFees;
+                
+                if (maxSendable <= 0) {
+                    showInAppNotification('Insufficient Balance', 'Total balance is too low to cover transaction fees', 'error');
+                    return;
+                }
+                
+                // Convert to ALPHA and set the amount field
+                const maxAlpha = maxSendable / 100000000;
+                document.getElementById('sendAmount').value = maxAlpha.toFixed(8);
+                
+                // Show notification
+                showInAppNotification('Max Amount', `Maximum sendable: ${maxAlpha.toFixed(8)} ALPHA (${availableUtxos.length} UTXOs, ${(totalFees / 100000000).toFixed(8)} ALPHA in fees)`, 'info');
+            };
             
             // Prepare send transaction
             window.prepareSendTransaction = function() {
