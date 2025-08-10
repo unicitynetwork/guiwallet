@@ -5883,7 +5883,9 @@ Anyone with your master private key can access all your funds.`;
                 }
                 
                 if (lastBroadcastBlock === currentBlockHeight && pendingCount > 0) {
-                    statusHTML += `<br><em style="color: #666;">Waiting for block ${(currentBlockHeight || 0) + 1} to continue...</em>`;
+                    const nextBlock = currentBlockHeight ? currentBlockHeight + 1 : 'next';
+                    const transactionText = pendingCount === 1 ? 'transaction' : 'transactions';
+                    statusHTML += `<br><em style="color: #666;">${pendingCount} more ${transactionText} to go, waiting for block ${nextBlock} to continue...</em>`;
                 }
                 
                 statusHTML += '</div>';
