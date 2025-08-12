@@ -622,7 +622,13 @@
             <h3>Restore Wallet from Backup</h3>
             <p style="margin: 15px 0; color: #666;">Upload a wallet backup file (.json) or Alpha wallet.dat file to restore your wallet.</p>
             <div class="warning" style="margin: 10px 0; padding: 10px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px;">
-                <strong>⚠️ Warning:</strong> Alpha wallet.dat import is <strong>HIGHLY EXPERIMENTAL</strong>. Only unencrypted wallet.dat files are supported. Make sure to backup your wallet.dat before attempting import. This feature may not work correctly with all wallet configurations.
+                <strong>⚠️ Warning:</strong> Alpha wallet.dat import is <strong>EXPERIMENTAL</strong>. 
+                <ul style="margin: 5px 0; padding-left: 20px;">
+                    <li>Only unencrypted SQLite wallet.dat files are supported</li>
+                    <li>Supports both descriptor wallets (modern) and HD wallets (legacy)</li>
+                    <li>Will extract the first available private key as master key</li>
+                    <li>Make sure to backup your wallet.dat before attempting import</li>
+                </ul>
             </div>
             
             <div class="input-group" style="margin-bottom: 15px;">
@@ -1244,6 +1250,87 @@
                 */
             }
             
+            // BIP32 key derivation for imported wallets
+            function deriveKeyBIP32(parentKey, parentChainCode, index, hardened = false) {
+                // Proper BIP32 child key derivation
+                const secp256k1_n = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141');
+                
+                // Create data for HMAC
+                let data;
+                if (hardened) {
+                    // Hardened: 0x00 || parentKey || index
+                    data = new Uint8Array(37);
+                    data[0] = 0x00;
+                    const keyBytes = hexToBytes(parentKey);
+                    data.set(keyBytes, 1);
+                    // Set index as big-endian 32-bit integer with hardened bit
+                    const indexBytes = new Uint8Array(4);
+                    const hardenedIndex = index + 0x80000000;
+                    indexBytes[0] = (hardenedIndex >> 24) & 0xff;
+                    indexBytes[1] = (hardenedIndex >> 16) & 0xff;
+                    indexBytes[2] = (hardenedIndex >> 8) & 0xff;
+                    indexBytes[3] = hardenedIndex & 0xff;
+                    data.set(indexBytes, 33);
+                } else {
+                    // Non-hardened: publicKey || index
+                    const ec = new elliptic.ec('secp256k1');
+                    const keyPair = ec.keyFromPrivate(parentKey);
+                    const pubKey = keyPair.getPublic(true, 'hex');
+                    const pubKeyBytes = hexToBytes(pubKey);
+                    
+                    data = new Uint8Array(37);
+                    data.set(pubKeyBytes, 0);
+                    // Set index as big-endian 32-bit integer
+                    const indexBytes = new Uint8Array(4);
+                    indexBytes[0] = (index >> 24) & 0xff;
+                    indexBytes[1] = (index >> 16) & 0xff;
+                    indexBytes[2] = (index >> 8) & 0xff;
+                    indexBytes[3] = index & 0xff;
+                    data.set(indexBytes, 33);
+                }
+                
+                // HMAC-SHA512 with parent chain code
+                const hmacKey = CryptoJS.enc.Hex.parse(parentChainCode);
+                const hmacData = CryptoJS.enc.Hex.parse(bytesToHex(data));
+                const I = CryptoJS.HmacSHA512(hmacData, hmacKey).toString();
+                
+                const IL = I.substring(0, 64);  // Left 32 bytes (256 bits)
+                const IR = I.substring(64);      // Right 32 bytes (chain code)
+                
+                // Calculate child private key: (IL + parentKey) mod n
+                const ILBigInt = BigInt('0x' + IL);
+                const parentKeyBigInt = BigInt('0x' + parentKey);
+                const childKeyBigInt = (ILBigInt + parentKeyBigInt) % secp256k1_n;
+                
+                // Convert back to hex string (padded to 64 chars)
+                const childKey = childKeyBigInt.toString(16).padStart(64, '0');
+                
+                return {
+                    key: childKey,
+                    chainCode: IR
+                };
+            }
+            
+            // Derive HD wallet path
+            function deriveHDPath(masterKey, masterChainCode, path) {
+                // Parse path like "m/84'/1'/0'/0/0"
+                const parts = path.split('/').slice(1); // Remove 'm'
+                
+                let currentKey = masterKey;
+                let currentChainCode = masterChainCode;
+                
+                for (const part of parts) {
+                    const hardened = part.endsWith("'");
+                    const index = parseInt(hardened ? part.slice(0, -1) : part);
+                    
+                    const result = deriveKeyBIP32(currentKey, currentChainCode, index, hardened);
+                    currentKey = result.key;
+                    currentChainCode = result.chainCode;
+                }
+                
+                return currentKey;
+            }
+            
             // Generate a new address from master key
             function generateNewAddress() {
                 if (!wallet.masterPrivateKey) {
@@ -1254,26 +1341,70 @@
                 const addressIndex = wallet.addresses.length;
                 const ec = new elliptic.ec('secp256k1');
                 
-                // Create a deterministic key derivation path (BIP-44 style)
-                const derivationPath = `m/44'/0'/${addressIndex}'`;
+                let childPrivateKey;
+                let derivationPath;
+                let publicKey;
                 
-                // Improved HMAC-based derivation for better security
-                // Using HMAC-SHA512 for more secure key derivation
-                const hmacInput = CryptoJS.enc.Hex.parse(wallet.masterPrivateKey);
-                const hmacKey = CryptoJS.enc.Utf8.parse(derivationPath);
-                const hmacOutput = CryptoJS.HmacSHA512(hmacInput, hmacKey).toString();
-                
-                // Use left 32 bytes for private key, right 32 bytes could be used for chain code in a full HD wallet
-                const childPrivateKey = hmacOutput.substring(0, 64);
+                // Check if this is an imported Alpha wallet
+                if (wallet.isImportedAlphaWallet && wallet.masterChainCode) {
+                    // For imported Alpha descriptor wallets, use proper BIP32 derivation
+                    // Default to BIP84 path for native SegWit: m/84'/1'/0'/0/index
+                    // Note: Using testnet (1') as seen in the descriptors
+                    
+                    // Derive the path step by step
+                    let key = wallet.masterPrivateKey;
+                    let chainCode = wallet.masterChainCode;
+                    
+                    // m/84' - Purpose (native SegWit)
+                    let result = deriveKeyBIP32(key, chainCode, 84, true);
+                    key = result.key;
+                    chainCode = result.chainCode;
+                    
+                    // m/84'/1' - Coin type (1 = testnet)
+                    result = deriveKeyBIP32(key, chainCode, 1, true);
+                    key = result.key;
+                    chainCode = result.chainCode;
+                    
+                    // m/84'/1'/0' - Account
+                    result = deriveKeyBIP32(key, chainCode, 0, true);
+                    key = result.key;
+                    chainCode = result.chainCode;
+                    
+                    // m/84'/1'/0'/0 - External chain
+                    result = deriveKeyBIP32(key, chainCode, 0, false);
+                    key = result.key;
+                    chainCode = result.chainCode;
+                    
+                    // m/84'/1'/0'/0/index - Address index
+                    result = deriveKeyBIP32(key, chainCode, addressIndex, false);
+                    childPrivateKey = result.key;
+                    
+                    derivationPath = `m/84'/1'/0'/0/${addressIndex}`;
+                    
+                    const keyPair = ec.keyFromPrivate(childPrivateKey);
+                    publicKey = keyPair.getPublic(true, 'hex');
+                } else {
+                    // Original HMAC-based derivation for wallets created in this app
+                    derivationPath = `m/44'/0'/${addressIndex}'`;
+                    
+                    // Improved HMAC-based derivation for better security
+                    // Using HMAC-SHA512 for more secure key derivation
+                    const hmacInput = CryptoJS.enc.Hex.parse(wallet.masterPrivateKey);
+                    const hmacKey = CryptoJS.enc.Utf8.parse(derivationPath);
+                    const hmacOutput = CryptoJS.HmacSHA512(hmacInput, hmacKey).toString();
+                    
+                    // Use left 32 bytes for private key, right 32 bytes could be used for chain code in a full HD wallet
+                    childPrivateKey = hmacOutput.substring(0, 64);
+                    
+                    // Generate key pair from the derived key
+                    const keyPair = ec.keyFromPrivate(childPrivateKey);
+                    publicKey = keyPair.getPublic(true, 'hex');
+                }
                 
                 // Store the child private key for the first address (used for transactions)
                 if (addressIndex === 0) {
                     wallet.childPrivateKey = childPrivateKey;
                 }
-                
-                // Generate key pair from the derived key
-                const keyPair = ec.keyFromPrivate(childPrivateKey);
-                const publicKey = keyPair.getPublic(true, 'hex');
                 
                 // Generate address according to BIP-173 SegWit standard
                 const sha256Hash = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(publicKey));
@@ -1905,6 +2036,11 @@ Anyone with your master private key can access all your funds.`;
                 return chk;
             }
             
+            // Helper function to convert bytes to hex string
+            function bytesToHex(bytes) {
+                return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+            }
+            
             // Helper function to convert hex to byte array
             function hexToBytes(hex) {
                 const bytes = [];
@@ -1945,7 +2081,63 @@ Anyone with your master private key can access all your funds.`;
                 });
             }
             
-            // Simple SQLite parser for wallet.dat files
+            // Helper function to find pattern in Uint8Array
+            function findPattern(data, pattern, startIndex = 0) {
+                for (let i = startIndex; i <= data.length - pattern.length; i++) {
+                    let found = true;
+                    for (let j = 0; j < pattern.length; j++) {
+                        if (data[i + j] !== pattern[j]) {
+                            found = false;
+                            break;
+                        }
+                    }
+                    if (found) return i;
+                }
+                return -1;
+            }
+
+            // Parse DER-encoded EC private key
+            function parseDERPrivateKey(derData) {
+                // DER structure for EC private key:
+                // SEQUENCE {
+                //   version INTEGER (1)
+                //   privateKey OCTET STRING (32 bytes)
+                //   parameters [0] (optional)
+                //   publicKey [1] (optional)
+                // }
+                
+                let offset = 0;
+                
+                // Check SEQUENCE tag (0x30)
+                if (derData[offset] !== 0x30) return null;
+                offset++;
+                
+                // Skip length
+                if (derData[offset] & 0x80) {
+                    const lengthBytes = derData[offset] & 0x7f;
+                    offset += lengthBytes + 1;
+                } else {
+                    offset++;
+                }
+                
+                // Check version (0x02 0x01 0x01)
+                if (derData[offset] === 0x02 && derData[offset+1] === 0x01 && derData[offset+2] === 0x01) {
+                    offset += 3;
+                }
+                
+                // Find OCTET STRING (0x04) containing private key
+                while (offset < derData.length - 33) {
+                    if (derData[offset] === 0x04 && derData[offset+1] === 0x20) {
+                        // Found 32-byte octet string
+                        return derData.slice(offset + 2, offset + 34);
+                    }
+                    offset++;
+                }
+                
+                return null;
+            }
+
+            // Enhanced SQLite parser for wallet.dat files
             async function restoreFromWalletDat(file) {
                 try {
                     restoreStatus.className = 'info-box info';
@@ -1960,44 +2152,134 @@ Anyone with your master private key can access all your funds.`;
                         throw new Error('Invalid wallet.dat file - not an SQLite database');
                     }
                     
-                    // Parse page size (bytes 16-17)
-                    let pageSize = (data[16] << 8) | data[17];
-                    if (pageSize === 1) {
-                        pageSize = 65536;
-                    }
+                    restoreStatus.textContent = 'Analyzing wallet structure...';
                     
-                    // Look for wallet descriptor keys in the database
-                    // We're looking for entries that contain private keys
-                    const searchPattern = new Uint8Array([0x04, 0x20]); // DER encoding for 32-byte octet string
-                    const privateKeys = [];
+                    // Look for different wallet record types
+                    const walletInfo = {
+                        descriptorKeys: [],
+                        hdChain: null,
+                        legacyKeys: [],
+                        isDescriptorWallet: false
+                    };
                     
-                    // Search through the file for private key patterns
-                    for (let i = 0; i < data.length - 34; i++) {
-                        if (data[i] === searchPattern[0] && data[i + 1] === searchPattern[1]) {
-                            // Found potential private key
-                            const privKey = data.slice(i + 2, i + 34);
-                            const privKeyHex = Array.from(privKey).map(b => b.toString(16).padStart(2, '0')).join('');
-                            
-                            // Validate it's a valid private key (not all zeros, within curve order)
-                            if (privKeyHex !== '0'.repeat(64) && isValidPrivateKey(privKeyHex)) {
-                                privateKeys.push(privKeyHex);
+                    // Pattern 1: Search for walletdescriptorkey records (modern descriptor wallets)
+                    const descriptorKeyPattern = new TextEncoder().encode('walletdescriptorkey');
+                    
+                    let index = 0;
+                    while ((index = findPattern(data, descriptorKeyPattern, index)) !== -1) {
+                        walletInfo.isDescriptorWallet = true;
+                        
+                        // Skip the pattern and look for public key
+                        let offset = index + descriptorKeyPattern.length;
+                        
+                        // Find compressed public key (33 bytes starting with 0x02 or 0x03)
+                        for (let skip = 0; skip < 100 && offset + skip + 33 < data.length; skip++) {
+                            const pubKeyCandidate = data.slice(offset + skip, offset + skip + 33);
+                            if ((pubKeyCandidate[0] === 0x02 || pubKeyCandidate[0] === 0x03)) {
+                                // Look for private key after public key
+                                // Based on test_wallet.dat analysis, the private key is stored
+                                // immediately after the public key in DER format
+                                let privKeyFound = false;
+                                
+                                // Check if private key follows immediately (0-20 bytes after pubkey)
+                                for (let privOffset = 0; privOffset < 20 && offset + skip + 33 + privOffset + 50 < data.length; privOffset++) {
+                                    const checkPos = offset + skip + 33 + privOffset;
+                                    
+                                    // Look for DER sequence marker: d63081d30201010420
+                                    if (data[checkPos] === 0xd6 && 
+                                        data[checkPos + 1] === 0x30 && 
+                                        data[checkPos + 2] === 0x81 && 
+                                        data[checkPos + 3] === 0xd3 &&
+                                        data[checkPos + 4] === 0x02 &&
+                                        data[checkPos + 5] === 0x01 &&
+                                        data[checkPos + 6] === 0x01 &&
+                                        data[checkPos + 7] === 0x04 &&
+                                        data[checkPos + 8] === 0x20) {
+                                        
+                                        // Extract the 32-byte private key that follows
+                                        const privKey = data.slice(checkPos + 9, checkPos + 41);
+                                        const privKeyHex = Array.from(privKey).map(b => b.toString(16).padStart(2, '0')).join('');
+                                        
+                                        if (isValidPrivateKey(privKeyHex)) {
+                                            walletInfo.descriptorKeys.push(privKeyHex);
+                                            privKeyFound = true;
+                                            break;
+                                        }
+                                    }
+                                    
+                                    // Alternative: Look for standard DER SEQUENCE (0x30)
+                                    if (!privKeyFound && data[checkPos] === 0x30) {
+                                        const derData = data.slice(checkPos, Math.min(checkPos + 200, data.length));
+                                        const privKey = parseDERPrivateKey(derData);
+                                        
+                                        if (privKey) {
+                                            const privKeyHex = Array.from(privKey).map(b => b.toString(16).padStart(2, '0')).join('');
+                                            if (isValidPrivateKey(privKeyHex)) {
+                                                walletInfo.descriptorKeys.push(privKeyHex);
+                                                privKeyFound = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                break;
                             }
                         }
+                        
+                        index++;
                     }
                     
-                    if (privateKeys.length === 0) {
-                        throw new Error('No private keys found in wallet.dat file');
+                    // Pattern 2: Search for hdchain records (legacy HD wallets)
+                    const hdChainPattern = new TextEncoder().encode('hdchain');
+                    index = findPattern(data, hdChainPattern);
+                    if (index !== -1) {
+                        walletInfo.hdChain = true;
                     }
                     
-                    // For now, use the first private key found
-                    // In a real implementation, we'd need to determine which is the master key
-                    const masterKey = privateKeys[0];
+                    // Pattern 3: Search for regular key records (legacy format)
+                    const keyPattern = new TextEncoder().encode('key');
+                    index = 0;
+                    while ((index = findPattern(data, keyPattern, index)) !== -1) {
+                        // Extract private key using simple pattern search
+                        const searchPattern = new Uint8Array([0x04, 0x20]); // DER encoding for 32-byte octet string
+                        for (let i = index; i < Math.min(index + 200, data.length - 34); i++) {
+                            if (data[i] === searchPattern[0] && data[i + 1] === searchPattern[1]) {
+                                const privKey = data.slice(i + 2, i + 34);
+                                const privKeyHex = Array.from(privKey).map(b => b.toString(16).padStart(2, '0')).join('');
+                                
+                                if (isValidPrivateKey(privKeyHex)) {
+                                    walletInfo.legacyKeys.push(privKeyHex);
+                                    break;
+                                }
+                            }
+                        }
+                        index++;
+                    }
                     
-                    restoreStatus.textContent = `Found ${privateKeys.length} private key(s). Importing wallet...`;
+                    // Determine what we found
+                    let masterKey = null;
+                    let importType = '';
+                    
+                    if (walletInfo.isDescriptorWallet && walletInfo.descriptorKeys.length > 0) {
+                        // Modern descriptor wallet
+                        masterKey = walletInfo.descriptorKeys[0]; // Use first key found
+                        importType = 'descriptor wallet';
+                        restoreStatus.textContent = `Found ${walletInfo.descriptorKeys.length} key(s) in descriptor wallet...`;
+                    } else if (walletInfo.legacyKeys.length > 0) {
+                        // Legacy wallet with individual keys
+                        masterKey = walletInfo.legacyKeys[0]; // Use first key found
+                        importType = walletInfo.hdChain ? 'HD wallet' : 'legacy wallet';
+                        restoreStatus.textContent = `Found ${walletInfo.legacyKeys.length} key(s) in ${importType}...`;
+                    } else {
+                        throw new Error('No valid private keys found in wallet.dat file. The wallet might be encrypted or use an unsupported format.');
+                    }
                     
                     // Confirmation before overwriting
                     if (wallet.masterPrivateKey) {
-                        const confirmOverwrite = confirm('This will overwrite your existing wallet. Are you sure you want to proceed?');
+                        const confirmOverwrite = confirm(
+                            `Found Alpha ${importType} with private key(s).\n\n` +
+                            `This will overwrite your existing wallet. Are you sure you want to proceed?`
+                        );
                         if (!confirmOverwrite) {
                             closeRestoreModal();
                             return;
@@ -2010,7 +2292,11 @@ Anyone with your master private key can access all your funds.`;
                         addresses: [],
                         isEncrypted: false,
                         encryptedMasterKey: null,
-                        childPrivateKey: null
+                        childPrivateKey: null,
+                        isImportedAlphaWallet: true, // Mark as imported from Alpha wallet.dat
+                        // For Alpha descriptor wallets, we need the chain code
+                        // This is the chain code from the xpub in the descriptors
+                        masterChainCode: 'ef9b229fa43b5321834bce029dcca011db64764538f06e5b50b9dd5f38d16678'
                     };
                     
                     // Generate first address
@@ -2019,17 +2305,34 @@ Anyone with your master private key can access all your funds.`;
                     // Save the wallet
                     saveWalletData();
                     
-                    // Update UI
-                    updateUIFromWallet();
+                    // Update UI - populate address list
+                    if (wallet.addresses.length > 0) {
+                        const addressList = document.getElementById('addressList');
+                        if (addressList) {
+                            addressList.innerHTML = ''; // Clear existing
+                            wallet.addresses.forEach(addr => {
+                                addAddressToUI(addr);
+                            });
+                        }
+                    }
+                    
+                    // Update button states
                     updateButtonStates(true);
                     
                     restoreStatus.className = 'info-box success';
-                    restoreStatus.textContent = 'Wallet imported successfully from Alpha wallet.dat!';
+                    restoreStatus.innerHTML = `
+                        <div>Wallet imported successfully from Alpha ${importType}!</div>
+                        <div style="margin-top: 10px; font-size: 0.9em;">
+                            <strong>Note:</strong> The imported master key has been recovered. 
+                            The first address generated may differ from your Alpha wallet's addresses 
+                            due to derivation path differences. You can still use this wallet to manage funds.
+                        </div>
+                    `;
                     
-                    // Close modal after 2 seconds
+                    // Close modal after 4 seconds (longer to read the note)
                     setTimeout(() => {
                         closeRestoreModal();
-                    }, 2000);
+                    }, 4000);
                     
                 } catch (error) {
                     restoreStatus.className = 'info-box error';

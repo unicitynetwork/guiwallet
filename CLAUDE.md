@@ -70,6 +70,15 @@ The wallet uses several embedded cryptographic libraries:
 - Creates P2WPKH (Pay-to-Witness-Public-Key-Hash) address
 - Encodes as Bech32 with `alpha1` prefix
 
+### Wallet Import (`restoreFromWalletDat`)
+- Supports importing Alpha wallet.dat files (SQLite format)
+- Detects wallet type automatically:
+  - **Descriptor wallets**: Modern format with `walletdescriptorkey` records
+  - **Legacy HD wallets**: Contains `hdchain` records
+  - **Legacy non-HD wallets**: Individual `key` records
+- Extracts private keys from DER-encoded format
+- Uses first available private key as master key
+
 ### Transaction Management
 - `createTransaction`: Build transactions with UTXO selection
 - `signTransaction`: Offline signing capability
@@ -124,6 +133,10 @@ chmod +x alpha-migrate.sh
 - Test online/offline mode transitions
 - Verify pagination works correctly for large transaction/UTXO lists
 - Test watch-only mode functionality
+- Test Alpha wallet.dat import:
+  - Descriptor wallets (modern format with DER-encoded keys)
+  - Legacy HD wallets (with hdchain records)
+  - Legacy non-HD wallets (individual keys)
 
 ## Future Integration Points
 
