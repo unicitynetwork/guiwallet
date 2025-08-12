@@ -1187,6 +1187,33 @@
                         // Render address (just the first one)
                         if (wallet.addresses && wallet.addresses.length > 0) {
                             addAddressToUI(wallet.addresses[0]);
+                            
+                            // Check if this wallet is part of scanned wallets and sync balance
+                            if (lastScannedWalletData && lastScannedWalletData.wallets) {
+                                const currentAddress = wallet.addresses[0].address;
+                                const scannedWallet = lastScannedWalletData.wallets.find(w => w.address === currentAddress);
+                                
+                                if (scannedWallet) {
+                                    console.log(`Loaded wallet is part of scanned wallets: ${currentAddress}`);
+                                    
+                                    // Update master keys if not already set
+                                    if (!lastScannedWalletData.masterKey && wallet.masterPrivateKey) {
+                                        lastScannedWalletData.masterKey = wallet.masterPrivateKey;
+                                        lastScannedWalletData.masterChainCode = wallet.masterChainCode;
+                                        lastScannedWalletData.isAlphaWallet = wallet.isImportedAlphaWallet;
+                                        
+                                        // Save updated data with master keys
+                                        const fingerprint = generateWalletFingerprint(
+                                            lastScannedWalletData.masterKey,
+                                            lastScannedWalletData.masterChainCode
+                                        );
+                                        if (fingerprint) {
+                                            saveScanResultsToCache(fingerprint, lastScannedWalletData);
+                                        }
+                                    }
+                                }
+                            }
+                            
                             // Update balance display
                             updateCommonBalance();
                             
@@ -2565,6 +2592,9 @@ Anyone with your master private key can access all your funds.`;
             
             // Generate fingerprint for wallet
             function generateWalletFingerprint(masterKey, masterChainCode) {
+                if (!masterKey) {
+                    return null;
+                }
                 // Use first 8 chars of master key as fingerprint
                 return masterKey.substring(0, 8);
             }
@@ -2981,11 +3011,8 @@ Anyone with your master private key can access all your funds.`;
                         // Update UI
                         updateScannedWalletsDisplay();
                         
-                        // Start lazy rescan if connected
-                        if (electrumConnected) {
-                            console.log('Starting lazy rescan from cached data...');
-                            // We can't perform full rescan without keys, but we can update the display
-                        }
+                        // Note: We can't start lazy rescan here because we don't have master keys
+                        // It will start when a wallet is loaded or when connected to Fulcrum
                     }
                 }
             }
@@ -3069,12 +3096,18 @@ Anyone with your master private key can access all your funds.`;
                     totalBalance: totalBalance
                 };
                 
-                // Update cache
-                const fingerprint = generateWalletFingerprint(
-                    lastScannedWalletData.masterKey,
-                    lastScannedWalletData.masterChainCode
-                );
-                saveScanResultsToCache(fingerprint, lastScannedWalletData);
+                // Update cache only if we have master keys
+                if (lastScannedWalletData.masterKey) {
+                    const fingerprint = generateWalletFingerprint(
+                        lastScannedWalletData.masterKey,
+                        lastScannedWalletData.masterChainCode
+                    );
+                    if (fingerprint) {
+                        saveScanResultsToCache(fingerprint, lastScannedWalletData);
+                    }
+                } else {
+                    console.log('Lazy rescan complete but cannot update cache: missing master key');
+                }
                 
                 // Update UI
                 updateScannedWalletsDisplay();
@@ -3967,6 +4000,12 @@ Anyone with your master private key can access all your funds.`;
                         // Start polling for new blocks
                         startBlockPolling();
                         
+                        // Start lazy rescan if we have scanned wallets data
+                        if (lastScannedWalletData && lastScannedWalletData.wallets && lastScannedWalletData.wallets.length > 0) {
+                            console.log('Starting lazy rescan for cached wallets...');
+                            startLazyRescan();
+                        }
+                        
                         // Get server version
                         electrumRequest('server.version', ['Unicity Wallet', '1.4'], function(result) {
                             console.log('Server version:', result);
@@ -4791,6 +4830,60 @@ Anyone with your master private key can access all your funds.`;
                         walletUnconfirmed.textContent = `(${(unconfirmedBalance / 100000000).toFixed(8)})`;
                     } else {
                         walletUnconfirmed.style.display = 'none';
+                    }
+                }
+                
+                // Update total balance in scanned wallets if current address balance changed
+                if (lastScannedWalletData && lastScannedWalletData.wallets && wallet && wallet.addresses && wallet.addresses.length > 0) {
+                    const currentAddress = wallet.addresses[0].address;
+                    const totalBalance = confirmedBalance + unconfirmedBalance;
+                    
+                    // Find and update the current wallet in scanned wallets
+                    let walletUpdated = false;
+                    let walletIndex = -1;
+                    lastScannedWalletData.wallets.forEach((w, idx) => {
+                        if (w.address === currentAddress) {
+                            const oldBalance = w.balance || 0;
+                            if (oldBalance !== totalBalance) {
+                                console.log(`Balance changed for ${currentAddress}:`);
+                                console.log(`  Old cached balance: ${(oldBalance / 100000000).toFixed(8)} ALPHA`);
+                                console.log(`  New actual balance: ${(totalBalance / 100000000).toFixed(8)} ALPHA`);
+                                w.balance = totalBalance;
+                                walletUpdated = true;
+                                walletIndex = idx;
+                            }
+                        }
+                    });
+                    
+                    if (walletUpdated) {
+                        // Recalculate total balance by summing all individual balances
+                        let newTotalBalance = 0;
+                        console.log('Recalculating total balance from all cached wallets:');
+                        lastScannedWalletData.wallets.forEach((w, idx) => {
+                            if (w.balance > 0) {
+                                newTotalBalance += w.balance;
+                                console.log(`  Wallet #${idx} (${w.address.substring(0, 20)}...): ${(w.balance / 100000000).toFixed(8)} ALPHA`);
+                            }
+                        });
+                        const oldTotal = lastScannedWalletData.totalBalance || 0;
+                        lastScannedWalletData.totalBalance = newTotalBalance;
+                        console.log(`Total balance updated: ${(oldTotal / 100000000).toFixed(8)} -> ${(newTotalBalance / 100000000).toFixed(8)} ALPHA`);
+                        
+                        // Update cache only if we have master keys
+                        if (lastScannedWalletData.masterKey) {
+                            const fingerprint = generateWalletFingerprint(
+                                lastScannedWalletData.masterKey,
+                                lastScannedWalletData.masterChainCode
+                            );
+                            if (fingerprint) {
+                                saveScanResultsToCache(fingerprint, lastScannedWalletData);
+                            }
+                        } else {
+                            console.log('Cannot update cache: missing master key');
+                        }
+                        
+                        // Update display
+                        updateScannedWalletsDisplay();
                     }
                 }
                 
