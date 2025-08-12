@@ -577,6 +577,11 @@
         .help-link:hover {
             text-decoration: underline;
         }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -773,6 +778,9 @@
                             <span id="totalScannedBalance" style="display: none; margin-left: 15px;">
                                 | Total: <span style="font-weight: 600;" id="totalScannedAmount">0 ALPHA</span>
                                 <a href="#" onclick="showScannedWalletsDialog(); return false;" style="color: var(--primary-color); text-decoration: none; margin-left: 5px;" title="View all scanned wallets">[view all]</a>
+                            </span>
+                            <span id="totalScannedLoading" style="display: none; margin-left: 15px; color: #666;">
+                                | Scanning wallets... <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #f3f3f3; border-top: 2px solid #666; border-radius: 50%; animation: spin 1s linear infinite;"></span>
                             </span>
                         </div>
                     </div>
@@ -1194,7 +1202,6 @@
                                 const scannedWallet = lastScannedWalletData.wallets.find(w => w.address === currentAddress);
                                 
                                 if (scannedWallet) {
-                                    console.log(`Loaded wallet is part of scanned wallets: ${currentAddress}`);
                                     
                                     // Update master keys if not already set
                                     if (!lastScannedWalletData.masterKey && wallet.masterPrivateKey) {
@@ -1219,7 +1226,6 @@
                             
                             // If already connected to Fulcrum, refresh balance
                             if (electrumConnected) {
-                                console.log('Already connected to Fulcrum, refreshing balance...');
                                 refreshBalance();
                                 updateTransactionHistory();
                             }
@@ -1516,7 +1522,6 @@
                 
                 // If already connected to Fulcrum, refresh balance for new address
                 if (electrumConnected) {
-                    console.log('Already connected to Fulcrum, refreshing balance for new address...');
                     setTimeout(() => {
                         refreshBalance();
                         updateTransactionHistory();
@@ -1544,7 +1549,6 @@
                 
                 // If already connected to Fulcrum, refresh balance
                 if (electrumConnected && !wallet.addresses.find(a => a.address.toLowerCase() === addressInfo.address.toLowerCase())) {
-                    console.log('New address added and Fulcrum connected, refreshing balance...');
                     setTimeout(() => {
                         refreshBalance();
                         updateTransactionHistory();
@@ -2009,7 +2013,32 @@ Anyone with your master private key can access all your funds.`;
                         localStorage.removeItem('alphaWallet');
                     }
                     
-                    showInAppNotification('Wallet Deleted', 'Your wallet has been deleted successfully', 'success');
+                    // Clear cached scan data
+                    if (lastScannedWalletData && lastScannedWalletData.masterKey) {
+                        const fingerprint = generateWalletFingerprint(
+                            lastScannedWalletData.masterKey,
+                            lastScannedWalletData.masterChainCode
+                        );
+                        if (fingerprint) {
+                            const cacheKey = `walletScanCache_${fingerprint}`;
+                            localStorage.removeItem(cacheKey);
+                        }
+                    }
+                    
+                    // Clear scan data from memory
+                    lastScannedWalletData = null;
+                    updateScannedWalletsDisplay(); // This will hide the total balance display
+                    
+                    // Clear lazy scan interval if running
+                    if (lazyScanInterval) {
+                        clearInterval(lazyScanInterval);
+                        lazyScanInterval = null;
+                    }
+                    
+                    // Also hide loading indicator
+                    document.getElementById('totalScannedLoading').style.display = 'none';
+                    
+                    showInAppNotification('Wallet Deleted', 'Your wallet and cached scan data have been deleted successfully', 'success');
                 }
             }
             
@@ -2538,8 +2567,6 @@ Anyone with your master private key can access all your funds.`;
                     const unconfirmed = response.unconfirmed || 0;
                     const totalBalance = confirmed + unconfirmed;
                     
-                    console.log(`  Script hash: ${scriptHash}`);
-                    console.log(`  Confirmed: ${confirmed}, Unconfirmed: ${unconfirmed}, Total: ${totalBalance}`);
                     
                     return { balance: totalBalance, utxoCount: -1 }; // -1 indicates we didn't fetch UTXO count
                 } catch (error) {
@@ -2658,13 +2685,33 @@ Anyone with your master private key can access all your funds.`;
                     // Check for cached results
                     const cachedResults = loadScanResultsFromCache(fingerprint);
                     if (cachedResults && cachedResults.wallets && cachedResults.wallets.length > 0) {
-                        console.log(`Found cached scan results: ${cachedResults.wallets.length} wallets`);
                         
-                        // Use cached results
-                        scannedWallets = cachedResults.wallets;
+                        // Use cached results but deduplicate first
+                        const uniqueWallets = [];
+                        const addressSet = new Set();
+                        
+                        cachedResults.wallets.forEach(wallet => {
+                            if (!addressSet.has(wallet.address)) {
+                                addressSet.add(wallet.address);
+                                uniqueWallets.push(wallet);
+                            } else {
+                                console.warn(`Removing duplicate cached address: ${wallet.address}`);
+                            }
+                        });
+                        
+                        scannedWallets = uniqueWallets;
+                        
+                        // Recalculate total balance from deduplicated wallets
+                        let recalculatedTotal = 0;
+                        uniqueWallets.forEach(wallet => {
+                            if (wallet.balance > 0) {
+                                recalculatedTotal += wallet.balance;
+                            }
+                        });
+                        
                         lastScannedWalletData = {
-                            wallets: cachedResults.wallets,
-                            totalBalance: cachedResults.totalBalance,
+                            wallets: uniqueWallets,
+                            totalBalance: recalculatedTotal,
                             masterKey: extractedWalletData.masterKey,
                             masterChainCode: extractedWalletData.masterChainCode,
                             isAlphaWallet: extractedWalletData.isAlphaWallet
@@ -2673,20 +2720,30 @@ Anyone with your master private key can access all your funds.`;
                         // Display cached results
                         walletScanResults.style.display = 'block';
                         foundWalletsList.innerHTML = '';
-                        cachedResults.wallets.forEach(wallet => {
+                        uniqueWallets.forEach(wallet => {
                             addWalletToResults(wallet);
                         });
                         
                         // Update status
-                        scanStatus.innerHTML = `Found ${cachedResults.wallets.length} wallet(s) from cache<br>Total balance: <strong>${(cachedResults.totalBalance / 100000000).toFixed(8)} ALPHA</strong><br><em style="font-size: 11px;">Last scan: ${new Date(cachedResults.timestamp).toLocaleString()}</em>`;
+                        const deduplicationNote = cachedResults.wallets.length !== uniqueWallets.length 
+                            ? `<br><em style="font-size: 11px; color: #ff6b6b;">Removed ${cachedResults.wallets.length - uniqueWallets.length} duplicate(s)</em>` 
+                            : '';
+                        scanStatus.innerHTML = `Found ${uniqueWallets.length} wallet(s) from cache<br>Total balance: <strong>${(recalculatedTotal / 100000000).toFixed(8)} ALPHA</strong>${deduplicationNote}<br><em style="font-size: 11px;">Last scan: ${new Date(cachedResults.timestamp).toLocaleString()}</em>`;
                         scanProgress.style.width = '100%';
-                        scanCounter.textContent = `${cachedResults.wallets.length} cached`;
+                        scanCounter.textContent = `${uniqueWallets.length} cached`;
                         
                         // Update main UI
                         updateScannedWalletsDisplay();
                         
                         // Start lazy rescan in background if online
                         if (electrumConnected) {
+                            // Show loading indicator if we'll be doing background scan and have multiple wallets
+                            const nonZeroWallets = uniqueWallets.filter(w => w.balance > 0).length;
+                            if (nonZeroWallets > 1) {
+                                document.getElementById('totalScannedLoading').style.display = 'inline';
+                                // Keep balance visible alongside loading
+                                document.getElementById('totalScannedBalance').style.display = 'inline';
+                            }
                             startLazyRescan();
                         }
                     } else {
@@ -2817,11 +2874,24 @@ Anyone with your master private key can access all your funds.`;
                 const scanChangeAddrs = document.getElementById('scanChangeAddresses').checked;
                 
                 scanningActive = true;
+                // IMPORTANT: Clear the scannedWallets array to prevent duplicates
                 scannedWallets = [];
                 walletScanResults.style.display = 'block';
                 foundWalletsList.innerHTML = '';
                 scanStatus.textContent = 'Scanning...';
                 scanProgress.style.width = '0%';
+                
+                // Initialize scan data structure early
+                lastScannedWalletData = {
+                    wallets: [],
+                    totalBalance: 0,
+                    masterKey: extractedWalletData.masterKey,
+                    masterChainCode: extractedWalletData.masterChainCode,
+                    isAlphaWallet: extractedWalletData.isAlphaWallet
+                };
+                
+                // Update display to show loading indicator
+                updateScannedWalletsDisplay();
                 
                 const dustThreshold = 1000; // satoshis
                 const totalScans = scanChangeAddrs ? scanCount * 2 : scanCount;
@@ -2838,15 +2908,13 @@ Anyone with your master private key can access all your funds.`;
                         false // external address
                     );
                     
-                    // Log address for debugging
-                    console.log(`External Address #${i}: ${walletInfo.address} (path: ${walletInfo.path})`);
+                    // Skip logging each address to reduce clutter
                     
                     // Check balance if online
                     if (checkOnline && electrumConnected) {
                         const balanceInfo = await checkAddressBalance(walletInfo.address);
                         walletInfo.balance = balanceInfo.balance;
                         walletInfo.utxoCount = balanceInfo.utxoCount;
-                        console.log(`  Balance: ${walletInfo.balance} satoshis`);
                     }
                     
                     // Add to results if has balance above dust threshold or if offline
@@ -2856,8 +2924,14 @@ Anyone with your master private key can access all your funds.`;
                             walletInfo.balance = -1; // Indicate unknown balance
                         }
                         walletInfo.isChange = false;
-                        scannedWallets.push(walletInfo);
-                        addWalletToResults(walletInfo);
+                        // Check for duplicates before adding
+                        const isDuplicate = scannedWallets.some(w => w.address === walletInfo.address);
+                        if (!isDuplicate) {
+                            scannedWallets.push(walletInfo);
+                            addWalletToResults(walletInfo);
+                        } else {
+                            console.warn(`Skipping duplicate address: ${walletInfo.address}`);
+                        }
                         
                         // Update total balance immediately if online and has balance
                         if (checkOnline && electrumConnected && walletInfo.balance > 0) {
@@ -2865,10 +2939,21 @@ Anyone with your master private key can access all your funds.`;
                             scannedWallets.forEach(w => {
                                 if (w.balance > 0) runningTotal += w.balance;
                             });
-                            console.log(`Running total after finding wallet #${i}: ${(runningTotal / 100000000).toFixed(8)} ALPHA`);
                             
                             // Update status with running total
                             scanStatus.innerHTML = `Scanning... Found ${scannedWallets.length} wallet(s)<br>Current total: <strong>${(runningTotal / 100000000).toFixed(8)} ALPHA</strong>`;
+                            
+                            // Update lastScannedWalletData with current data
+                            lastScannedWalletData = {
+                                wallets: [...scannedWallets],
+                                totalBalance: runningTotal,
+                                masterKey: extractedWalletData.masterKey,
+                                masterChainCode: extractedWalletData.masterChainCode,
+                                isAlphaWallet: extractedWalletData.isAlphaWallet
+                            };
+                            
+                            // Update display to reflect current scan state
+                            updateScannedWalletsDisplay();
                         }
                     }
                     
@@ -2896,16 +2981,14 @@ Anyone with your master private key can access all your funds.`;
                             true // change address
                         );
                         
-                        // Log address for debugging
-                        console.log(`Change Address #${i}: ${walletInfo.address} (path: ${walletInfo.path})`);
+                        // Skip logging each address to reduce clutter
                         
                         // Check balance if online
                         if (checkOnline && electrumConnected) {
                             const balanceInfo = await checkAddressBalance(walletInfo.address);
                             walletInfo.balance = balanceInfo.balance;
                             walletInfo.utxoCount = balanceInfo.utxoCount;
-                            console.log(`  Balance: ${walletInfo.balance} satoshis`);
-                        }
+                            }
                         
                         // Add to results if has balance above dust threshold or if offline
                         if (!checkOnline || !electrumConnected || walletInfo.balance > dustThreshold) {
@@ -2914,8 +2997,14 @@ Anyone with your master private key can access all your funds.`;
                                 walletInfo.balance = -1; // Indicate unknown balance
                             }
                             walletInfo.isChange = true;
-                            scannedWallets.push(walletInfo);
-                            addWalletToResults(walletInfo);
+                            // Check for duplicates before adding
+                            const isDuplicate = scannedWallets.some(w => w.address === walletInfo.address);
+                            if (!isDuplicate) {
+                                scannedWallets.push(walletInfo);
+                                addWalletToResults(walletInfo);
+                            } else {
+                                console.warn(`Skipping duplicate change address: ${walletInfo.address}`);
+                            }
                             
                             // Update total balance immediately if online and has balance
                             if (checkOnline && electrumConnected && walletInfo.balance > 0) {
@@ -2923,10 +3012,21 @@ Anyone with your master private key can access all your funds.`;
                                 scannedWallets.forEach(w => {
                                     if (w.balance > 0) runningTotal += w.balance;
                                 });
-                                console.log(`Running total after finding change wallet #${i}: ${(runningTotal / 100000000).toFixed(8)} ALPHA`);
                                 
                                 // Update status with running total
                                 scanStatus.innerHTML = `Scanning... Found ${scannedWallets.length} wallet(s)<br>Current total: <strong>${(runningTotal / 100000000).toFixed(8)} ALPHA</strong>`;
+                                
+                                // Update lastScannedWalletData with current data
+                                lastScannedWalletData = {
+                                    wallets: [...scannedWallets],
+                                    totalBalance: runningTotal,
+                                    masterKey: extractedWalletData.masterKey,
+                                    masterChainCode: extractedWalletData.masterChainCode,
+                                    isAlphaWallet: extractedWalletData.isAlphaWallet
+                                };
+                                
+                                // Update display to reflect current scan state
+                                updateScannedWalletsDisplay();
                             }
                         }
                         
@@ -2981,16 +3081,42 @@ Anyone with your master private key can access all your funds.`;
             
             // Update the main UI to show total scanned balance
             function updateScannedWalletsDisplay() {
-                if (!lastScannedWalletData || !lastScannedWalletData.wallets || lastScannedWalletData.wallets.length <= 1) {
-                    // Hide total balance if no scan data or only one wallet
-                    document.getElementById('totalScannedBalance').style.display = 'none';
+                const totalScannedBalance = document.getElementById('totalScannedBalance');
+                const totalScannedLoading = document.getElementById('totalScannedLoading');
+                
+                if (!lastScannedWalletData || !lastScannedWalletData.wallets) {
+                    // Hide both total balance and loading indicator if no scan data
+                    totalScannedBalance.style.display = 'none';
+                    totalScannedLoading.style.display = 'none';
                     return;
                 }
                 
-                // Show total balance if multiple wallets found
-                const totalBalance = lastScannedWalletData.totalBalance || 0;
-                document.getElementById('totalScannedAmount').textContent = `${(totalBalance / 100000000).toFixed(8)} ALPHA`;
-                document.getElementById('totalScannedBalance').style.display = 'inline';
+                // Count non-zero balance wallets
+                const nonZeroWallets = lastScannedWalletData.wallets.filter(w => w.balance > 0).length;
+                
+                if (nonZeroWallets <= 1 && !scanningActive) {
+                    // Hide both if only one or no wallets with balance (unless actively scanning)
+                    totalScannedBalance.style.display = 'none';
+                    totalScannedLoading.style.display = 'none';
+                    return;
+                }
+                
+                // If actively scanning, show loading indicator
+                if (scanningActive) {
+                    totalScannedLoading.style.display = 'inline';
+                    // Hide balance during scan
+                    totalScannedBalance.style.display = 'none';
+                } else if (nonZeroWallets > 1) {
+                    // Show total balance if multiple wallets found and not scanning
+                    const totalBalance = lastScannedWalletData.totalBalance || 0;
+                    document.getElementById('totalScannedAmount').textContent = `${(totalBalance / 100000000).toFixed(8)} ALPHA`;
+                    totalScannedBalance.style.display = 'inline';
+                    totalScannedLoading.style.display = 'none';
+                } else {
+                    // Hide both if conditions not met
+                    totalScannedBalance.style.display = 'none';
+                    totalScannedLoading.style.display = 'none';
+                }
             }
             
             // Check for cached scan data on page load
@@ -3020,7 +3146,6 @@ Anyone with your master private key can access all your funds.`;
                     });
                     
                     if (mostRecentCache && mostRecentCache.wallets && mostRecentCache.wallets.length > 0) {
-                        console.log(`Loaded cached scan data: ${mostRecentCache.wallets.length} wallets`);
                         
                         // Set the cached data
                         lastScannedWalletData = {
@@ -3047,7 +3172,6 @@ Anyone with your master private key can access all your funds.`;
                     return;
                 }
                 
-                console.log('Starting lazy rescan of wallets...');
                 
                 // Clear any existing interval
                 if (lazyScanInterval) {
@@ -3070,10 +3194,14 @@ Anyone with your master private key can access all your funds.`;
             
             async function performLazyRescan() {
                 if (!lastScannedWalletData || !lastScannedWalletData.wallets) {
+                    // Clear the interval since we have no data to scan
+                    if (lazyScanInterval) {
+                        clearInterval(lazyScanInterval);
+                        lazyScanInterval = null;
+                    }
                     return;
                 }
                 
-                console.log('Performing lazy rescan...');
                 lastLazyScanTime = Date.now();
                 
                 let totalBalance = 0;
@@ -3102,9 +3230,6 @@ Anyone with your master private key can access all your funds.`;
                         
                         // Check if balance changed
                         if (oldBalance !== newBalance) {
-                            console.log(`Balance changed during scan for ${wallet.address}:`);
-                            console.log(`  Old: ${(oldBalance / 100000000).toFixed(8)} ALPHA`);
-                            console.log(`  New: ${(newBalance / 100000000).toFixed(8)} ALPHA`);
                             
                             // Update the stored data immediately
                             lastScannedWalletData.wallets[i] = updatedWallet;
@@ -3125,12 +3250,10 @@ Anyone with your master private key can access all your funds.`;
                             }
                             
                             lastScannedWalletData.totalBalance = currentTotal;
-                            console.log(`Updated total balance: ${(currentTotal / 100000000).toFixed(8)} ALPHA`);
                             
                             // Update display immediately
                             updateScannedWalletsDisplay();
                         } else {
-                            console.log(`Lazy scan: ${wallet.address} - Balance: ${newBalance} (unchanged)`);
                         }
                         
                         // Rate limit: wait 10 seconds between addresses
@@ -3164,13 +3287,11 @@ Anyone with your master private key can access all your funds.`;
                         saveScanResultsToCache(fingerprint, lastScannedWalletData);
                     }
                 } else {
-                    console.log('Lazy rescan complete but cannot update cache: missing master key');
                 }
                 
                 // Update UI
                 updateScannedWalletsDisplay();
                 
-                console.log(`Lazy rescan complete. Total balance: ${(totalBalance / 100000000).toFixed(8)} ALPHA`);
             }
             
             // Show dialog with all scanned wallets
@@ -3323,48 +3444,46 @@ Anyone with your master private key can access all your funds.`;
             
             // Select a wallet for import
             function selectWalletForImport(walletInfo) {
-                const balanceText = walletInfo.balance === -1 ? 'Unknown (offline)' : `${(walletInfo.balance / 100000000).toFixed(8)} ALPHA`;
-                if (confirm(`Import wallet with address ${walletInfo.address}?\nBalance: ${balanceText}`)) {
-                    // Don't stop scanning - let it continue in background
-                    
-                    // Create wallet with the selected index
-                    // Remove utxos from walletInfo for storage
-                    const addressInfo = {
-                        index: walletInfo.index,
-                        address: walletInfo.address,
-                        publicKey: walletInfo.publicKey,
-                        path: walletInfo.path,
-                        createdAt: new Date().toISOString()
-                    };
-                    
-                    wallet = {
-                        masterPrivateKey: extractedWalletData.masterKey,
-                        addresses: [addressInfo],
-                        isEncrypted: false,
-                        encryptedMasterKey: '',
-                        childPrivateKey: walletInfo.privateKey,
-                        isImportedAlphaWallet: extractedWalletData.isAlphaWallet,
-                        masterChainCode: extractedWalletData.masterChainCode
-                    };
-                    
-                    // Update UI
-                    updateButtonStates(true);
-                    addAddressToUI(walletInfo);
-                    saveWalletData();
-                    
-                    // Close modal
-                    closeRestoreModal();
-                    
-                    showInAppNotification('Wallet Imported', `Successfully imported wallet at index ${walletInfo.index}`, 'success');
-                    
-                    // Refresh balance if connected
-                    if (electrumConnected) {
-                        refreshBalance();
-                    }
-                    
-                    // Update scanned wallets display
-                    updateScannedWalletsDisplay();
+                // Directly import without confirmation
+                // Don't stop scanning - let it continue in background
+                
+                // Create wallet with the selected index
+                // Remove utxos from walletInfo for storage
+                const addressInfo = {
+                    index: walletInfo.index,
+                    address: walletInfo.address,
+                    publicKey: walletInfo.publicKey,
+                    path: walletInfo.path,
+                    createdAt: new Date().toISOString()
+                };
+                
+                wallet = {
+                    masterPrivateKey: extractedWalletData.masterKey,
+                    addresses: [addressInfo],
+                    isEncrypted: false,
+                    encryptedMasterKey: '',
+                    childPrivateKey: walletInfo.privateKey,
+                    isImportedAlphaWallet: extractedWalletData.isAlphaWallet,
+                    masterChainCode: extractedWalletData.masterChainCode
+                };
+                
+                // Update UI
+                updateButtonStates(true);
+                addAddressToUI(walletInfo);
+                saveWalletData();
+                
+                // Close modal
+                closeRestoreModal();
+                
+                showInAppNotification('Wallet Imported', `Successfully imported wallet at index ${walletInfo.index}`, 'success');
+                
+                // Refresh balance if connected
+                if (electrumConnected) {
+                    refreshBalance();
                 }
+                
+                // Update scanned wallets display
+                updateScannedWalletsDisplay();
             }
             
             async function restoreWallet() {
@@ -3522,7 +3641,6 @@ Anyone with your master private key can access all your funds.`;
                     
                     // If already connected to Fulcrum, refresh balance
                     if (electrumConnected) {
-                        console.log('Wallet restored and Fulcrum connected, refreshing balance...');
                         // Reset initial load flag when wallet is restored
                         isInitialLoad = true;
                         setTimeout(() => {
@@ -4060,7 +4178,6 @@ Anyone with your master private key can access all your funds.`;
                         
                         // Start lazy rescan if we have scanned wallets data
                         if (lastScannedWalletData && lastScannedWalletData.wallets && lastScannedWalletData.wallets.length > 0) {
-                            console.log('Starting lazy rescan for cached wallets...');
                             startLazyRescan();
                         }
                         
@@ -4903,9 +5020,6 @@ Anyone with your master private key can access all your funds.`;
                         if (w.address === currentAddress) {
                             const oldBalance = w.balance || 0;
                             if (oldBalance !== totalBalance) {
-                                console.log(`Balance changed for ${currentAddress}:`);
-                                console.log(`  Old cached balance: ${(oldBalance / 100000000).toFixed(8)} ALPHA`);
-                                console.log(`  New actual balance: ${(totalBalance / 100000000).toFixed(8)} ALPHA`);
                                 w.balance = totalBalance;
                                 walletUpdated = true;
                                 walletIndex = idx;
@@ -4916,16 +5030,13 @@ Anyone with your master private key can access all your funds.`;
                     if (walletUpdated) {
                         // Recalculate total balance by summing all individual balances
                         let newTotalBalance = 0;
-                        console.log('Recalculating total balance from all cached wallets:');
                         lastScannedWalletData.wallets.forEach((w, idx) => {
                             if (w.balance > 0) {
                                 newTotalBalance += w.balance;
-                                console.log(`  Wallet #${idx} (${w.address.substring(0, 20)}...): ${(w.balance / 100000000).toFixed(8)} ALPHA`);
                             }
                         });
                         const oldTotal = lastScannedWalletData.totalBalance || 0;
                         lastScannedWalletData.totalBalance = newTotalBalance;
-                        console.log(`Total balance updated: ${(oldTotal / 100000000).toFixed(8)} -> ${(newTotalBalance / 100000000).toFixed(8)} ALPHA`);
                         
                         // Update cache only if we have master keys
                         if (lastScannedWalletData.masterKey) {
@@ -5360,10 +5471,6 @@ Anyone with your master private key can access all your funds.`;
                         });
                         
                         // Debug logging
-                        console.log(`[TX ${txid}] OUTBOUND Transaction:`);
-                        console.log(`  - Total input: ${inputAmount} satoshis (${(inputAmount/100000000).toFixed(8)} ALPHA)`);
-                        console.log(`  - Change back to us: ${outputAmount} satoshis (${(outputAmount/100000000).toFixed(8)} ALPHA)`);
-                        console.log(`  - Sent to others: ${sentToOthers} satoshis (${(sentToOthers/100000000).toFixed(8)} ALPHA)`);
                         if (ourOutputs.length > 0) {
                             console.log(`  - Our change addresses:`, ourOutputs.map(o => o.address));
                         }
@@ -6904,7 +7011,6 @@ Anyone with your master private key can access all your funds.`;
                                     // Rebalance the outputs
                                     recipientOutput.value = halfAmount;
                                     otherRecipientOutput.value = totalAmount - halfAmount;
-                                    console.log(`Rebalanced dust recipient outputs: ${halfAmount} and ${totalAmount - halfAmount}`);
                                     break;
                                 }
                             }
