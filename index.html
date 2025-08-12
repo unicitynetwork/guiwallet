@@ -618,15 +618,15 @@
 
     <!-- Restore Modal -->
     <div id="restoreModal" class="qr-modal" style="display: none;">
-        <div class="qr-content" style="max-width: 500px;">
+        <div class="qr-content" style="max-width: 700px; max-height: 90vh; overflow-y: auto;">
             <h3>Restore Wallet from Backup</h3>
-            <p style="margin: 15px 0; color: #666;">Upload a wallet backup file (.json) or Alpha wallet.dat file to restore your wallet.</p>
+            <p style="margin: 15px 0; color: #666;">Upload a wallet backup file (.txt) or Alpha wallet.dat file to restore your wallet.</p>
             <div class="warning" style="margin: 10px 0; padding: 10px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px;">
                 <strong>⚠️ Warning:</strong> Alpha wallet.dat import is <strong>EXPERIMENTAL</strong>. 
                 <ul style="margin: 5px 0; padding-left: 20px;">
                     <li>Only unencrypted SQLite wallet.dat files are supported</li>
                     <li>Supports both descriptor wallets (modern) and HD wallets (legacy)</li>
-                    <li>Will extract the first available private key as master key</li>
+                    <li>Will scan multiple addresses to find your wallet with funds</li>
                     <li>Make sure to backup your wallet.dat before attempting import</li>
                 </ul>
             </div>
@@ -641,11 +641,48 @@
                 <input type="password" id="restorePasswordInput" placeholder="Enter wallet password" style="width: 100%;">
             </div>
             
+            <!-- Wallet Scanning Options -->
+            <div id="walletScanOptions" style="display: none; margin: 15px 0; padding: 15px; background-color: #f8f9fa; border-radius: 8px;">
+                <h4 style="margin: 0 0 10px 0;">Wallet Discovery Settings</h4>
+                <div class="input-group" style="margin-bottom: 10px;">
+                    <label for="scanCountInput">Number of addresses to scan:</label>
+                    <input type="number" id="scanCountInput" value="100" min="1" max="1000" style="width: 100px;">
+                    <span style="margin-left: 10px; color: #666; font-size: 12px;">Scan multiple addresses to find wallets with funds</span>
+                </div>
+                <div style="margin-top: 10px;">
+                    <label>
+                        <input type="checkbox" id="scanOnlineCheckbox" checked>
+                        Check balances online (requires Fulcrum connection)
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Wallet Scan Results -->
+            <div id="walletScanResults" style="display: none; margin: 15px 0;">
+                <h4 style="margin: 0 0 10px 0;">Found Wallets</h4>
+                <div id="scanProgressBar" style="margin-bottom: 10px;">
+                    <div style="height: 20px; background-color: #e9e9e9; border-radius: 10px; overflow: hidden;">
+                        <div id="scanProgress" style="width: 0%; height: 100%; background-color: var(--primary-color); transition: width 0.3s;"></div>
+                    </div>
+                    <div style="margin-top: 5px; font-size: 12px; color: #666;">
+                        <span id="scanStatus">Scanning...</span>
+                        <span id="scanCounter" style="float: right;">0 / 100</span>
+                    </div>
+                    <div style="margin-top: 10px; text-align: center;">
+                        <button class="button" id="stopScanBtn" onclick="scanningActive = false;" style="background-color: #d0d0d0; padding: 5px 15px; font-size: 12px;">Stop Scan</button>
+                    </div>
+                </div>
+                <div id="foundWalletsList" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; padding: 10px;">
+                    <!-- Found wallets will be listed here -->
+                </div>
+            </div>
+            
             <div id="restoreStatus" class="info-box" style="display: none; margin-bottom: 15px;"></div>
             
             <div style="display: flex; justify-content: space-between; gap: 10px;">
                 <button class="button" style="background-color: #d0d0d0;" id="restoreModalCancelBtn">Cancel</button>
                 <button class="button" id="restoreModalSubmitBtn">Restore</button>
+                <button class="button" id="scanWalletsBtn" style="display: none;">Rescan Wallets</button>
             </div>
         </div>
     </div>
@@ -2062,6 +2099,15 @@ Anyone with your master private key can access all your funds.`;
             const restoreModalCancelBtn = document.getElementById('restoreModalCancelBtn');
             const restoreModalSubmitBtn = document.getElementById('restoreModalSubmitBtn');
             const restoreStatus = document.getElementById('restoreStatus');
+            const scanWalletsBtn = document.getElementById('scanWalletsBtn');
+            const walletScanOptions = document.getElementById('walletScanOptions');
+            const walletScanResults = document.getElementById('walletScanResults');
+            const scanCountInput = document.getElementById('scanCountInput');
+            const scanOnlineCheckbox = document.getElementById('scanOnlineCheckbox');
+            const foundWalletsList = document.getElementById('foundWalletsList');
+            const scanProgress = document.getElementById('scanProgress');
+            const scanStatus = document.getElementById('scanStatus');
+            const scanCounter = document.getElementById('scanCounter');
             
             function showRestoreModal() {
                 restoreModal.style.display = 'flex';
@@ -2069,6 +2115,10 @@ Anyone with your master private key can access all your funds.`;
                 restoreFileInput.value = '';
                 restorePasswordInput.value = '';
                 restoreStatus.style.display = 'none';
+                walletScanOptions.style.display = 'none';
+                walletScanResults.style.display = 'none';
+                scanWalletsBtn.style.display = 'none';
+                restoreModalSubmitBtn.style.display = 'inline-block';
             }
             
             function closeRestoreModal() {
@@ -2354,6 +2404,424 @@ Anyone with your master private key can access all your funds.`;
                     return key > 0n && key < n;
                 } catch {
                     return false;
+                }
+            }
+            
+            // Derive address at specific index from master key
+            function deriveAddressAtIndex(masterKey, masterChainCode, index, isAlphaWallet = true) {
+                const ec = new elliptic.ec('secp256k1');
+                let childPrivateKey;
+                let derivationPath;
+                
+                if (isAlphaWallet && masterChainCode) {
+                    // BIP32 derivation for Alpha wallets
+                    let key = masterKey;
+                    let chainCode = masterChainCode;
+                    
+                    // m/84'/1'/0'/0/index
+                    let result = deriveKeyBIP32(key, chainCode, 84, true);
+                    key = result.key;
+                    chainCode = result.chainCode;
+                    
+                    result = deriveKeyBIP32(key, chainCode, 1, true);
+                    key = result.key;
+                    chainCode = result.chainCode;
+                    
+                    result = deriveKeyBIP32(key, chainCode, 0, true);
+                    key = result.key;
+                    chainCode = result.chainCode;
+                    
+                    result = deriveKeyBIP32(key, chainCode, 0, false);
+                    key = result.key;
+                    chainCode = result.chainCode;
+                    
+                    result = deriveKeyBIP32(key, chainCode, index, false);
+                    childPrivateKey = result.key;
+                    derivationPath = `m/84'/1'/0'/0/${index}`;
+                } else {
+                    // HMAC-based derivation
+                    derivationPath = `m/44'/0'/${index}'`;
+                    const hmacInput = CryptoJS.enc.Hex.parse(masterKey);
+                    const hmacKey = CryptoJS.enc.Utf8.parse(derivationPath);
+                    const hmacOutput = CryptoJS.HmacSHA512(hmacInput, hmacKey).toString();
+                    childPrivateKey = hmacOutput.substring(0, 64);
+                }
+                
+                const keyPair = ec.keyFromPrivate(childPrivateKey);
+                const publicKey = keyPair.getPublic(true, 'hex');
+                
+                // Create SegWit address
+                const publicKeyBytes = hexToBytes(publicKey);
+                const sha256Hash = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(publicKey)).toString();
+                const ripemd160Hash = CryptoJS.RIPEMD160(CryptoJS.enc.Hex.parse(sha256Hash)).toString();
+                const address = createBech32('alpha', 0, hexToBytes(ripemd160Hash));
+                
+                return {
+                    index: index,
+                    address: address,
+                    publicKey: publicKey,
+                    privateKey: childPrivateKey,
+                    path: derivationPath,
+                    balance: 0,
+                    utxos: []
+                };
+            }
+            
+            // Check balance for an address using Fulcrum
+            async function checkAddressBalance(address) {
+                if (!electrumConnected) {
+                    return { balance: 0, utxoCount: 0 };
+                }
+                
+                try {
+                    const scriptHash = addressToScriptHash(address);
+                    if (!scriptHash) {
+                        console.error('Failed to convert address to script hash:', address);
+                        return { balance: 0, utxoCount: 0 };
+                    }
+                    
+                    // Use get_balance which is more efficient than listing all UTXOs
+                    const response = await new Promise((resolve, reject) => {
+                        electrumRequest('blockchain.scripthash.get_balance', [scriptHash], function(result, error) {
+                            if (error) {
+                                reject(error);
+                            } else {
+                                resolve(result);
+                            }
+                        });
+                    });
+                    
+                    if (!response) {
+                        return { balance: 0, utxoCount: 0 };
+                    }
+                    
+                    // get_balance returns {confirmed: number, unconfirmed: number}
+                    const confirmed = response.confirmed || 0;
+                    const unconfirmed = response.unconfirmed || 0;
+                    const totalBalance = confirmed + unconfirmed;
+                    
+                    console.log(`  Script hash: ${scriptHash}`);
+                    console.log(`  Confirmed: ${confirmed}, Unconfirmed: ${unconfirmed}, Total: ${totalBalance}`);
+                    
+                    return { balance: totalBalance, utxoCount: -1 }; // -1 indicates we didn't fetch UTXO count
+                } catch (error) {
+                    console.error('Error checking address balance:', error);
+                    return { balance: 0, utxoCount: 0 };
+                }
+            }
+            
+            // Global variables for scanning
+            let scanningActive = false;
+            let scannedWallets = [];
+            let extractedWalletData = null;
+            
+            // Start wallet scanning
+            async function startWalletScan() {
+                const file = restoreFileInput.files[0];
+                if (!file) {
+                    alert('Please select a file first');
+                    return;
+                }
+                
+                // Extract master key and chain code from file
+                try {
+                    let masterKey = '';
+                    let masterChainCode = null;
+                    let isAlphaWallet = false;
+                    
+                    if (file.name.endsWith('.dat')) {
+                        // Extract from wallet.dat
+                        const result = await extractFromWalletDat(file);
+                        masterKey = result.masterKey;
+                        masterChainCode = result.masterChainCode;
+                        isAlphaWallet = true;
+                    } else {
+                        // Extract from text backup
+                        const fileContent = await file.text();
+                        const masterKeyMatch = fileContent.match(/MASTER PRIVATE KEY \(keep secret!\):\s*([^\n]+)/);
+                        if (masterKeyMatch) {
+                            masterKey = masterKeyMatch[1].trim();
+                        }
+                        
+                        const chainCodeMatch = fileContent.match(/MASTER CHAIN CODE \(for Alpha wallet compatibility\):\s*([^\n]+)/);
+                        if (chainCodeMatch) {
+                            masterChainCode = chainCodeMatch[1].trim();
+                            isAlphaWallet = true;
+                        }
+                    }
+                    
+                    if (!masterKey) {
+                        throw new Error('Could not extract master key from file');
+                    }
+                    
+                    // Store extracted data
+                    extractedWalletData = {
+                        masterKey,
+                        masterChainCode,
+                        isAlphaWallet
+                    };
+                    
+                    console.log('Extracted wallet data:', {
+                        masterKey: masterKey,
+                        masterChainCode: masterChainCode,
+                        isAlphaWallet: isAlphaWallet,
+                        keyLength: masterKey ? masterKey.length : 0
+                    });
+                    
+                    // Start scanning
+                    await performWalletScan();
+                    
+                } catch (error) {
+                    restoreStatus.className = 'info-box error';
+                    restoreStatus.textContent = 'Error: ' + error.message;
+                    restoreStatus.style.display = 'block';
+                }
+            }
+            
+            // Extract from wallet.dat file
+            async function extractFromWalletDat(file) {
+                const data = await readBinaryFile(file);
+                
+                // Check SQLite header
+                const header = new TextDecoder().decode(data.slice(0, 16));
+                if (!header.startsWith('SQLite format 3')) {
+                    throw new Error('Invalid wallet.dat file - not an SQLite database');
+                }
+                
+                // Look for private keys (same logic as restoreFromWalletDat)
+                const descriptorKeyPattern = new TextEncoder().encode('walletdescriptorkey');
+                let masterKey = null;
+                let foundCount = 0;
+                
+                let index = 0;
+                while ((index = findPattern(data, descriptorKeyPattern, index)) !== -1) {
+                    foundCount++;
+                    console.log(`Found descriptor key pattern #${foundCount} at position ${index}`);
+                    // Skip the pattern and look for public key
+                    let offset = index + descriptorKeyPattern.length;
+                    
+                    // Find compressed public key (33 bytes starting with 0x02 or 0x03)
+                    for (let skip = 0; skip < 100 && offset + skip + 33 < data.length; skip++) {
+                        const pubKeyCandidate = data.slice(offset + skip, offset + skip + 33);
+                        if ((pubKeyCandidate[0] === 0x02 || pubKeyCandidate[0] === 0x03)) {
+                            // Look for private key after public key
+                            for (let privOffset = 0; privOffset < 20 && offset + skip + 33 + privOffset + 50 < data.length; privOffset++) {
+                                const checkPos = offset + skip + 33 + privOffset;
+                                
+                                // Look for DER sequence marker: d63081d30201010420
+                                if (data[checkPos] === 0xd6 && 
+                                    data[checkPos + 1] === 0x30 && 
+                                    data[checkPos + 2] === 0x81 && 
+                                    data[checkPos + 3] === 0xd3 &&
+                                    data[checkPos + 4] === 0x02 &&
+                                    data[checkPos + 5] === 0x01 &&
+                                    data[checkPos + 6] === 0x01 &&
+                                    data[checkPos + 7] === 0x04 &&
+                                    data[checkPos + 8] === 0x20) {
+                                    
+                                    // Extract the 32-byte private key
+                                    const privKeyBytes = data.slice(checkPos + 9, checkPos + 41);
+                                    const privKeyHex = Array.from(privKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+                                    
+                                    if (isValidPrivateKey(privKeyHex)) {
+                                        masterKey = privKeyHex;
+                                        console.log(`Found valid private key: ${privKeyHex}`);
+                                        break;
+                                    }
+                                }
+                                
+                                // Alternative: Look for standard DER SEQUENCE (0x30)
+                                if (!masterKey && data[checkPos] === 0x30) {
+                                    const derData = data.slice(checkPos, Math.min(checkPos + 200, data.length));
+                                    const privKey = parseDERPrivateKey(derData);
+                                    
+                                    if (privKey) {
+                                        const privKeyHex = Array.from(privKey).map(b => b.toString(16).padStart(2, '0')).join('');
+                                        if (isValidPrivateKey(privKeyHex)) {
+                                            masterKey = privKeyHex;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (masterKey) break;
+                    }
+                    if (masterKey) break;
+                    index++;
+                }
+                
+                // If no descriptor keys found, try legacy patterns
+                if (!masterKey && foundCount === 0) {
+                    // Try searching for raw private keys (32 bytes)
+                    const keyPattern = new TextEncoder().encode('key');
+                    index = 0;
+                    while ((index = findPattern(data, keyPattern, index)) !== -1 && !masterKey) {
+                        // Look for 32-byte sequences that could be private keys
+                        for (let offset = index + keyPattern.length; offset < Math.min(index + 200, data.length - 32); offset++) {
+                            const candidate = data.slice(offset, offset + 32);
+                            const candidateHex = Array.from(candidate).map(b => b.toString(16).padStart(2, '0')).join('');
+                            
+                            if (isValidPrivateKey(candidateHex)) {
+                                masterKey = candidateHex;
+                                break;
+                            }
+                        }
+                        index++;
+                    }
+                }
+                
+                if (!masterKey) {
+                    if (foundCount === 0) {
+                        throw new Error('No wallet descriptor keys found in wallet.dat. This might be a legacy or encrypted wallet.');
+                    } else {
+                        throw new Error(`Found ${foundCount} descriptor key(s) but could not extract private key. The wallet might be encrypted.`);
+                    }
+                }
+                
+                // For Alpha wallets, use the known chain code
+                return {
+                    masterKey,
+                    masterChainCode: 'ef9b229fa43b5321834bce029dcca011db64764538f06e5b50b9dd5f38d16678',
+                    isAlphaWallet: true
+                };
+            }
+            
+            // Perform the actual scanning
+            async function performWalletScan() {
+                const scanCount = parseInt(scanCountInput.value) || 100;
+                const checkOnline = scanOnlineCheckbox.checked;
+                
+                scanningActive = true;
+                scannedWallets = [];
+                walletScanResults.style.display = 'block';
+                foundWalletsList.innerHTML = '';
+                scanStatus.textContent = 'Scanning...';
+                scanProgress.style.width = '0%';
+                
+                const dustThreshold = 1000; // satoshis
+                
+                for (let i = 0; i < scanCount && scanningActive; i++) {
+                    // Derive address at index
+                    const walletInfo = deriveAddressAtIndex(
+                        extractedWalletData.masterKey,
+                        extractedWalletData.masterChainCode,
+                        i,
+                        extractedWalletData.isAlphaWallet
+                    );
+                    
+                    // Log address for debugging
+                    console.log(`Address #${i}: ${walletInfo.address} (path: ${walletInfo.path})`);
+                    
+                    // Check balance if online
+                    if (checkOnline && electrumConnected) {
+                        const balanceInfo = await checkAddressBalance(walletInfo.address);
+                        walletInfo.balance = balanceInfo.balance;
+                        walletInfo.utxoCount = balanceInfo.utxoCount;
+                        console.log(`  Balance: ${walletInfo.balance} satoshis`);
+                    }
+                    
+                    // Add to results if has balance above dust threshold or if offline
+                    if (!checkOnline || !electrumConnected || walletInfo.balance > dustThreshold) {
+                        // If offline, show all addresses
+                        if (!checkOnline || !electrumConnected) {
+                            walletInfo.balance = -1; // Indicate unknown balance
+                        }
+                        scannedWallets.push(walletInfo);
+                        addWalletToResults(walletInfo);
+                    }
+                    
+                    // Update progress
+                    const progress = ((i + 1) / scanCount) * 100;
+                    scanProgress.style.width = progress + '%';
+                    scanCounter.textContent = `${i + 1} / ${scanCount}`;
+                    
+                    // Small delay to not overwhelm the UI
+                    if (i % 10 === 0) {
+                        await new Promise(resolve => setTimeout(resolve, 50));
+                    }
+                }
+                
+                scanningActive = false;
+                scanStatus.textContent = scannedWallets.length > 0 ? 
+                    `Found ${scannedWallets.length} wallet(s) with funds` : 
+                    (!checkOnline || !electrumConnected ? 'Scan complete (offline mode)' : 'No wallets with funds found');
+                
+                if (scannedWallets.length === 0) {
+                    foundWalletsList.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">No wallets with funds found. Try increasing the scan count or check your connection.</div>';
+                }
+            }
+            
+            // Add wallet to results UI
+            function addWalletToResults(walletInfo) {
+                const walletDiv = document.createElement('div');
+                walletDiv.style.cssText = 'padding: 15px; margin-bottom: 10px; background: #f8f9fa; border-radius: 8px; cursor: pointer; transition: background 0.2s;';
+                walletDiv.onmouseover = () => walletDiv.style.background = '#e9ecef';
+                walletDiv.onmouseout = () => walletDiv.style.background = '#f8f9fa';
+                
+                walletDiv.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-weight: bold; margin-bottom: 5px;">Address #${walletInfo.index}</div>
+                            <div style="font-family: monospace; font-size: 12px; color: #666; word-break: break-all;">${walletInfo.address}</div>
+                            <div style="font-size: 11px; color: #999; margin-top: 3px;">Path: ${walletInfo.path}</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-weight: bold; color: var(--primary-color);">
+                                ${walletInfo.balance === -1 ? 'Balance Unknown' : `${(walletInfo.balance / 100000000).toFixed(8)} ALPHA`}
+                            </div>
+                            <div style="font-size: 11px; color: #666;">
+                                ${walletInfo.balance === -1 ? 'Offline' : 'Click to import'}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                walletDiv.onclick = () => selectWalletForImport(walletInfo);
+                foundWalletsList.appendChild(walletDiv);
+            }
+            
+            // Select a wallet for import
+            function selectWalletForImport(walletInfo) {
+                const balanceText = walletInfo.balance === -1 ? 'Unknown (offline)' : `${(walletInfo.balance / 100000000).toFixed(8)} ALPHA`;
+                if (confirm(`Import wallet with address ${walletInfo.address}?\nBalance: ${balanceText}`)) {
+                    // Stop scanning if still active
+                    scanningActive = false;
+                    
+                    // Create wallet with the selected index
+                    // Remove utxos from walletInfo for storage
+                    const addressInfo = {
+                        index: walletInfo.index,
+                        address: walletInfo.address,
+                        publicKey: walletInfo.publicKey,
+                        path: walletInfo.path,
+                        createdAt: new Date().toISOString()
+                    };
+                    
+                    wallet = {
+                        masterPrivateKey: extractedWalletData.masterKey,
+                        addresses: [addressInfo],
+                        isEncrypted: false,
+                        encryptedMasterKey: '',
+                        childPrivateKey: walletInfo.privateKey,
+                        isImportedAlphaWallet: extractedWalletData.isAlphaWallet,
+                        masterChainCode: extractedWalletData.masterChainCode
+                    };
+                    
+                    // Update UI
+                    updateButtonStates(true);
+                    addAddressToUI(walletInfo);
+                    saveWalletData();
+                    
+                    // Close modal
+                    closeRestoreModal();
+                    
+                    showInAppNotification('Wallet Imported', `Successfully imported wallet at index ${walletInfo.index}`, 'success');
+                    
+                    // Refresh balance if connected
+                    if (electrumConnected) {
+                        refreshBalance();
+                    }
                 }
             }
             
@@ -2754,6 +3222,26 @@ Anyone with your master private key can access all your funds.`;
             // Restore modal event listeners
             restoreModalCancelBtn.addEventListener('click', closeRestoreModal);
             restoreModalSubmitBtn.addEventListener('click', restoreWallet);
+            scanWalletsBtn.addEventListener('click', startWalletScan);
+            
+            // File input change handler
+            restoreFileInput.addEventListener('change', async function() {
+                if (this.files.length > 0) {
+                    walletScanOptions.style.display = 'block';
+                    // Show scan button instead of restore for wallet discovery
+                    restoreModalSubmitBtn.style.display = 'none';
+                    scanWalletsBtn.style.display = 'inline-block';
+                    
+                    // Start scanning automatically
+                    setTimeout(() => {
+                        startWalletScan();
+                    }, 500); // Small delay for UI to update
+                } else {
+                    walletScanOptions.style.display = 'none';
+                    scanWalletsBtn.style.display = 'none';
+                    restoreModalSubmitBtn.style.display = 'inline-block';
+                }
+            });
             
             // Password strength checker
             passwordModalInput.addEventListener('input', function() {
