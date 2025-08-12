@@ -651,6 +651,12 @@
                 </div>
                 <div style="margin-top: 10px;">
                     <label>
+                        <input type="checkbox" id="scanChangeAddresses" checked>
+                        Also scan change addresses (internal chain)
+                    </label>
+                </div>
+                <div style="margin-top: 10px;">
+                    <label>
                         <input type="checkbox" id="scanOnlineCheckbox" checked>
                         Check balances online (requires Fulcrum connection)
                     </label>
@@ -2408,7 +2414,7 @@ Anyone with your master private key can access all your funds.`;
             }
             
             // Derive address at specific index from master key
-            function deriveAddressAtIndex(masterKey, masterChainCode, index, isAlphaWallet = true) {
+            function deriveAddressAtIndex(masterKey, masterChainCode, index, isAlphaWallet = true, isChange = false) {
                 const ec = new elliptic.ec('secp256k1');
                 let childPrivateKey;
                 let derivationPath;
@@ -2418,7 +2424,8 @@ Anyone with your master private key can access all your funds.`;
                     let key = masterKey;
                     let chainCode = masterChainCode;
                     
-                    // m/84'/1'/0'/0/index
+                    // m/84'/1'/0'/chain/index
+                    // where chain = 0 for external (receiving), 1 for internal (change)
                     let result = deriveKeyBIP32(key, chainCode, 84, true);
                     key = result.key;
                     chainCode = result.chainCode;
@@ -2431,13 +2438,13 @@ Anyone with your master private key can access all your funds.`;
                     key = result.key;
                     chainCode = result.chainCode;
                     
-                    result = deriveKeyBIP32(key, chainCode, 0, false);
+                    result = deriveKeyBIP32(key, chainCode, isChange ? 1 : 0, false);
                     key = result.key;
                     chainCode = result.chainCode;
                     
                     result = deriveKeyBIP32(key, chainCode, index, false);
                     childPrivateKey = result.key;
-                    derivationPath = `m/84'/1'/0'/0/${index}`;
+                    derivationPath = `m/84'/1'/0'/${isChange ? 1 : 0}/${index}`;
                 } else {
                     // HMAC-based derivation
                     derivationPath = `m/44'/0'/${index}'`;
@@ -2691,6 +2698,7 @@ Anyone with your master private key can access all your funds.`;
             async function performWalletScan() {
                 const scanCount = parseInt(scanCountInput.value) || 100;
                 const checkOnline = scanOnlineCheckbox.checked;
+                const scanChangeAddrs = document.getElementById('scanChangeAddresses').checked;
                 
                 scanningActive = true;
                 scannedWallets = [];
@@ -2700,18 +2708,22 @@ Anyone with your master private key can access all your funds.`;
                 scanProgress.style.width = '0%';
                 
                 const dustThreshold = 1000; // satoshis
+                const totalScans = scanChangeAddrs ? scanCount * 2 : scanCount;
+                let scansDone = 0;
                 
+                // Scan external addresses (receiving)
                 for (let i = 0; i < scanCount && scanningActive; i++) {
                     // Derive address at index
                     const walletInfo = deriveAddressAtIndex(
                         extractedWalletData.masterKey,
                         extractedWalletData.masterChainCode,
                         i,
-                        extractedWalletData.isAlphaWallet
+                        extractedWalletData.isAlphaWallet,
+                        false // external address
                     );
                     
                     // Log address for debugging
-                    console.log(`Address #${i}: ${walletInfo.address} (path: ${walletInfo.path})`);
+                    console.log(`External Address #${i}: ${walletInfo.address} (path: ${walletInfo.path})`);
                     
                     // Check balance if online
                     if (checkOnline && electrumConnected) {
@@ -2727,18 +2739,67 @@ Anyone with your master private key can access all your funds.`;
                         if (!checkOnline || !electrumConnected) {
                             walletInfo.balance = -1; // Indicate unknown balance
                         }
+                        walletInfo.isChange = false;
                         scannedWallets.push(walletInfo);
                         addWalletToResults(walletInfo);
                     }
                     
+                    scansDone++;
                     // Update progress
-                    const progress = ((i + 1) / scanCount) * 100;
+                    const progress = (scansDone / totalScans) * 100;
                     scanProgress.style.width = progress + '%';
-                    scanCounter.textContent = `${i + 1} / ${scanCount}`;
+                    scanCounter.textContent = `${scansDone} / ${totalScans}`;
                     
                     // Small delay to not overwhelm the UI
                     if (i % 10 === 0) {
                         await new Promise(resolve => setTimeout(resolve, 50));
+                    }
+                }
+                
+                // Scan change addresses if requested
+                if (scanChangeAddrs && scanningActive) {
+                    for (let i = 0; i < scanCount && scanningActive; i++) {
+                        // Derive change address at index
+                        const walletInfo = deriveAddressAtIndex(
+                            extractedWalletData.masterKey,
+                            extractedWalletData.masterChainCode,
+                            i,
+                            extractedWalletData.isAlphaWallet,
+                            true // change address
+                        );
+                        
+                        // Log address for debugging
+                        console.log(`Change Address #${i}: ${walletInfo.address} (path: ${walletInfo.path})`);
+                        
+                        // Check balance if online
+                        if (checkOnline && electrumConnected) {
+                            const balanceInfo = await checkAddressBalance(walletInfo.address);
+                            walletInfo.balance = balanceInfo.balance;
+                            walletInfo.utxoCount = balanceInfo.utxoCount;
+                            console.log(`  Balance: ${walletInfo.balance} satoshis`);
+                        }
+                        
+                        // Add to results if has balance above dust threshold or if offline
+                        if (!checkOnline || !electrumConnected || walletInfo.balance > dustThreshold) {
+                            // If offline, show all addresses
+                            if (!checkOnline || !electrumConnected) {
+                                walletInfo.balance = -1; // Indicate unknown balance
+                            }
+                            walletInfo.isChange = true;
+                            scannedWallets.push(walletInfo);
+                            addWalletToResults(walletInfo);
+                        }
+                        
+                        scansDone++;
+                        // Update progress
+                        const progress = (scansDone / totalScans) * 100;
+                        scanProgress.style.width = progress + '%';
+                        scanCounter.textContent = `${scansDone} / ${totalScans}`;
+                        
+                        // Small delay to not overwhelm the UI
+                        if (i % 10 === 0) {
+                            await new Promise(resolve => setTimeout(resolve, 50));
+                        }
                     }
                 }
                 
@@ -2762,7 +2823,10 @@ Anyone with your master private key can access all your funds.`;
                 walletDiv.innerHTML = `
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
-                            <div style="font-weight: bold; margin-bottom: 5px;">Address #${walletInfo.index}</div>
+                            <div style="font-weight: bold; margin-bottom: 5px;">
+                                ${walletInfo.isChange ? 'Change ' : ''}Address #${walletInfo.index}
+                                ${walletInfo.isChange ? '<span style="background: #ffa500; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; margin-left: 5px;">CHANGE</span>' : ''}
+                            </div>
                             <div style="font-family: monospace; font-size: 12px; color: #666; word-break: break-all;">${walletInfo.address}</div>
                             <div style="font-size: 11px; color: #999; margin-top: 3px;">Path: ${walletInfo.path}</div>
                         </div>
@@ -4540,6 +4604,33 @@ Anyone with your master private key can access all your funds.`;
                 // Normalize our address to lowercase for comparison
                 const ourAddressLower = ourAddress ? ourAddress.toLowerCase() : null;
                 
+                // Get all wallet addresses for comparison (to identify change outputs)
+                const allOurAddresses = new Set();
+                if (ourAddressLower) {
+                    allOurAddresses.add(ourAddressLower);
+                }
+                if (wallet && wallet.addresses) {
+                    wallet.addresses.forEach(addr => {
+                        if (addr.address) {
+                            allOurAddresses.add(addr.address.toLowerCase());
+                        }
+                    });
+                }
+                
+                // If this is an imported Alpha wallet, also check first 20 change addresses
+                if (wallet && wallet.isImportedAlphaWallet && wallet.masterPrivateKey && wallet.masterChainCode) {
+                    for (let i = 0; i < 20; i++) {
+                        const changeAddr = deriveAddressAtIndex(
+                            wallet.masterPrivateKey,
+                            wallet.masterChainCode,
+                            i,
+                            true, // isAlphaWallet
+                            true  // isChange
+                        );
+                        allOurAddresses.add(changeAddr.address.toLowerCase());
+                    }
+                }
+                
                 // Debug logging
                 const txid = txDetails.txid || txDetails.id || 'unknown';
                 
@@ -4585,7 +4676,12 @@ Anyone with your master private key can access all your funds.`;
                             }
                             
                             if (outputAddress) {
-                                const isOurs = ourAddressLower && outputAddress.toLowerCase() === ourAddressLower;
+                                const isOurs = allOurAddresses.has(outputAddress.toLowerCase());
+                                
+                                // Debug: log only our outputs
+                                if (isOurs) {
+                                    console.log(`  Output ${index} is OURS: ${outputAddress}`);
+                                }
                                 
                                 if (isOurs) {
                                     outputAmount += value;
@@ -4596,7 +4692,7 @@ Anyone with your master private key can access all your funds.`;
                                 }
                                 
                                 // If no wallet is loaded, all outputs are destinations
-                                if (!ourAddressLower) {
+                                if (allOurAddresses.size === 0) {
                                     destinations.push({address: outputAddress, value: value});
                                 }
                             } else {
@@ -4656,7 +4752,7 @@ Anyone with your master private key can access all your funds.`;
                                     }
                                 }
                                 
-                                if (prevOutputAddress && prevOutputAddress.toLowerCase() === ourAddressLower) {
+                                if (prevOutputAddress && allOurAddresses.has(prevOutputAddress.toLowerCase())) {
                                     isOurInput = true;
                                     inputAmount += prevOutput.value * 100000000; // Convert to satoshis
                                 }
@@ -4703,23 +4799,36 @@ Anyone with your master private key can access all your funds.`;
                         // OUTBOUND transaction
                         isIncoming = false;
                         
-                        if (inputAmount > 0) {
-                            // We know the input amount
-                            if (outputAmount > 0) {
-                                // We have change back
-                                netAmount = inputAmount - outputAmount; // What we actually spent (sent + fee)
-                            } else {
-                                // No change back - we spent everything
-                                netAmount = inputAmount;
-                            }
+                        // For outbound transactions, we want to show the amount sent to others
+                        // (excluding change back to ourselves)
+                        let sentToOthers = 0;
+                        destinations.forEach(dest => {
+                            sentToOthers += dest.value;
+                        });
+                        
+                        // Debug logging
+                        console.log(`[TX ${txid}] OUTBOUND Transaction:`);
+                        console.log(`  - Total input: ${inputAmount} satoshis (${(inputAmount/100000000).toFixed(8)} ALPHA)`);
+                        console.log(`  - Change back to us: ${outputAmount} satoshis (${(outputAmount/100000000).toFixed(8)} ALPHA)`);
+                        console.log(`  - Sent to others: ${sentToOthers} satoshis (${(sentToOthers/100000000).toFixed(8)} ALPHA)`);
+                        if (ourOutputs.length > 0) {
+                            console.log(`  - Our change addresses:`, ourOutputs.map(o => o.address));
+                        }
+                        
+                        // If we have destinations (outputs to other addresses), use that amount
+                        // Otherwise, if all outputs went back to us (rare case), calculate total spent
+                        if (sentToOthers > 0) {
+                            netAmount = sentToOthers;
+                            console.log(`  - Using sent to others as netAmount: ${netAmount} satoshis`);
+                        } else if (inputAmount > 0) {
+                            // Rare case: all outputs are back to us (maybe a consolidation transaction)
+                            // Show the fee amount (input - output)
+                            netAmount = inputAmount - outputAmount;
+                            console.log(`  - All outputs back to us, showing fee: ${netAmount} satoshis`);
                         } else {
-                            // We couldn't determine input amount - this is a data issue
-                            // Use the sum of non-our outputs as approximate sent amount
-                            let sentAmount = 0;
-                            destinations.forEach(dest => {
-                                sentAmount += dest.value;
-                            });
-                            netAmount = sentAmount;
+                            // Fallback: we couldn't determine the exact amount
+                            netAmount = 0;
+                            console.log(`  - Could not determine amount, using 0`);
                         }
                     } else {
                         // INBOUND transaction
