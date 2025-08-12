@@ -1702,6 +1702,11 @@ ${wallet.masterPrivateKey}
 MASTER PRIVATE KEY IN WIF FORMAT (for importprivkey command):
 ${masterKeyWIF}
 
+${wallet.isImportedAlphaWallet && wallet.masterChainCode ? `MASTER CHAIN CODE (for Alpha wallet compatibility):
+${wallet.masterChainCode}
+
+WALLET TYPE: Alpha descriptor wallet (BIP32 HD)` : 'WALLET TYPE: Standard wallet (HMAC-based)'}
+
 ENCRYPTION STATUS: Not encrypted
 This key is in plaintext and not protected. Anyone with this file can access your wallet.`;
                 }
@@ -2434,6 +2439,21 @@ Anyone with your master private key can access all your funds.`;
                         }
                     }
                     
+                    // Check if this is an Alpha descriptor wallet with chain code
+                    let masterChainCode = null;
+                    let isImportedAlphaWallet = false;
+                    
+                    const chainCodeMatch = fileContent.match(/MASTER CHAIN CODE \(for Alpha wallet compatibility\):\s*([^\n]+)/);
+                    if (chainCodeMatch && chainCodeMatch[1]) {
+                        masterChainCode = chainCodeMatch[1].trim();
+                        isImportedAlphaWallet = true;
+                    }
+                    
+                    // Also check wallet type explicitly
+                    if (fileContent.includes('WALLET TYPE: Alpha descriptor wallet')) {
+                        isImportedAlphaWallet = true;
+                    }
+                    
                     // Confirmation before overwriting
                     if (wallet.masterPrivateKey) {
                         const confirmOverwrite = confirm('This will overwrite your existing wallet. Are you sure you want to proceed?');
@@ -2448,7 +2468,9 @@ Anyone with your master private key can access all your funds.`;
                         addresses: [],
                         isEncrypted: isEncrypted,
                         encryptedMasterKey: encryptedMasterKey,
-                        childPrivateKey: null // Will be set when generating first address
+                        childPrivateKey: null, // Will be set when generating first address
+                        isImportedAlphaWallet: isImportedAlphaWallet,
+                        masterChainCode: masterChainCode
                     };
                     
                     // Update UI for both key displays
