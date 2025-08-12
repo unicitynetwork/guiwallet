@@ -2858,6 +2858,18 @@ Anyone with your master private key can access all your funds.`;
                         walletInfo.isChange = false;
                         scannedWallets.push(walletInfo);
                         addWalletToResults(walletInfo);
+                        
+                        // Update total balance immediately if online and has balance
+                        if (checkOnline && electrumConnected && walletInfo.balance > 0) {
+                            let runningTotal = 0;
+                            scannedWallets.forEach(w => {
+                                if (w.balance > 0) runningTotal += w.balance;
+                            });
+                            console.log(`Running total after finding wallet #${i}: ${(runningTotal / 100000000).toFixed(8)} ALPHA`);
+                            
+                            // Update status with running total
+                            scanStatus.innerHTML = `Scanning... Found ${scannedWallets.length} wallet(s)<br>Current total: <strong>${(runningTotal / 100000000).toFixed(8)} ALPHA</strong>`;
+                        }
                     }
                     
                     scansDone++;
@@ -2904,6 +2916,18 @@ Anyone with your master private key can access all your funds.`;
                             walletInfo.isChange = true;
                             scannedWallets.push(walletInfo);
                             addWalletToResults(walletInfo);
+                            
+                            // Update total balance immediately if online and has balance
+                            if (checkOnline && electrumConnected && walletInfo.balance > 0) {
+                                let runningTotal = 0;
+                                scannedWallets.forEach(w => {
+                                    if (w.balance > 0) runningTotal += w.balance;
+                                });
+                                console.log(`Running total after finding change wallet #${i}: ${(runningTotal / 100000000).toFixed(8)} ALPHA`);
+                                
+                                // Update status with running total
+                                scanStatus.innerHTML = `Scanning... Found ${scannedWallets.length} wallet(s)<br>Current total: <strong>${(runningTotal / 100000000).toFixed(8)} ALPHA</strong>`;
+                            }
                         }
                         
                         scansDone++;
@@ -3062,18 +3086,52 @@ Anyone with your master private key can access all your funds.`;
                     try {
                         // Check balance
                         const balanceInfo = await checkAddressBalance(wallet.address);
+                        const newBalance = balanceInfo.balance;
+                        const oldBalance = wallet.balance || 0;
+                        
                         const updatedWallet = {
                             ...wallet,
-                            balance: balanceInfo.balance,
+                            balance: newBalance,
                             utxoCount: balanceInfo.utxoCount
                         };
                         
                         updatedWallets.push(updatedWallet);
-                        if (balanceInfo.balance > 0) {
-                            totalBalance += balanceInfo.balance;
+                        if (newBalance > 0) {
+                            totalBalance += newBalance;
                         }
                         
-                        console.log(`Lazy scan: ${wallet.address} - Balance: ${balanceInfo.balance}`);
+                        // Check if balance changed
+                        if (oldBalance !== newBalance) {
+                            console.log(`Balance changed during scan for ${wallet.address}:`);
+                            console.log(`  Old: ${(oldBalance / 100000000).toFixed(8)} ALPHA`);
+                            console.log(`  New: ${(newBalance / 100000000).toFixed(8)} ALPHA`);
+                            
+                            // Update the stored data immediately
+                            lastScannedWalletData.wallets[i] = updatedWallet;
+                            
+                            // Recalculate total balance from all wallets scanned so far
+                            let currentTotal = 0;
+                            // Add balances from already updated wallets
+                            for (let j = 0; j < updatedWallets.length; j++) {
+                                if (updatedWallets[j].balance > 0) {
+                                    currentTotal += updatedWallets[j].balance;
+                                }
+                            }
+                            // Add balances from remaining wallets (not yet scanned)
+                            for (let j = i + 1; j < lastScannedWalletData.wallets.length; j++) {
+                                if (lastScannedWalletData.wallets[j].balance > 0) {
+                                    currentTotal += lastScannedWalletData.wallets[j].balance;
+                                }
+                            }
+                            
+                            lastScannedWalletData.totalBalance = currentTotal;
+                            console.log(`Updated total balance: ${(currentTotal / 100000000).toFixed(8)} ALPHA`);
+                            
+                            // Update display immediately
+                            updateScannedWalletsDisplay();
+                        } else {
+                            console.log(`Lazy scan: ${wallet.address} - Balance: ${newBalance} (unchanged)`);
+                        }
                         
                         // Rate limit: wait 10 seconds between addresses
                         if (i < lastScannedWalletData.wallets.length - 1) {
