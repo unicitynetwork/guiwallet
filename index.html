@@ -2526,6 +2526,48 @@ Anyone with your master private key can access all your funds.`;
             let scannedWallets = [];
             let extractedWalletData = null;
             let lastScannedWalletData = null; // Store scan results persistently
+            let lazyScanInterval = null;
+            let lastLazyScanTime = 0;
+            
+            // Save scan results to local storage
+            function saveScanResultsToCache(walletFingerprint, scanData) {
+                try {
+                    const cacheKey = `walletScanCache_${walletFingerprint}`;
+                    const cacheData = {
+                        timestamp: Date.now(),
+                        wallets: scanData.wallets,
+                        totalBalance: scanData.totalBalance,
+                        scanCount: scanData.wallets.length
+                    };
+                    localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+                } catch (e) {
+                    console.error('Failed to save scan results to cache:', e);
+                }
+            }
+            
+            // Load scan results from cache
+            function loadScanResultsFromCache(walletFingerprint) {
+                try {
+                    const cacheKey = `walletScanCache_${walletFingerprint}`;
+                    const cached = localStorage.getItem(cacheKey);
+                    if (cached) {
+                        const data = JSON.parse(cached);
+                        // Check if cache is not too old (7 days)
+                        if (Date.now() - data.timestamp < 7 * 24 * 60 * 60 * 1000) {
+                            return data;
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to load scan results from cache:', e);
+                }
+                return null;
+            }
+            
+            // Generate fingerprint for wallet
+            function generateWalletFingerprint(masterKey, masterChainCode) {
+                // Use first 8 chars of master key as fingerprint
+                return masterKey.substring(0, 8);
+            }
             
             // Start wallet scanning
             async function startWalletScan() {
@@ -2580,8 +2622,47 @@ Anyone with your master private key can access all your funds.`;
                         keyLength: masterKey ? masterKey.length : 0
                     });
                     
-                    // Start scanning
-                    await performWalletScan();
+                    // Generate wallet fingerprint
+                    const fingerprint = generateWalletFingerprint(masterKey, masterChainCode);
+                    
+                    // Check for cached results
+                    const cachedResults = loadScanResultsFromCache(fingerprint);
+                    if (cachedResults && cachedResults.wallets && cachedResults.wallets.length > 0) {
+                        console.log(`Found cached scan results: ${cachedResults.wallets.length} wallets`);
+                        
+                        // Use cached results
+                        scannedWallets = cachedResults.wallets;
+                        lastScannedWalletData = {
+                            wallets: cachedResults.wallets,
+                            totalBalance: cachedResults.totalBalance,
+                            masterKey: extractedWalletData.masterKey,
+                            masterChainCode: extractedWalletData.masterChainCode,
+                            isAlphaWallet: extractedWalletData.isAlphaWallet
+                        };
+                        
+                        // Display cached results
+                        walletScanResults.style.display = 'block';
+                        foundWalletsList.innerHTML = '';
+                        cachedResults.wallets.forEach(wallet => {
+                            addWalletToResults(wallet);
+                        });
+                        
+                        // Update status
+                        scanStatus.innerHTML = `Found ${cachedResults.wallets.length} wallet(s) from cache<br>Total balance: <strong>${(cachedResults.totalBalance / 100000000).toFixed(8)} ALPHA</strong><br><em style="font-size: 11px;">Last scan: ${new Date(cachedResults.timestamp).toLocaleString()}</em>`;
+                        scanProgress.style.width = '100%';
+                        scanCounter.textContent = `${cachedResults.wallets.length} cached`;
+                        
+                        // Update main UI
+                        updateScannedWalletsDisplay();
+                        
+                        // Start lazy rescan in background if online
+                        if (electrumConnected) {
+                            startLazyRescan();
+                        }
+                    } else {
+                        // No cache, perform full scan
+                        await performWalletScan();
+                    }
                     
                 } catch (error) {
                     restoreStatus.className = 'info-box error';
@@ -2825,6 +2906,10 @@ Anyone with your master private key can access all your funds.`;
                     isAlphaWallet: extractedWalletData.isAlphaWallet
                 };
                 
+                // Save to cache
+                const fingerprint = generateWalletFingerprint(extractedWalletData.masterKey, extractedWalletData.masterChainCode);
+                saveScanResultsToCache(fingerprint, lastScannedWalletData);
+                
                 // Update scan status with total balance
                 if (scannedWallets.length > 0) {
                     scanStatus.innerHTML = `Found ${scannedWallets.length} wallet(s) with funds<br>Total balance: <strong>${(totalBalance / 100000000).toFixed(8)} ALPHA</strong>`;
@@ -2852,6 +2937,149 @@ Anyone with your master private key can access all your funds.`;
                 const totalBalance = lastScannedWalletData.totalBalance || 0;
                 document.getElementById('totalScannedAmount').textContent = `${(totalBalance / 100000000).toFixed(8)} ALPHA`;
                 document.getElementById('totalScannedBalance').style.display = 'inline';
+            }
+            
+            // Check for cached scan data on page load
+            function checkAndLoadCachedScanData() {
+                // Look for any cached scan data in localStorage
+                const keys = Object.keys(localStorage);
+                const cacheKeys = keys.filter(k => k.startsWith('walletScanCache_'));
+                
+                if (cacheKeys.length > 0) {
+                    // Use the most recent cache
+                    let mostRecentCache = null;
+                    let mostRecentTime = 0;
+                    
+                    cacheKeys.forEach(key => {
+                        try {
+                            const data = JSON.parse(localStorage.getItem(key));
+                            if (data.timestamp > mostRecentTime) {
+                                mostRecentTime = data.timestamp;
+                                mostRecentCache = data;
+                                // Extract fingerprint from key
+                                const fingerprint = key.replace('walletScanCache_', '');
+                                mostRecentCache.fingerprint = fingerprint;
+                            }
+                        } catch (e) {
+                            console.error('Failed to parse cache:', e);
+                        }
+                    });
+                    
+                    if (mostRecentCache && mostRecentCache.wallets && mostRecentCache.wallets.length > 0) {
+                        console.log(`Loaded cached scan data: ${mostRecentCache.wallets.length} wallets`);
+                        
+                        // Set the cached data
+                        lastScannedWalletData = {
+                            wallets: mostRecentCache.wallets,
+                            totalBalance: mostRecentCache.totalBalance,
+                            // We don't have the master keys here, but that's ok for display
+                            masterKey: null,
+                            masterChainCode: null,
+                            isAlphaWallet: true
+                        };
+                        
+                        // Update UI
+                        updateScannedWalletsDisplay();
+                        
+                        // Start lazy rescan if connected
+                        if (electrumConnected) {
+                            console.log('Starting lazy rescan from cached data...');
+                            // We can't perform full rescan without keys, but we can update the display
+                        }
+                    }
+                }
+            }
+            
+            // Lazy rescan functionality
+            async function startLazyRescan() {
+                if (!lastScannedWalletData || !lastScannedWalletData.wallets || !electrumConnected) {
+                    return;
+                }
+                
+                console.log('Starting lazy rescan of wallets...');
+                
+                // Clear any existing interval
+                if (lazyScanInterval) {
+                    clearInterval(lazyScanInterval);
+                }
+                
+                // Perform immediate rescan if enough time has passed
+                const timeSinceLastScan = Date.now() - lastLazyScanTime;
+                if (timeSinceLastScan > 3600000) { // 1 hour
+                    performLazyRescan();
+                }
+                
+                // Set up periodic rescan every hour
+                lazyScanInterval = setInterval(() => {
+                    if (electrumConnected) {
+                        performLazyRescan();
+                    }
+                }, 3600000); // 1 hour
+            }
+            
+            async function performLazyRescan() {
+                if (!lastScannedWalletData || !lastScannedWalletData.wallets) {
+                    return;
+                }
+                
+                console.log('Performing lazy rescan...');
+                lastLazyScanTime = Date.now();
+                
+                let totalBalance = 0;
+                let updatedWallets = [];
+                
+                // Scan wallets with rate limiting
+                for (let i = 0; i < lastScannedWalletData.wallets.length; i++) {
+                    const wallet = lastScannedWalletData.wallets[i];
+                    
+                    try {
+                        // Check balance
+                        const balanceInfo = await checkAddressBalance(wallet.address);
+                        const updatedWallet = {
+                            ...wallet,
+                            balance: balanceInfo.balance,
+                            utxoCount: balanceInfo.utxoCount
+                        };
+                        
+                        updatedWallets.push(updatedWallet);
+                        if (balanceInfo.balance > 0) {
+                            totalBalance += balanceInfo.balance;
+                        }
+                        
+                        console.log(`Lazy scan: ${wallet.address} - Balance: ${balanceInfo.balance}`);
+                        
+                        // Rate limit: wait 10 seconds between addresses
+                        if (i < lastScannedWalletData.wallets.length - 1) {
+                            await new Promise(resolve => setTimeout(resolve, 10000));
+                        }
+                    } catch (error) {
+                        console.error(`Failed to rescan address ${wallet.address}:`, error);
+                        // Keep the old data if scan fails
+                        updatedWallets.push(wallet);
+                        if (wallet.balance > 0) {
+                            totalBalance += wallet.balance;
+                        }
+                    }
+                }
+                
+                // Update stored data
+                lastScannedWalletData = {
+                    ...lastScannedWalletData,
+                    wallets: updatedWallets,
+                    totalBalance: totalBalance
+                };
+                
+                // Update cache
+                const fingerprint = generateWalletFingerprint(
+                    lastScannedWalletData.masterKey,
+                    lastScannedWalletData.masterChainCode
+                );
+                saveScanResultsToCache(fingerprint, lastScannedWalletData);
+                
+                // Update UI
+                updateScannedWalletsDisplay();
+                
+                console.log(`Lazy rescan complete. Total balance: ${(totalBalance / 100000000).toFixed(8)} ALPHA`);
             }
             
             // Show dialog with all scanned wallets
@@ -3602,6 +3830,9 @@ Anyone with your master private key can access all your funds.`;
             // Initialize broadcast queue
             initBroadcastQueue();
             
+            // Check for cached scan data and start lazy rescan
+            checkAndLoadCachedScanData();
+            
             // ===== ELECTRUM RPC CLIENT =====
             
             // WebSocket connection for Electrum protocol
@@ -3852,6 +4083,12 @@ Anyone with your master private key can access all your funds.`;
                             infoBox.style.backgroundColor = 'rgba(255, 186, 8, 0.1)';
                             infoBox.style.borderLeftColor = '#ffba08';
                         }
+                        
+                        // Clear lazy scan interval
+                        if (lazyScanInterval) {
+                            clearInterval(lazyScanInterval);
+                            lazyScanInterval = null;
+                        }
                         connectionStatusText.textContent = 'Disconnected from server';
                         
                         // Update buttons
@@ -3896,6 +4133,12 @@ Anyone with your master private key can access all your funds.`;
                 
                 // Stop polling
                 stopBlockPolling();
+                
+                // Clear lazy scan interval
+                if (lazyScanInterval) {
+                    clearInterval(lazyScanInterval);
+                    lazyScanInterval = null;
+                }
                 
                 // Update UI
                 updateCommonBalance();
