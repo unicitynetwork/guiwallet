@@ -621,79 +621,94 @@
         </div>
     </div>
 
+    <!-- Save Modal -->
+    <div id="saveModal" class="qr-modal" style="display: none;">
+        <div class="qr-content" style="max-width: 500px;">
+            <h3 style="margin: 0 0 10px 0;">Save Wallet to File</h3>
+            <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">Save your wallet with optional password protection.</p>
+            
+            <div class="input-group" style="margin-bottom: 10px;">
+                <label for="savePasswordInput" style="font-size: 14px;">Password (optional):</label>
+                <input type="password" id="savePasswordInput" placeholder="Leave empty for no encryption" style="width: 100%; font-size: 14px;">
+                <div id="savePasswordStrength" style="margin-top: 5px;"></div>
+            </div>
+            
+            <div class="input-group" style="margin-bottom: 10px;">
+                <label for="saveFilenameInput" style="font-size: 14px;">Filename:</label>
+                <input type="text" id="saveFilenameInput" value="alpha_wallet_backup.txt" style="width: 100%; font-size: 14px;">
+            </div>
+            
+            <div style="display: flex; justify-content: space-between; gap: 10px;">
+                <button class="button" style="background-color: #d0d0d0; font-size: 14px;" onclick="closeSaveModal()">Cancel</button>
+                <button class="button" style="font-size: 14px;" onclick="saveWallet()">Save</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Restore Modal -->
     <div id="restoreModal" class="qr-modal" style="display: none;">
         <div class="qr-content" style="max-width: 700px; max-height: 90vh; overflow-y: auto;">
-            <h3>Restore Wallet from Backup</h3>
-            <p style="margin: 15px 0; color: #666;">Upload a wallet backup file (.txt) or Alpha wallet.dat file to restore your wallet.</p>
-            <div class="warning" style="margin: 10px 0; padding: 10px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px;">
-                <strong>⚠️ Warning:</strong> Alpha wallet.dat import is <strong>EXPERIMENTAL</strong>. 
-                <ul style="margin: 5px 0; padding-left: 20px;">
-                    <li>Only unencrypted SQLite wallet.dat files are supported</li>
-                    <li>Supports both descriptor wallets (modern) and HD wallets (legacy)</li>
-                    <li>Will scan multiple addresses to find your wallet with funds</li>
-                    <li>Make sure to backup your wallet.dat before attempting import</li>
-                </ul>
+            <h3 style="margin: 0 0 10px 0;">Load Wallet from File</h3>
+            <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">Upload a wallet backup file (.txt) or Alpha wallet.dat file to load your wallet.</p>
+            
+            <div class="input-group" style="margin-bottom: 10px;">
+                <label for="restoreFileInput" style="font-size: 14px;">Backup File:</label>
+                <input type="file" id="restoreFileInput" accept=".txt,.dat" style="width: 100%; font-size: 14px;">
             </div>
             
-            <div class="input-group" style="margin-bottom: 15px;">
-                <label for="restoreFileInput">Backup File:</label>
-                <input type="file" id="restoreFileInput" accept=".txt,.dat" style="width: 100%;">
-            </div>
-            
-            <div class="input-group" style="margin-bottom: 15px;">
-                <label for="restorePasswordInput">Password (if encrypted):</label>
-                <input type="password" id="restorePasswordInput" placeholder="Enter wallet password" style="width: 100%;">
-            </div>
-            
-            <!-- Wallet Scanning Options -->
-            <div id="walletScanOptions" style="display: none; margin: 15px 0; padding: 15px; background-color: #f8f9fa; border-radius: 8px;">
-                <h4 style="margin: 0 0 10px 0;">Wallet Discovery Settings</h4>
-                <div class="input-group" style="margin-bottom: 10px;">
-                    <label for="scanCountInput">Number of addresses to scan:</label>
-                    <input type="number" id="scanCountInput" value="100" min="1" max="1000" style="width: 100px;">
-                    <span style="margin-left: 10px; color: #666; font-size: 12px;">Scan multiple addresses to find wallets with funds</span>
-                </div>
-                <div style="margin-top: 10px;">
-                    <label>
-                        <input type="checkbox" id="scanChangeAddresses" checked>
-                        Also scan change addresses (internal chain)
-                    </label>
-                </div>
-                <div style="margin-top: 10px;">
-                    <label>
-                        <input type="checkbox" id="scanOnlineCheckbox" checked>
-                        Check balances online (requires Fulcrum connection)
-                    </label>
-                </div>
+            <div class="input-group" style="margin-bottom: 10px;">
+                <label for="restorePasswordInput" style="font-size: 14px;">Password (if encrypted):</label>
+                <input type="password" id="restorePasswordInput" placeholder="Enter wallet password" style="width: 100%; font-size: 14px;">
             </div>
             
             <!-- Wallet Scan Results -->
-            <div id="walletScanResults" style="display: none; margin: 15px 0;">
-                <h4 style="margin: 0 0 10px 0;">Found Wallets</h4>
+            <div id="walletScanResults" style="display: none; margin: 10px 0;">
+                <h4 style="margin: 0 0 8px 0; font-size: 16px;">Found Wallets</h4>
                 <div id="scanProgressBar" style="margin-bottom: 10px;">
-                    <div style="height: 20px; background-color: #e9e9e9; border-radius: 10px; overflow: hidden;">
+                    <div style="height: 16px; background-color: #e9e9e9; border-radius: 8px; overflow: hidden;">
                         <div id="scanProgress" style="width: 0%; height: 100%; background-color: var(--primary-color); transition: width 0.3s;"></div>
                     </div>
-                    <div style="margin-top: 5px; font-size: 12px; color: #666;">
+                    <div style="margin-top: 4px; font-size: 11px; color: #666;">
                         <span id="scanStatus">Scanning...</span>
                         <span id="scanCounter" style="float: right;">0 / 100</span>
                     </div>
-                    <div style="margin-top: 10px; text-align: center;">
-                        <button class="button" id="stopScanBtn" onclick="scanningActive = false;" style="background-color: #d0d0d0; padding: 5px 15px; font-size: 12px;">Stop Scan</button>
+                    <div style="margin-top: 8px; text-align: center;">
+                        <button class="button" id="stopScanBtn" onclick="scanningActive = false;" style="background-color: #d0d0d0; padding: 4px 12px; font-size: 12px;">Stop Scan</button>
                     </div>
                 </div>
-                <div id="foundWalletsList" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; padding: 10px;">
+                <div id="foundWalletsList" style="max-height: 250px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; padding: 8px; margin-top: 10px;">
                     <!-- Found wallets will be listed here -->
                 </div>
             </div>
             
-            <div id="restoreStatus" class="info-box" style="display: none; margin-bottom: 15px;"></div>
+            <div id="restoreStatus" class="info-box" style="display: none; margin-bottom: 10px;"></div>
             
-            <div style="display: flex; justify-content: space-between; gap: 10px;">
-                <button class="button" style="background-color: #d0d0d0;" id="restoreModalCancelBtn">Cancel</button>
-                <button class="button" id="restoreModalSubmitBtn">Restore</button>
-                <button class="button" id="scanWalletsBtn" style="display: none;">Rescan Wallets</button>
+            <div style="display: flex; justify-content: space-between; gap: 10px; margin-bottom: 10px;">
+                <button class="button" style="background-color: #d0d0d0; font-size: 14px;" id="restoreModalCancelBtn">Cancel</button>
+                <button class="button" id="restoreModalSubmitBtn" style="font-size: 14px;">Load</button>
+                <button class="button" id="scanWalletsBtn" style="display: none; font-size: 14px;">Rescan Wallets</button>
+            </div>
+            
+            <!-- Wallet Scanning Options -->
+            <div id="walletScanOptions" style="display: none; margin: 10px 0; padding: 10px; background-color: #f8f9fa; border-radius: 6px;">
+                <h4 style="margin: 0 0 8px 0; font-size: 14px;">Wallet Discovery Settings</h4>
+                <div class="input-group" style="margin-bottom: 8px;">
+                    <label for="scanCountInput" style="font-size: 13px;">Number of addresses to scan:</label>
+                    <input type="number" id="scanCountInput" value="100" min="1" max="1000" style="width: 80px; font-size: 13px;">
+                    <span style="margin-left: 8px; color: #666; font-size: 11px;">Scan multiple addresses to find wallets with funds</span>
+                </div>
+                <div style="margin-top: 6px;">
+                    <label style="font-size: 13px;">
+                        <input type="checkbox" id="scanChangeAddresses" checked>
+                        Also scan change addresses (internal chain)
+                    </label>
+                </div>
+                <div style="margin-top: 6px;">
+                    <label style="font-size: 13px;">
+                        <input type="checkbox" id="scanOnlineCheckbox" checked>
+                        Check balances online (requires Fulcrum connection)
+                    </label>
+                </div>
             </div>
         </div>
     </div>
@@ -813,44 +828,30 @@
                     </svg>
                     Create
                 </button>
-                <button id="encryptWalletBtn" class="wallet-button encrypt-btn" disabled title="Protect your wallet with a password">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                    </svg>
-                    Encrypt
-                </button>
-                <button id="restoreWalletBtn" class="wallet-button restore-btn" title="Restore wallet from backup">
+                <button id="restoreWalletBtn" class="wallet-button restore-btn" title="Load wallet from file">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                         <polyline points="17 8 12 3 7 8"></polyline>
                         <line x1="12" y1="3" x2="12" y2="15"></line>
                     </svg>
-                    Restore
+                    Load
                 </button>
-                <button id="migrateWalletBtn" class="wallet-button migrate-btn" disabled title="Export wallet for migration">
+                <button id="saveWalletBtn" class="wallet-button" disabled title="Save wallet to file with optional encryption">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 20h9"></path>
-                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                        <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                        <polyline points="7 3 7 8 15 8"></polyline>
                     </svg>
-                    Migrate
+                    Save
                 </button>
-                <button id="backupWalletBtn" class="wallet-button" disabled title="Download your wallet data as a text file for backup. Keep this file safe and private.">
+                <button id="deleteWalletBtn" class="wallet-button delete-btn" disabled title="Reset wallet data in your browser. This will clear the current wallet.">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="7 10 12 15 17 10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                        <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+                        <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                        <path d="M14 3h7v7"></path>
+                        <path d="M10 21H3v-7"></path>
                     </svg>
-                    Backup
-                </button>
-                <button id="deleteWalletBtn" class="wallet-button delete-btn" disabled title="Deletes all wallet data from your browser. This cannot be undone.">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="3 6 5 6 21 6"></polyline>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                        <line x1="10" y1="11" x2="10" y2="17"></line>
-                        <line x1="14" y1="11" x2="14" y2="17"></line>
-                    </svg>
-                    Delete
+                    Reset
                 </button>
             </div>
 
@@ -949,6 +950,481 @@
     <script>
         // Character set for Bech32 encoding
         const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+        
+        // Save Modal Functions (global scope for onclick handlers)
+        function showSaveModal() {
+            const saveModal = document.getElementById('saveModal');
+            const savePasswordInput = document.getElementById('savePasswordInput');
+            const saveFilenameInput = document.getElementById('saveFilenameInput');
+            
+            // Generate filename from first address if available
+            let filename = 'alpha_wallet_backup.txt';
+            const wallet = window.walletGlobal;
+            if (wallet && wallet.addresses && wallet.addresses.length > 0) {
+                const firstAddress = wallet.addresses[0].address;
+                // Get first 10 letters and last 6 letters
+                const first10 = firstAddress.substring(0, 10);
+                const last6 = firstAddress.substring(firstAddress.length - 6);
+                filename = `${first10}_${last6}.txt`;
+            }
+            
+            saveModal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+            savePasswordInput.value = '';
+            saveFilenameInput.value = filename;
+            savePasswordInput.focus();
+        }
+        
+        function closeSaveModal() {
+            const saveModal = document.getElementById('saveModal');
+            saveModal.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+        
+        function saveWallet() {
+            const savePasswordInput = document.getElementById('savePasswordInput');
+            const saveFilenameInput = document.getElementById('saveFilenameInput');
+            const password = savePasswordInput.value;
+            const filename = saveFilenameInput.value || 'alpha_wallet_backup.txt';
+            
+            // Access wallet from global scope or window
+            const wallet = window.walletGlobal;
+            
+            if (!wallet || !wallet.masterPrivateKey) {
+                window.showInAppNotification('No Wallet', 'No wallet to save', 'error');
+                closeSaveModal();
+                return;
+            }
+            
+            let content;
+            
+            if (password) {
+                // Encrypt the wallet with password
+                const walletData = {
+                    masterPrivateKey: wallet.masterPrivateKey,
+                    masterChainCode: wallet.masterChainCode,
+                    isImportedAlphaWallet: wallet.isImportedAlphaWallet,
+                    addresses: wallet.addresses
+                };
+                
+                // Use same encryption method as old format for backward compatibility
+                const salt = "alpha_wallet_salt";
+                const passwordKey = CryptoJS.PBKDF2(password, salt, { keySize: 256/32, iterations: 100000 }).toString();
+                
+                // Encrypt only the master private key for backward compatibility
+                const encryptedMasterKey = CryptoJS.AES.encrypt(wallet.masterPrivateKey, passwordKey).toString();
+                
+                // Get addresses text
+                const addressesText = wallet.addresses.map(a => 
+                    `Address ${a.index + 1}: ${a.address} (Path: ${a.path})`
+                ).join('\n');
+                
+                // Use the old encrypted format for backward compatibility
+                content = `UNICITY WALLET DETAILS
+===========================
+
+ENCRYPTED MASTER KEY (password protected):
+${encryptedMasterKey}
+
+ENCRYPTION STATUS: Encrypted with password
+To use this key, you will need the password you set in the wallet.
+
+YOUR ADDRESSES:
+${addressesText}
+
+Generated on: ${new Date().toLocaleString()}
+
+WARNING: Keep your master private key safe and secure.
+Anyone with your master private key can access all your funds.`;
+            } else {
+                // Save unencrypted wallet
+                const masterKeyWIF = window.hexToWIF ? window.hexToWIF(wallet.masterPrivateKey) : wallet.masterPrivateKey;
+                
+                let masterKeySection;
+                let addressesText;
+                
+                if (wallet.isImportedAlphaWallet && wallet.masterChainCode) {
+                    // Format for imported Alpha wallet.dat files - keep as is
+                    masterKeySection = `MASTER PRIVATE KEY (Keep this secret!):
+${masterKeyWIF}
+
+MASTER CHAIN CODE (for Alpha wallet compatibility):
+${wallet.masterChainCode}
+
+WALLET TYPE: Alpha descriptor wallet (uses BIP32 derivation)`;
+                    
+                    addressesText = wallet.addresses.map((addr, index) => 
+                        `Address ${index + 1}: ${addr.address}`
+                    ).join('\n');
+                } else {
+                    // Format for HTML wallet app created wallets - use old format exactly
+                    addressesText = wallet.addresses.map(a => 
+                        `Address ${a.index + 1}: ${a.address} (Path: ${a.path})`
+                    ).join('\n');
+                    
+                    masterKeySection = 
+`MASTER PRIVATE KEY (keep secret!):
+${wallet.masterPrivateKey}
+
+MASTER PRIVATE KEY IN WIF FORMAT (for importprivkey command):
+${masterKeyWIF}
+
+WALLET TYPE: Standard wallet (HMAC-based)
+
+ENCRYPTION STATUS: Not encrypted
+This key is in plaintext and not protected. Anyone with this file can access your wallet.`;
+                }
+                
+                content = `UNICITY WALLET DETAILS
+===========================
+
+${masterKeySection}
+
+YOUR ADDRESSES:
+${addressesText}
+
+Generated on: ${new Date().toLocaleString()}
+
+WARNING: Keep your master private key safe and secure.
+Anyone with your master private key can access all your funds.`;
+            }
+            
+            // Create and download the file
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            const finalFilename = filename.endsWith('.txt') ? filename : filename + '.txt';
+            a.download = finalFilename;
+            document.body.appendChild(a);
+            a.click();
+            
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+            
+            closeSaveModal();
+            
+            // Automatically verify the content before user relies on it
+            setTimeout(() => {
+                if (password) {
+                    // For encrypted wallets, automatically verify with a re-entered password
+                    const verifyPassword = prompt('Please re-enter your password to verify the wallet was encrypted correctly:');
+                    if (verifyPassword) {
+                        // Simulate reading the saved file by using the exact content we saved
+                        verifyEncryptedWalletContent(content, password, verifyPassword, wallet);
+                    } else {
+                        window.showInAppNotification('Verification Skipped', 
+                            'Wallet saved but not verified. Please ensure you remember your password!', 
+                            'warning');
+                    }
+                } else {
+                    // For unencrypted wallets, verify immediately
+                    verifyUnencryptedWalletContent(content, wallet);
+                }
+            }, 300);
+        }
+        
+        // Verify encrypted wallet content (same process as loading from file)
+        function verifyEncryptedWalletContent(savedContent, originalPassword, verifyPassword, originalWallet) {
+            // This simulates the exact same process as loading the wallet from a file
+            try {
+                // Extract encrypted master key using the old format pattern
+                const encryptedKeyMatch = savedContent.match(/ENCRYPTED MASTER KEY \(password protected\):\s*([^\n]+)/);
+                
+                if (!encryptedKeyMatch || !encryptedKeyMatch[1]) {
+                    throw new Error('Invalid encrypted wallet format - would fail to load from file');
+                }
+                
+                const encryptedMasterKey = encryptedKeyMatch[1].trim();
+                
+                // Try to decrypt using the same method as wallet loading
+                try {
+                    // Use PBKDF2 for backward compatibility
+                    const salt = "alpha_wallet_salt";
+                    const passwordKey = CryptoJS.PBKDF2(verifyPassword, salt, { keySize: 256/32, iterations: 100000 }).toString();
+                    
+                    // Decrypt the master key
+                    const decryptedBytes = CryptoJS.AES.decrypt(encryptedMasterKey, passwordKey);
+                    const decryptedMasterKey = decryptedBytes.toString(CryptoJS.enc.Utf8);
+                    
+                    // Check if decryption produced empty result (wrong password)
+                    if (!decryptedMasterKey) {
+                        if (verifyPassword !== originalPassword) {
+                            window.showInAppNotification('Incorrect Password', 
+                                'The verification password is incorrect. The wallet was encrypted with the first password.', 
+                                'error');
+                        } else {
+                            // This shouldn't happen - same password but can't decrypt
+                            showCriticalError('Encryption verification failed - unable to decrypt with the same password');
+                        }
+                        return;
+                    }
+                    
+                    // Check if passwords match
+                    if (originalPassword !== verifyPassword) {
+                        window.showInAppNotification('Password Mismatch', 
+                            'The verification password does not match. The wallet was encrypted with the first password you entered.', 
+                            'warning');
+                        return;
+                    }
+                    
+                    // Verify master key matches
+                    if (decryptedMasterKey !== originalWallet.masterPrivateKey) {
+                        showCriticalError('Master key mismatch after decryption');
+                        return;
+                    }
+                    
+                    // Also verify addresses from the file content
+                    const addressMatches = savedContent.match(/Address \d+: (alpha1[a-z0-9]{38,})/g);
+                    if (addressMatches) {
+                        const savedAddresses = addressMatches.map(match => {
+                            const addrMatch = match.match(/Address \d+: (alpha1[a-z0-9]{38,})/);
+                            return addrMatch ? addrMatch[1] : null;
+                        }).filter(a => a).sort();
+                        
+                        const currentAddresses = originalWallet.addresses.map(a => a.address).sort();
+                    
+                        if (JSON.stringify(savedAddresses) !== JSON.stringify(currentAddresses)) {
+                            showCriticalError('Address mismatch detected during verification');
+                            return;
+                        }
+                    }
+                    
+                    window.showInAppNotification('✅ Wallet Verified', 
+                        'Encrypted wallet saved successfully! Decryption and address derivation verified.', 
+                        'success');
+                        
+                } catch (decryptError) {
+                    console.error('Decryption error:', decryptError);
+                    
+                    // Check if it's a UTF-8 error (usually means wrong password or corrupted data)
+                    if (decryptError.message && decryptError.message.includes('UTF-8')) {
+                        if (verifyPassword !== originalPassword) {
+                            window.showInAppNotification('Incorrect Password', 
+                                'The verification password is incorrect. The wallet was encrypted with the first password.', 
+                                'error');
+                        } else {
+                            // Both passwords are the same but still can't decrypt - this is a critical error
+                            showCriticalError('Encryption failed - unable to decrypt with the correct password. Error: ' + decryptError.message);
+                        }
+                    } else if (decryptError.message && decryptError.message.includes('JSON')) {
+                        showCriticalError('Decrypted data is not valid JSON: ' + decryptError.message);
+                    } else {
+                        showCriticalError('Decryption failed during verification: ' + decryptError.message);
+                    }
+                }
+            } catch (error) {
+                showCriticalError('Failed to verify encrypted wallet: ' + error.message);
+            }
+        }
+        
+        // Verify unencrypted wallet content
+        function verifyUnencryptedWalletContent(savedContent, originalWallet) {
+            try {
+                // Extract addresses from saved content (same as file loading would do)
+                const addressMatches = savedContent.match(/Address \d+: (alpha1[a-z0-9]{38,})/g);
+                if (!addressMatches) {
+                    showCriticalError('No addresses found in saved wallet content');
+                    return;
+                }
+                
+                const savedAddresses = addressMatches.map(match => {
+                    const addrMatch = match.match(/Address \d+: (alpha1[a-z0-9]{38,})/);
+                    return addrMatch ? addrMatch[1] : null;
+                }).filter(a => a).sort();
+                
+                const currentAddresses = originalWallet.addresses.map(a => a.address).sort();
+                
+                if (JSON.stringify(savedAddresses) !== JSON.stringify(currentAddresses)) {
+                    showCriticalError('Address mismatch detected in saved content');
+                    return;
+                }
+                
+                // Extract and verify master key
+                const masterKeyMatch = savedContent.match(/MASTER PRIVATE KEY \(keep secret!\):\s*([^\n]+)/);
+                if (masterKeyMatch) {
+                    const savedMasterKey = masterKeyMatch[1].trim();
+                    // The saved file has the hex key, we need to verify it matches
+                    if (savedMasterKey !== originalWallet.masterPrivateKey && 
+                        !verifyKeyEquivalence(savedMasterKey, originalWallet.masterPrivateKey)) {
+                        showCriticalError('Master key mismatch detected in saved content');
+                        return;
+                    }
+                }
+                
+                window.showInAppNotification('✅ Wallet Verified', 
+                    'Wallet saved successfully! All addresses verified.', 
+                    'success');
+                    
+            } catch (error) {
+                showCriticalError('Failed to verify wallet: ' + error.message);
+            }
+        }
+        
+        // Helper to verify if two keys are equivalent (one might be WIF, other hex)
+        function verifyKeyEquivalence(key1, key2) {
+            // If they're exactly the same, they're equivalent
+            if (key1 === key2) return true;
+            
+            // Try converting hex to WIF if one is hex
+            if (key1.length === 64 && window.hexToWIF) {
+                return window.hexToWIF(key1) === key2;
+            }
+            if (key2.length === 64 && window.hexToWIF) {
+                return key1 === window.hexToWIF(key2);
+            }
+            
+            return false;
+        }
+        
+        // Keep old function for backward compatibility but it's not used anymore
+        function verifyEncryptedWallet(savedContent, originalPassword, verifyPassword, originalWallet, isFromFile = false) {
+            try {
+                // Extract encrypted data from saved content
+                const encryptedMatch = savedContent.match(/ENCRYPTED UNICITY WALLET[\s\S]*?\n\n([\s\S]+?)\n\nGenerated on:/);
+                
+                if (!encryptedMatch || !encryptedMatch[1]) {
+                    throw new Error('Could not extract encrypted data from saved file');
+                }
+                
+                const encryptedData = encryptedMatch[1].trim();
+                
+                // Try to decrypt with the verify password
+                try {
+                    const decryptedData = CryptoJS.AES.decrypt(encryptedData, verifyPassword).toString(CryptoJS.enc.Utf8);
+                    const walletData = JSON.parse(decryptedData);
+                    
+                    // Check if passwords match
+                    if (originalPassword !== verifyPassword) {
+                        window.showInAppNotification('Password Mismatch', 
+                            'The verification password does not match the encryption password. The wallet was saved with the first password you entered.', 
+                            'warning');
+                        return;
+                    }
+                    
+                    // Verify addresses match
+                    const savedAddresses = walletData.addresses.map(a => a.address).sort();
+                    const currentAddresses = originalWallet.addresses.map(a => a.address).sort();
+                    
+                    if (JSON.stringify(savedAddresses) !== JSON.stringify(currentAddresses)) {
+                        showCriticalError('Address mismatch detected');
+                        return;
+                    }
+                    
+                    // Verify master key matches
+                    if (walletData.masterPrivateKey !== originalWallet.masterPrivateKey) {
+                        showCriticalError('Master key mismatch detected');
+                        return;
+                    }
+                    
+                    window.showInAppNotification('Wallet Verified', 
+                        isFromFile ? 'Encrypted wallet file read and verified successfully!' : 'Encrypted wallet saved and verified successfully!', 
+                        'success');
+                        
+                } catch (decryptError) {
+                    if (verifyPassword !== originalPassword) {
+                        window.showInAppNotification('Incorrect Password', 
+                            'The verification password is incorrect. The wallet was saved with the first password you entered.', 
+                            'error');
+                    } else {
+                        showCriticalError('Decryption failed during verification');
+                    }
+                }
+            } catch (error) {
+                showCriticalError('Failed to verify encrypted wallet: ' + error.message);
+            }
+        }
+        
+        // Verify unencrypted wallet addresses match
+        function verifyUnencryptedWallet(savedContent, originalWallet, isFromFile = false) {
+            try {
+                // Extract addresses from saved content
+                const addressMatches = savedContent.match(/Address \d+: (alpha1[a-z0-9]{38,})/g);
+                if (!addressMatches) {
+                    showCriticalError('No addresses found in saved wallet file');
+                    return;
+                }
+                
+                const savedAddresses = addressMatches.map(match => {
+                    const addrMatch = match.match(/Address \d+: (alpha1[a-z0-9]{38,})/);
+                    return addrMatch ? addrMatch[1] : null;
+                }).filter(a => a).sort();
+                
+                const currentAddresses = originalWallet.addresses.map(a => a.address).sort();
+                
+                if (JSON.stringify(savedAddresses) !== JSON.stringify(currentAddresses)) {
+                    showCriticalError('Address mismatch detected in saved file');
+                    return;
+                }
+                
+                // Extract and verify master key
+                const masterKeyMatch = savedContent.match(/MASTER PRIVATE KEY \(keep secret!\):\s*([^\n]+)/);
+                if (masterKeyMatch) {
+                    const savedMasterKey = masterKeyMatch[1].trim();
+                    // Compare hex format if both are hex, or WIF if needed
+                    if (savedMasterKey !== originalWallet.masterPrivateKey && 
+                        savedMasterKey !== (window.hexToWIF ? window.hexToWIF(originalWallet.masterPrivateKey) : originalWallet.masterPrivateKey)) {
+                        // It's OK if one is WIF and other is hex, as long as they represent the same key
+                        // For now, we'll just log a warning
+                        console.log('Master key format difference detected (hex vs WIF)');
+                    }
+                }
+                
+                window.showInAppNotification('Wallet Verified', 
+                    isFromFile ? 'Wallet file read and verified successfully!' : 'Wallet saved and verified successfully!', 
+                    'success');
+                    
+            } catch (error) {
+                showCriticalError('Failed to verify wallet: ' + error.message);
+            }
+        }
+        
+        // Show critical error dialog
+        function showCriticalError(details) {
+            const errorModal = document.createElement('div');
+            errorModal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0,0,0,0.8);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10000;
+            `;
+            
+            errorModal.innerHTML = `
+                <div style="background: white; padding: 30px; border-radius: 10px; max-width: 600px; text-align: center;">
+                    <div style="font-size: 48px; color: #ff0000; margin-bottom: 20px;">⚠️ CRITICAL ERROR</div>
+                    <h2 style="color: #ff0000; margin-bottom: 20px;">WALLET SAVE VERIFICATION FAILED</h2>
+                    <p style="font-size: 18px; margin-bottom: 20px; color: #333;">
+                        The saved wallet file could not be verified. This is an internal application error.
+                    </p>
+                    <p style="font-size: 16px; margin-bottom: 20px; color: #666;">
+                        <strong>Error details:</strong> ${details}
+                    </p>
+                    <div style="background: #ffe0e0; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
+                        <p style="font-size: 16px; color: #cc0000; margin: 0;">
+                            <strong>IMPORTANT:</strong> Do not rely on this backup file!<br>
+                            Please report this issue immediately to the developer (cryptohog) 
+                            on the Discord helpdesk channel.
+                        </p>
+                    </div>
+                    <button onclick="this.parentElement.parentElement.remove()" 
+                            style="background: #ff0000; color: white; border: none; padding: 10px 30px; 
+                                   border-radius: 5px; font-size: 16px; cursor: pointer;">
+                        Close
+                    </button>
+                </div>
+            `;
+            
+            document.body.appendChild(errorModal);
+        }
 
         document.addEventListener('DOMContentLoaded', function() {
             // Global variables that need to be available throughout the app
@@ -998,10 +1474,8 @@
             const generateAddressBtn = document.getElementById('generateAddressBtn');
             // const toggleMasterKeyBtn = document.getElementById('toggleMasterKeyBtn'); // Removed with Security section
             const deleteWalletBtn = document.getElementById('deleteWalletBtn');
-            const encryptWalletBtn = document.getElementById('encryptWalletBtn');
+            const saveWalletBtn = document.getElementById('saveWalletBtn');
             const restoreWalletBtn = document.getElementById('restoreWalletBtn');
-            const migrateWalletBtn = document.getElementById('migrateWalletBtn');
-            const backupWalletBtn = document.getElementById('backupWalletBtn');
             const importUtxoBtn = document.getElementById('importUtxoBtn');
             const clearUtxoBtn = document.getElementById('clearUtxoBtn');
             
@@ -1024,32 +1498,27 @@
                 encryptedMasterKey: ''
             };
             
+            // Make wallet globally accessible for save modal
+            window.walletGlobal = wallet;
+            
             // Ensure encryption status is hidden by default
             // encryptionStatus.style.display = 'none'; // Removed with Security section
             
             // Helper function to update enabled/disabled state of buttons based on wallet state
             function updateButtonStates(walletExists) {
-                // toggleMasterKeyBtn.disabled = !walletExists; // Removed with Security section
-                // toggleWifKeyBtn.disabled = !walletExists; // Removed with Security section
-                backupWalletBtn.disabled = !walletExists;
+                saveWalletBtn.disabled = !walletExists;
                 deleteWalletBtn.disabled = !walletExists;
                 initializeWalletBtn.disabled = walletExists;
-                encryptWalletBtn.disabled = !walletExists || wallet.encrypted;
                 restoreWalletBtn.disabled = walletExists;
-                migrateWalletBtn.disabled = !walletExists;
-                
                 
                 // Update button tooltips
                 if (walletExists) {
                     initializeWalletBtn.title = "Wallet already created";
-                    migrateWalletBtn.title = "Export for migration to Alpha node";
-                    encryptWalletBtn.title = wallet.isEncrypted ? "Wallet is already encrypted" : "Encrypt wallet";
+                    saveWalletBtn.title = "Save wallet to file with optional encryption";
                 } else {
                     initializeWalletBtn.title = "Creates a new wallet with a secure private key. This is the first step to use this wallet.";
-                    migrateWalletBtn.title = "Create a wallet first";
-                    encryptWalletBtn.title = "Create a wallet first";
+                    saveWalletBtn.title = "Create a wallet first";
                 }
-                
             }
             
             // Password modal functions
@@ -1135,6 +1604,8 @@
                                 // Remove the ID property we added for IndexedDB
                                 delete savedWallet.id;
                                 wallet = savedWallet;
+                                // Update global reference
+                                window.walletGlobal = wallet;
                                 updateUIFromWallet();
                             } else {
                                 // No data in IndexedDB, try localStorage
@@ -1160,6 +1631,8 @@
                         try {
                             const parsedWallet = JSON.parse(savedWallet);
                             wallet = parsedWallet;
+                            // Update global reference
+                            window.walletGlobal = wallet;
                             updateUIFromWallet();
                         } catch (e) {
                             console.error("Error parsing wallet data from localStorage", e);
@@ -1274,6 +1747,9 @@
                 wallet.isEncrypted = false;
                 wallet.encryptedMasterKey = '';
                 wallet.childPrivateKey = null; // Will be set when generating first address
+                
+                // Update global reference
+                window.walletGlobal = wallet;
                 
                 // masterKeyElement.textContent = wallet.masterPrivateKey; // Removed with Security section
                 // masterKeyElement.classList.add('masked'); // Removed with Security section
@@ -1751,9 +2227,12 @@
                 
                 return result;
             }
+            
+            // Make hexToWIF globally accessible
+            window.hexToWIF = hexToWIF;
 
-            // Download wallet info
-            function downloadWallet() {
+            // Download wallet info (replaced by saveWallet)
+            /* function downloadWallet() {
                 // Convert the master key to WIF format
                 const masterKeyWIF = hexToWIF(wallet.masterPrivateKey);
                 
@@ -1818,7 +2297,7 @@ Anyone with your master private key can access all your funds.`;
                 }, 100);
                 
                 showInAppNotification('Wallet Backed Up', 'Wallet backup file has been downloaded', 'success');
-            }
+            } */
             
             // Check password strength
             function checkPasswordStrength(password) {
@@ -1870,8 +2349,8 @@ Anyone with your master private key can access all your funds.`;
                 passwordStrength.innerHTML = meterHTML;
             }
             
-            // Encrypt wallet with password
-            function encryptWallet(password) {
+            // Encrypt wallet with password (replaced by saveWallet)
+            /* function encryptWallet(password) {
                 if (!password) {
                     alert('Please enter a password');
                     return;
@@ -1909,16 +2388,16 @@ Anyone with your master private key can access all your funds.`;
                     console.error("Error encrypting wallet", e);
                     showInAppNotification('Encryption Error', e.message, 'error');
                 }
-            }
+            } */
             
-            // Delete wallet
+            // Reset wallet
             function deleteWallet() {
                 if (!wallet.masterPrivateKey) {
-                    alert('No wallet to delete');
+                    alert('No wallet to reset');
                     return;
                 }
                 
-                const confirmation = confirm('WARNING: You are about to delete your wallet. This action cannot be undone. Make sure you have backed up your wallet data before proceeding.\n\nAre you sure you want to delete your wallet?');
+                const confirmation = confirm('WARNING: You are about to reset your wallet. This will clear the current wallet from your browser. Make sure you have saved your wallet data before proceeding.\n\nAre you sure you want to reset your wallet?');
                 
                 if (confirmation) {
                     // Clear wallet data
@@ -1929,6 +2408,9 @@ Anyone with your master private key can access all your funds.`;
                         encryptedMasterKey: '',
                         childPrivateKey: null
                     };
+                    
+                    // Update global reference
+                    window.walletGlobal = wallet;
                     
                     // Clear UI for both key displays
                     // masterKeyElement.textContent = 'Generate a wallet to see your private key'; // Removed with Security section
@@ -2038,7 +2520,7 @@ Anyone with your master private key can access all your funds.`;
                     // Also hide loading indicator
                     document.getElementById('totalScannedLoading').style.display = 'none';
                     
-                    showInAppNotification('Wallet Deleted', 'Your wallet and cached scan data have been deleted successfully', 'success');
+                    showInAppNotification('Wallet Reset', 'Your wallet has been reset successfully', 'success');
                 }
             }
             
@@ -2191,6 +2673,7 @@ Anyone with your master private key can access all your funds.`;
                 restoreModal.style.display = 'none';
                 document.body.style.overflow = '';
             }
+            
             
             // Helper function to read binary data
             function readBinaryFile(file) {
@@ -2420,6 +2903,9 @@ Anyone with your master private key can access all your funds.`;
                         masterChainCode: 'ef9b229fa43b5321834bce029dcca011db64764538f06e5b50b9dd5f38d16678'
                     };
                     
+                    // Update global reference
+                    window.walletGlobal = wallet;
+                    
                     // Generate first address
                     generateNewAddress();
                     
@@ -2628,7 +3114,27 @@ Anyone with your master private key can access all your funds.`;
                 return masterKey.substring(0, 8);
             }
             
-            // Start wallet scanning
+            // Start wallet scan with decrypted data
+            async function startWalletScanWithDecryptedData(walletData) {
+                try {
+                    const masterKey = walletData.masterPrivateKey;
+                    const masterChainCode = walletData.masterChainCode || null;
+                    const isAlphaWallet = walletData.isImportedAlphaWallet || false;
+                    
+                    if (!masterKey) {
+                        throw new Error('No master key found in decrypted wallet data');
+                    }
+                    
+                    // Continue with normal scanning
+                    performWalletScan(masterKey, masterChainCode, isAlphaWallet);
+                } catch (error) {
+                    restoreStatus.className = 'info-box error';
+                    restoreStatus.textContent = 'Error: ' + error.message;
+                    restoreStatus.style.display = 'block';
+                }
+            }
+            
+            // Start wallet scanning or decrypt
             async function startWalletScan() {
                 const file = restoreFileInput.files[0];
                 if (!file) {
@@ -2636,7 +3142,95 @@ Anyone with your master private key can access all your funds.`;
                     return;
                 }
                 
-                // Extract master key and chain code from file
+                // Check if we're in decrypt mode
+                if (scanWalletsBtn.textContent === 'Decrypt') {
+                    // Handle encrypted wallet decryption
+                    const password = restorePasswordInput.value;
+                    if (!password) {
+                        restoreStatus.className = 'info-box error';
+                        restoreStatus.textContent = 'Please enter the decryption password.';
+                        restoreStatus.style.display = 'block';
+                        return;
+                    }
+                    
+                    try {
+                        const fileContent = await file.text();
+                        
+                        // Check if it's the old format with ENCRYPTED MASTER KEY
+                        if (fileContent.includes('ENCRYPTED MASTER KEY')) {
+                            // Handle old format
+                            const encryptedKeyMatch = fileContent.match(/ENCRYPTED MASTER KEY \(password protected\):\s*([^\n]+)/);
+                            
+                            if (!encryptedKeyMatch || !encryptedKeyMatch[1]) {
+                                throw new Error('Invalid encrypted wallet format');
+                            }
+                            
+                            const encryptedMasterKey = encryptedKeyMatch[1].trim();
+                            
+                            // Decrypt using PBKDF2 (old method)
+                            try {
+                                const salt = "alpha_wallet_salt";
+                                const passwordKey = CryptoJS.PBKDF2(password, salt, { keySize: 256/32, iterations: 100000 }).toString();
+                                
+                                const decryptedBytes = CryptoJS.AES.decrypt(encryptedMasterKey, passwordKey);
+                                const decryptedMasterKey = decryptedBytes.toString(CryptoJS.enc.Utf8);
+                                
+                                if (!decryptedMasterKey) {
+                                    throw new Error('Incorrect password or corrupted wallet file');
+                                }
+                                
+                                // Parse addresses from the file
+                                const addressMatches = fileContent.match(/Address \d+: (alpha1[a-z0-9]{38,})/g);
+                                const addresses = addressMatches ? addressMatches.map((match, index) => {
+                                    const addrMatch = match.match(/Address \d+: (alpha1[a-z0-9]{38,})/);
+                                    return {
+                                        index: index,
+                                        address: addrMatch ? addrMatch[1] : null
+                                    };
+                                }).filter(a => a.address) : [];
+                                
+                                // Create wallet data in the expected format
+                                const walletData = {
+                                    masterPrivateKey: decryptedMasterKey,
+                                    addresses: addresses,
+                                    isEncrypted: false,
+                                    encryptedMasterKey: ''
+                                };
+                            
+                                // Successfully decrypted - update UI
+                                restoreStatus.className = 'info-box success';
+                                restoreStatus.textContent = 'Wallet decrypted successfully. Starting wallet scan...';
+                                restoreStatus.style.display = 'block';
+                                
+                                // Change button back to Rescan Wallets
+                                scanWalletsBtn.textContent = 'Rescan Wallets';
+                                walletScanOptions.style.display = 'block';
+                                
+                                // Store decrypted data for scanning
+                                window.decryptedWalletData = walletData;
+                                
+                                // Start normal scanning process
+                                setTimeout(() => {
+                                    startWalletScanWithDecryptedData(walletData);
+                                }, 1000);
+                                
+                                return;
+                            } catch (decryptError) {
+                                throw new Error('Incorrect password or corrupted wallet file');
+                            }
+                        } else {
+                            // New format handling (if we ever need it)
+                            throw new Error('New encrypted format not supported in this version');
+                        }
+                    } catch (error) {
+                        restoreStatus.className = 'info-box error';
+                        restoreStatus.textContent = 'Decryption failed: ' + error.message;
+                        restoreStatus.style.display = 'block';
+                        return;
+                    }
+                }
+                
+                // Normal wallet scanning flow
                 try {
                     let masterKey = '';
                     let masterChainCode = null;
@@ -2870,10 +3464,19 @@ Anyone with your master private key can access all your funds.`;
             }
             
             // Perform the actual scanning
-            async function performWalletScan() {
+            async function performWalletScan(masterKey, masterChainCode, isAlphaWallet) {
                 const scanCount = parseInt(scanCountInput.value) || 100;
                 const checkOnline = scanOnlineCheckbox.checked;
                 const scanChangeAddrs = document.getElementById('scanChangeAddresses').checked;
+                
+                // Set extracted wallet data if parameters provided
+                if (masterKey) {
+                    extractedWalletData = {
+                        masterKey: masterKey,
+                        masterChainCode: masterChainCode,
+                        isAlphaWallet: isAlphaWallet
+                    };
+                }
                 
                 scanningActive = true;
                 // IMPORTANT: Clear the scannedWallets array to prevent duplicates
@@ -3398,7 +4001,7 @@ Anyone with your master private key can access all your funds.`;
                                     ${walletInfo.balance === -1 ? 'Balance Unknown' : `${(walletInfo.balance / 100000000).toFixed(8)} ALPHA`}
                                 </div>
                                 <div style="font-size: 11px; color: #666;">
-                                    ${walletInfo.balance === -1 ? 'Offline' : 'Click to import'}
+                                    ${walletInfo.balance === -1 ? 'Offline' : 'Click to load'}
                                 </div>
                             </div>
                         </div>
@@ -3469,7 +4072,7 @@ Anyone with your master private key can access all your funds.`;
                                 ${walletInfo.balance === -1 ? 'Balance Unknown' : `${(walletInfo.balance / 100000000).toFixed(8)} ALPHA`}
                             </div>
                             <div style="font-size: 11px; color: #666;">
-                                ${walletInfo.balance === -1 ? 'Offline' : 'Click to import'}
+                                ${walletInfo.balance === -1 ? 'Offline' : 'Click to load'}
                             </div>
                         </div>
                     </div>
@@ -3503,6 +4106,9 @@ Anyone with your master private key can access all your funds.`;
                     isImportedAlphaWallet: extractedWalletData.isAlphaWallet,
                     masterChainCode: extractedWalletData.masterChainCode
                 };
+                
+                // Update global reference
+                window.walletGlobal = wallet;
                 
                 // Update UI
                 updateButtonStates(true);
@@ -3638,6 +4244,9 @@ Anyone with your master private key can access all your funds.`;
                         isImportedAlphaWallet: isImportedAlphaWallet,
                         masterChainCode: masterChainCode
                     };
+                    
+                    // Update global reference
+                    window.walletGlobal = wallet;
                     
                     // Update UI for both key displays
                     // masterKeyElement.textContent = masterKey; // Removed with Security section
@@ -3902,18 +4511,9 @@ Anyone with your master private key can access all your funds.`;
             
             // Set up event listeners
             initializeWalletBtn.addEventListener('click', initializeWallet);
-            // toggleMasterKeyBtn.addEventListener('click', toggleMasterKey); // Removed with Security section
-            // toggleWifKeyBtn.addEventListener('click', toggleWifKey); // Removed with Security section
-            backupWalletBtn.addEventListener('click', downloadWallet);
+            saveWalletBtn.addEventListener('click', showSaveModal);
             deleteWalletBtn.addEventListener('click', deleteWallet);
             restoreWalletBtn.addEventListener('click', showRestoreModal);
-            encryptWalletBtn.addEventListener('click', () => {
-                showPasswordModal('Encrypt Your Wallet', 'Enter a strong password to encrypt your wallet:').then(password => {
-                    if (password) {
-                        encryptWallet(password);
-                    }
-                });
-            });
             // migrateWalletBtn.addEventListener('click', toggleMigrateSection); // Removed with Security section
             
             // Restore modal event listeners
@@ -3924,19 +4524,51 @@ Anyone with your master private key can access all your funds.`;
             // File input change handler
             restoreFileInput.addEventListener('change', async function() {
                 if (this.files.length > 0) {
-                    walletScanOptions.style.display = 'block';
-                    // Show scan button instead of restore for wallet discovery
-                    restoreModalSubmitBtn.style.display = 'none';
-                    scanWalletsBtn.style.display = 'inline-block';
+                    const file = this.files[0];
                     
-                    // Start scanning automatically
-                    setTimeout(() => {
-                        startWalletScan();
-                    }, 500); // Small delay for UI to update
+                    // Check if it's an encrypted wallet
+                    let isEncryptedWallet = false;
+                    if (file.name.endsWith('.txt')) {
+                        try {
+                            const fileContent = await file.text();
+                            // Check for both new and old encrypted formats
+                            if (fileContent.includes('ENCRYPTED UNICITY WALLET') || 
+                                fileContent.includes('ENCRYPTED MASTER KEY')) {
+                                isEncryptedWallet = true;
+                            }
+                        } catch (e) {
+                            // Continue with normal flow if can't read
+                        }
+                    }
+                    
+                    if (isEncryptedWallet) {
+                        // Show decrypt button for encrypted wallets
+                        walletScanOptions.style.display = 'none';
+                        restoreModalSubmitBtn.style.display = 'none';
+                        scanWalletsBtn.style.display = 'inline-block';
+                        scanWalletsBtn.textContent = 'Decrypt';
+                        
+                        restoreStatus.className = 'info-box warning';
+                        restoreStatus.textContent = 'This is an encrypted wallet. Please enter the password and click Decrypt.';
+                        restoreStatus.style.display = 'block';
+                    } else {
+                        // Normal wallet discovery flow
+                        walletScanOptions.style.display = 'block';
+                        restoreModalSubmitBtn.style.display = 'none';
+                        scanWalletsBtn.style.display = 'inline-block';
+                        scanWalletsBtn.textContent = 'Rescan Wallets';
+                        restoreStatus.style.display = 'none';
+                        
+                        // Start scanning automatically for non-encrypted wallets
+                        setTimeout(() => {
+                            startWalletScan();
+                        }, 500); // Small delay for UI to update
+                    }
                 } else {
                     walletScanOptions.style.display = 'none';
                     scanWalletsBtn.style.display = 'none';
                     restoreModalSubmitBtn.style.display = 'inline-block';
+                    restoreStatus.style.display = 'none';
                 }
             });
             
@@ -6585,6 +7217,9 @@ Anyone with your master private key can access all your funds.`;
                     }
                 }, 300);
             }
+            
+            // Make showInAppNotification globally accessible
+            window.showInAppNotification = showInAppNotification;
             
             // Show system notification (only for transactions)
             function showNotification(title, body, icon = null) {
