@@ -770,6 +770,10 @@
                         <div>
                             <span id="walletBalance" style="font-weight: 600;">0 ALPHA</span>
                             <span id="walletUnconfirmed" style="color: #999;">(0)</span>
+                            <span id="totalScannedBalance" style="display: none; margin-left: 15px;">
+                                | Total: <span style="font-weight: 600;" id="totalScannedAmount">0 ALPHA</span>
+                                <a href="#" onclick="showScannedWalletsDialog(); return false;" style="color: var(--primary-color); text-decoration: none; margin-left: 5px;" title="View all scanned wallets">[view all]</a>
+                            </span>
                         </div>
                     </div>
                     <div>
@@ -2521,6 +2525,7 @@ Anyone with your master private key can access all your funds.`;
             let scanningActive = false;
             let scannedWallets = [];
             let extractedWalletData = null;
+            let lastScannedWalletData = null; // Store scan results persistently
             
             // Start wallet scanning
             async function startWalletScan() {
@@ -2804,14 +2809,166 @@ Anyone with your master private key can access all your funds.`;
                 }
                 
                 scanningActive = false;
-                scanStatus.textContent = scannedWallets.length > 0 ? 
-                    `Found ${scannedWallets.length} wallet(s) with funds` : 
-                    (!checkOnline || !electrumConnected ? 'Scan complete (offline mode)' : 'No wallets with funds found');
+                
+                // Calculate total balance of all scanned wallets
+                let totalBalance = 0;
+                scannedWallets.forEach(w => {
+                    if (w.balance > 0) totalBalance += w.balance;
+                });
+                
+                // Store scan results for later use
+                lastScannedWalletData = {
+                    wallets: scannedWallets,
+                    totalBalance: totalBalance,
+                    masterKey: extractedWalletData.masterKey,
+                    masterChainCode: extractedWalletData.masterChainCode,
+                    isAlphaWallet: extractedWalletData.isAlphaWallet
+                };
+                
+                // Update scan status with total balance
+                if (scannedWallets.length > 0) {
+                    scanStatus.innerHTML = `Found ${scannedWallets.length} wallet(s) with funds<br>Total balance: <strong>${(totalBalance / 100000000).toFixed(8)} ALPHA</strong>`;
+                } else {
+                    scanStatus.textContent = !checkOnline || !electrumConnected ? 'Scan complete (offline mode)' : 'No wallets with funds found';
+                }
                 
                 if (scannedWallets.length === 0) {
                     foundWalletsList.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">No wallets with funds found. Try increasing the scan count or check your connection.</div>';
                 }
+                
+                // Update main UI if wallet is loaded
+                updateScannedWalletsDisplay();
             }
+            
+            // Update the main UI to show total scanned balance
+            function updateScannedWalletsDisplay() {
+                if (!lastScannedWalletData || !lastScannedWalletData.wallets || lastScannedWalletData.wallets.length <= 1) {
+                    // Hide total balance if no scan data or only one wallet
+                    document.getElementById('totalScannedBalance').style.display = 'none';
+                    return;
+                }
+                
+                // Show total balance if multiple wallets found
+                const totalBalance = lastScannedWalletData.totalBalance || 0;
+                document.getElementById('totalScannedAmount').textContent = `${(totalBalance / 100000000).toFixed(8)} ALPHA`;
+                document.getElementById('totalScannedBalance').style.display = 'inline';
+            }
+            
+            // Show dialog with all scanned wallets
+            function showScannedWalletsDialog() {
+                if (!lastScannedWalletData || !lastScannedWalletData.wallets) {
+                    alert('No scanned wallets available. Please import a wallet.dat file first.');
+                    return;
+                }
+                
+                // Create a modal dialog
+                const modal = document.createElement('div');
+                modal.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-color: rgba(0, 0, 0, 0.5);
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 10000;
+                `;
+                
+                const dialog = document.createElement('div');
+                dialog.style.cssText = `
+                    background: white;
+                    border-radius: 12px;
+                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+                    max-width: 600px;
+                    width: 90%;
+                    max-height: 80vh;
+                    overflow: hidden;
+                    display: flex;
+                    flex-direction: column;
+                `;
+                
+                const header = document.createElement('div');
+                header.style.cssText = 'padding: 20px; border-bottom: 1px solid #e9ecef;';
+                header.innerHTML = `
+                    <h3 style="margin: 0;">Scanned Wallets</h3>
+                    <p style="margin: 10px 0 0 0; color: #666;">Total balance: <strong>${(lastScannedWalletData.totalBalance / 100000000).toFixed(8)} ALPHA</strong></p>
+                `;
+                
+                const content = document.createElement('div');
+                content.style.cssText = 'padding: 20px; overflow-y: auto; flex: 1;';
+                
+                // Recreate the wallet list
+                lastScannedWalletData.wallets.forEach(walletInfo => {
+                    const walletDiv = document.createElement('div');
+                    walletDiv.style.cssText = 'padding: 15px; margin-bottom: 10px; background: #f8f9fa; border-radius: 8px; cursor: pointer; transition: background 0.2s;';
+                    walletDiv.onmouseover = () => walletDiv.style.background = '#e9ecef';
+                    walletDiv.onmouseout = () => walletDiv.style.background = '#f8f9fa';
+                    
+                    walletDiv.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div style="font-weight: bold; margin-bottom: 5px;">
+                                    ${walletInfo.isChange ? 'Change ' : ''}Address #${walletInfo.index}
+                                    ${walletInfo.isChange ? '<span style="background: #ffa500; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; margin-left: 5px;">CHANGE</span>' : ''}
+                                </div>
+                                <div style="font-family: monospace; font-size: 12px; color: #666; word-break: break-all;">${walletInfo.address}</div>
+                                <div style="font-size: 11px; color: #999; margin-top: 3px;">Path: ${walletInfo.path}</div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-weight: bold; color: var(--primary-color);">
+                                    ${walletInfo.balance === -1 ? 'Balance Unknown' : `${(walletInfo.balance / 100000000).toFixed(8)} ALPHA`}
+                                </div>
+                                <div style="font-size: 11px; color: #666;">
+                                    ${walletInfo.balance === -1 ? 'Offline' : 'Click to import'}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    walletDiv.onclick = () => {
+                        document.body.removeChild(modal);
+                        // Reconstruct full wallet info from stored data
+                        const fullWalletInfo = deriveAddressAtIndex(
+                            lastScannedWalletData.masterKey,
+                            lastScannedWalletData.masterChainCode,
+                            walletInfo.index,
+                            lastScannedWalletData.isAlphaWallet,
+                            walletInfo.isChange
+                        );
+                        fullWalletInfo.balance = walletInfo.balance;
+                        fullWalletInfo.utxoCount = walletInfo.utxoCount;
+                        
+                        // Store the extracted wallet data globally before importing
+                        extractedWalletData = lastScannedWalletData;
+                        
+                        selectWalletForImport(fullWalletInfo);
+                    };
+                    
+                    content.appendChild(walletDiv);
+                });
+                
+                const footer = document.createElement('div');
+                footer.style.cssText = 'padding: 20px; border-top: 1px solid #e9ecef; text-align: right;';
+                footer.innerHTML = `
+                    <button onclick="this.closest('div[style*=fixed]').remove()" class="button" style="background-color: #6c757d;">Close</button>
+                `;
+                
+                dialog.appendChild(header);
+                dialog.appendChild(content);
+                dialog.appendChild(footer);
+                modal.appendChild(dialog);
+                document.body.appendChild(modal);
+                
+                // Close on backdrop click
+                modal.onclick = (e) => {
+                    if (e.target === modal) {
+                        document.body.removeChild(modal);
+                    }
+                };
+            }
+            window.showScannedWalletsDialog = showScannedWalletsDialog;
             
             // Add wallet to results UI
             function addWalletToResults(walletInfo) {
@@ -2849,8 +3006,7 @@ Anyone with your master private key can access all your funds.`;
             function selectWalletForImport(walletInfo) {
                 const balanceText = walletInfo.balance === -1 ? 'Unknown (offline)' : `${(walletInfo.balance / 100000000).toFixed(8)} ALPHA`;
                 if (confirm(`Import wallet with address ${walletInfo.address}?\nBalance: ${balanceText}`)) {
-                    // Stop scanning if still active
-                    scanningActive = false;
+                    // Don't stop scanning - let it continue in background
                     
                     // Create wallet with the selected index
                     // Remove utxos from walletInfo for storage
@@ -2886,6 +3042,9 @@ Anyone with your master private key can access all your funds.`;
                     if (electrumConnected) {
                         refreshBalance();
                     }
+                    
+                    // Update scanned wallets display
+                    updateScannedWalletsDisplay();
                 }
             }
             
