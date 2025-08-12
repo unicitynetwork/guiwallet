@@ -780,7 +780,7 @@
                                 <a href="#" onclick="showScannedWalletsDialog(); return false;" style="color: var(--primary-color); text-decoration: none; margin-left: 5px;" title="View all scanned wallets">[view all]</a>
                             </span>
                             <span id="totalScannedLoading" style="display: none; margin-left: 15px; color: #666;">
-                                | Scanning wallets... <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #f3f3f3; border-top: 2px solid #666; border-radius: 50%; animation: spin 1s linear infinite;"></span>
+                                | <span id="scanStatusText">Scanning wallets <span id="scanPercentage">0%</span></span>... <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #f3f3f3; border-top: 2px solid #666; border-radius: 50%; animation: spin 1s linear infinite;"></span>
                             </span>
                         </div>
                     </div>
@@ -2582,6 +2582,8 @@ Anyone with your master private key can access all your funds.`;
             let lastScannedWalletData = null; // Store scan results persistently
             let lazyScanInterval = null;
             let lastLazyScanTime = 0;
+            let currentScanProgress = 0; // Track current scan progress percentage
+            let totalScansCount = 0; // Track total number of scans
             
             // Save scan results to local storage
             function saveScanResultsToCache(walletFingerprint, scanData) {
@@ -2890,12 +2892,20 @@ Anyone with your master private key can access all your funds.`;
                     isAlphaWallet: extractedWalletData.isAlphaWallet
                 };
                 
+                // Reset status text for new scan
+                const statusTextEl = document.getElementById('scanStatusText');
+                if (statusTextEl) {
+                    statusTextEl.innerHTML = 'Scanning wallets <span id="scanPercentage">0%</span>';
+                }
+                
                 // Update display to show loading indicator
                 updateScannedWalletsDisplay();
                 
                 const dustThreshold = 1000; // satoshis
                 const totalScans = scanChangeAddrs ? scanCount * 2 : scanCount;
                 let scansDone = 0;
+                totalScansCount = totalScans; // Store globally
+                currentScanProgress = 0; // Reset progress
                 
                 // Scan external addresses (receiving)
                 for (let i = 0; i < scanCount && scanningActive; i++) {
@@ -2960,8 +2970,15 @@ Anyone with your master private key can access all your funds.`;
                     scansDone++;
                     // Update progress
                     const progress = (scansDone / totalScans) * 100;
+                    currentScanProgress = Math.floor(progress); // Store globally
                     scanProgress.style.width = progress + '%';
                     scanCounter.textContent = `${scansDone} / ${totalScans}`;
+                    
+                    // Update percentage in loading indicator
+                    const percentageEl = document.getElementById('scanPercentage');
+                    if (percentageEl) {
+                        percentageEl.textContent = `${currentScanProgress}%`;
+                    }
                     
                     // Small delay to not overwhelm the UI
                     if (i % 10 === 0) {
@@ -3033,8 +3050,15 @@ Anyone with your master private key can access all your funds.`;
                         scansDone++;
                         // Update progress
                         const progress = (scansDone / totalScans) * 100;
+                        currentScanProgress = Math.floor(progress); // Store globally
                         scanProgress.style.width = progress + '%';
                         scanCounter.textContent = `${scansDone} / ${totalScans}`;
+                        
+                        // Update percentage in loading indicator
+                        const percentageEl = document.getElementById('scanPercentage');
+                        if (percentageEl) {
+                            percentageEl.textContent = `${currentScanProgress}%`;
+                        }
                         
                         // Small delay to not overwhelm the UI
                         if (i % 10 === 0) {
@@ -3044,6 +3068,13 @@ Anyone with your master private key can access all your funds.`;
                 }
                 
                 scanningActive = false;
+                currentScanProgress = 100; // Set to 100% when complete
+                
+                // Update percentage one last time
+                const percentageEl = document.getElementById('scanPercentage');
+                if (percentageEl) {
+                    percentageEl.textContent = '100%';
+                }
                 
                 // Calculate total balance of all scanned wallets
                 let totalBalance = 0;
@@ -3203,6 +3234,12 @@ Anyone with your master private key can access all your funds.`;
                 }
                 
                 lastLazyScanTime = Date.now();
+                
+                // Update status text for lazy rescan
+                const statusTextEl = document.getElementById('scanStatusText');
+                if (statusTextEl) {
+                    statusTextEl.innerHTML = 'Updating balances';
+                }
                 
                 let totalBalance = 0;
                 let updatedWallets = [];
