@@ -3292,8 +3292,8 @@ Anyone with your master private key can access all your funds.`;
                                 }).filter(a => a.address) : [];
                                 
                                 // Check if this is a BIP32 wallet by looking for chain code
-                                const chainCodeMatch = fileContent.match(/MASTER CHAIN CODE \(for Alpha wallet compatibility\):\s*([^\n]+)/);
-                                const isAlphaWallet = chainCodeMatch && chainCodeMatch[1] && fileContent.includes('WALLET TYPE: Alpha descriptor wallet');
+                                const chainCodeMatch = fileContent.match(/MASTER CHAIN CODE \(for (?:BIP32 HD|Alpha) wallet compatibility\):\s*([^\n]+)/);
+                                const isAlphaWallet = chainCodeMatch && chainCodeMatch[1] && (fileContent.includes('WALLET TYPE: BIP32 hierarchical deterministic wallet') || fileContent.includes('WALLET TYPE: Alpha descriptor wallet'));
                                 
                                 // Create wallet data in the expected format
                                 const walletData = {
@@ -3358,7 +3358,7 @@ Anyone with your master private key can access all your funds.`;
                             masterKey = masterKeyMatch[1].trim();
                         }
                         
-                        const chainCodeMatch = fileContent.match(/MASTER CHAIN CODE \(for Alpha wallet compatibility\):\s*([^\n]+)/);
+                        const chainCodeMatch = fileContent.match(/MASTER CHAIN CODE \(for (?:BIP32 HD|Alpha) wallet compatibility\):\s*([^\n]+)/);
                         if (chainCodeMatch) {
                             masterChainCode = chainCodeMatch[1].trim();
                             isAlphaWallet = true;
@@ -4421,14 +4421,14 @@ Anyone with your master private key can access all your funds.`;
                     let masterChainCode = null;
                     let isImportedAlphaWallet = false;
                     
-                    const chainCodeMatch = fileContent.match(/MASTER CHAIN CODE \(for Alpha wallet compatibility\):\s*([^\n]+)/);
+                    const chainCodeMatch = fileContent.match(/MASTER CHAIN CODE \(for (?:BIP32 HD|Alpha) wallet compatibility\):\s*([^\n]+)/);
                     if (chainCodeMatch && chainCodeMatch[1]) {
                         masterChainCode = chainCodeMatch[1].trim();
                         isImportedAlphaWallet = true;
                     }
                     
                     // Also check wallet type explicitly
-                    if (fileContent.includes('WALLET TYPE: Alpha descriptor wallet')) {
+                    if (fileContent.includes('WALLET TYPE: BIP32 hierarchical deterministic wallet') || fileContent.includes('WALLET TYPE: Alpha descriptor wallet')) {
                         isImportedAlphaWallet = true;
                     }
                     
