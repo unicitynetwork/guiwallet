@@ -4032,6 +4032,11 @@ Anyone with your master private key can access all your funds.`;
                 let updatedWallets = [];
                 
                 // Scan wallets with rate limiting
+                // Double-check data still exists after async operations
+                if (!lastScannedWalletData || !lastScannedWalletData.wallets) {
+                    return;
+                }
+                
                 for (let i = 0; i < lastScannedWalletData.wallets.length; i++) {
                     const wallet = lastScannedWalletData.wallets[i];
                     
@@ -5903,7 +5908,7 @@ Anyone with your master private key can access all your funds.`;
                                 saveScanResultsToCache(fingerprint, lastScannedWalletData);
                             }
                         } else {
-                            console.log('Cannot update cache: missing master key');
+                            // Skip cache update if no master key available (e.g., watch-only mode)
                         }
                         
                         // Update display
@@ -6334,7 +6339,7 @@ Anyone with your master private key can access all your funds.`;
                         // Otherwise, if all outputs went back to us (rare case), calculate total spent
                         if (sentToOthers > 0) {
                             netAmount = sentToOthers;
-                            console.log(`  - Using sent to others as netAmount: ${netAmount} satoshis`);
+                            // Using sent to others as netAmount
                         } else if (inputAmount > 0) {
                             // Rare case: all outputs are back to us (maybe a consolidation transaction)
                             // Show the fee amount (input - output)
