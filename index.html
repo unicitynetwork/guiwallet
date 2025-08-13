@@ -2075,8 +2075,12 @@ Anyone with your master private key can access all your funds.`;
                 // Show wallet info section
                 walletInfo.style.display = 'block';
                 
-                // Update address
-                walletAddress.textContent = addressInfo.address;
+                // Update address - show BIP32 indicator if it's a BIP32 wallet
+                if (wallet.isImportedAlphaWallet && wallet.masterChainCode) {
+                    walletAddress.innerHTML = `${addressInfo.address} <span style="color: #06d6a0; font-size: 12px; font-weight: bold;">[BIP32]</span>`;
+                } else {
+                    walletAddress.textContent = addressInfo.address;
+                }
                 walletAddressLink.href = `https://www.unicity.network/address/${addressInfo.address}`;
                 
                 // Generate QR code
@@ -4765,17 +4769,46 @@ Anyone with your master private key can access all your funds.`;
                         restoreStatus.textContent = 'This is an encrypted wallet. Please enter the password and click Decrypt.';
                         restoreStatus.style.display = 'block';
                     } else {
-                        // Normal wallet discovery flow
-                        walletScanOptions.style.display = 'block';
-                        restoreModalSubmitBtn.style.display = 'none';
-                        scanWalletsBtn.style.display = 'inline-block';
-                        scanWalletsBtn.textContent = 'Rescan Wallets';
-                        restoreStatus.style.display = 'none';
+                        // Check if it's a WIF wallet (non-BIP32 text file)
+                        let isWifWallet = false;
+                        if (file.name.endsWith('.txt')) {
+                            try {
+                                const fileContent = await file.text();
+                                // Check if it's a WIF wallet by looking for absence of chain code
+                                // and presence of standard wallet markers
+                                if ((fileContent.includes('WALLET TYPE: Standard wallet') || 
+                                    fileContent.includes('MASTER PRIVATE KEY') && 
+                                    !fileContent.includes('MASTER CHAIN CODE')) && 
+                                    !fileContent.includes('WALLET TYPE: BIP32')) {
+                                    isWifWallet = true;
+                                }
+                            } catch (e) {
+                                // Continue with normal flow if can't read
+                            }
+                        }
                         
-                        // Start scanning automatically for non-encrypted wallets
-                        setTimeout(() => {
-                            startWalletScan();
-                        }, 500); // Small delay for UI to update
+                        if (isWifWallet) {
+                            // For WIF wallets, show direct load button without scan options
+                            walletScanOptions.style.display = 'none';
+                            restoreModalSubmitBtn.style.display = 'inline-block';
+                            scanWalletsBtn.style.display = 'none';
+                            
+                            restoreStatus.className = 'info-box info';
+                            restoreStatus.textContent = 'Standard WIF wallet detected. Click Load to import.';
+                            restoreStatus.style.display = 'block';
+                        } else {
+                            // Normal wallet discovery flow for BIP32 wallets
+                            walletScanOptions.style.display = 'block';
+                            restoreModalSubmitBtn.style.display = 'none';
+                            scanWalletsBtn.style.display = 'inline-block';
+                            scanWalletsBtn.textContent = 'Rescan Wallets';
+                            restoreStatus.style.display = 'none';
+                            
+                            // Start scanning automatically for non-encrypted BIP32 wallets
+                            setTimeout(() => {
+                                startWalletScan();
+                            }, 500); // Small delay for UI to update
+                        }
                     }
                 } else {
                     walletScanOptions.style.display = 'none';
