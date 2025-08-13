@@ -7280,7 +7280,7 @@ Anyone with your master private key can access all your funds.`;
                     document.getElementById('generalTab').style.color = '#333';
                     document.getElementById('generalTab').style.fontWeight = '600';
                 } else if (tab === 'coldWallet') {
-                    document.getElementById('coldWalletTabContent').style.display = 'block';
+                    document.getElementById('coldWalletHelpTabContent').style.display = 'block';
                     document.getElementById('coldWalletTab').style.borderBottom = '3px solid #4CAF50';
                     document.getElementById('coldWalletTab').style.color = '#333';
                     document.getElementById('coldWalletTab').style.fontWeight = '600';
@@ -7312,7 +7312,7 @@ Anyone with your master private key can access all your funds.`;
                     btn.style.color = '#333';
                     btn.style.fontWeight = '600';
                 } else if (tab === 'coldWallet') {
-                    document.getElementById('coldWalletTabContent').style.display = 'block';
+                    document.getElementById('coldWalletHelpTabContent').style.display = 'block';
                     const btn = document.getElementById('coldWalletTabBtn');
                     btn.style.borderBottom = '3px solid #4CAF50';
                     btn.style.color = '#333';
@@ -9355,6 +9355,17 @@ Anyone with your master private key can access all your funds.`;
             
             <!-- General Usage Tab Content -->
             <div id="generalTabContent" class="help-tab-content" style="display: block;">
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Interface Overview</h3>
+            <ul style="margin-bottom: 20px;">
+                <li><strong>Main Page Tabs:</strong>
+                    <ul style="margin-top: 5px;">
+                        <li><strong>Wallet Tab:</strong> Main wallet operations (Create, Load, Save, Reset, Send, Broadcast)</li>
+                        <li><strong>Cold Wallet Tools Tab:</strong> UTXO management for offline transactions (Export/Import UTXOs)</li>
+                    </ul>
+                </li>
+                <li><strong>Help Tabs:</strong> This help window has two tabs - General Usage (this tab) and Cold Wallet (detailed cold wallet instructions)</li>
+            </ul>
+            
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Getting Started</h3>
             <ul style="margin-bottom: 20px;">
                 <li><strong>Create New Wallet:</strong> Click the "Create" button to generate a new wallet with a secure private key</li>
@@ -9447,7 +9458,29 @@ Anyone with your master private key can access all your funds.`;
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Sending Funds</h3>
             <ul style="margin-bottom: 20px;">
                 <li><strong>Online Mode:</strong> Enter recipient address and amount, review fees, then click Send and broadcast directly</li>
-                <li><strong>Offline Mode:</strong> See the Cold Wallet tab for detailed instructions on secure offline transaction signing</li>
+                <li><strong>Offline Mode (Cold Wallet) - Two Options:</strong>
+                    <div style="margin-top: 10px; padding: 10px; background-color: #e6f7ff; border-radius: 4px;">
+                        <strong>Option A: Prepare Transaction Online (Recommended)</strong>
+                        <ol style="margin-top: 5px; margin-bottom: 0;">
+                            <li>On online computer: Enter watch-only address, create transaction, export template</li>
+                            <li>Transfer template to offline computer via USB</li>
+                            <li>On offline computer: Import template, sign transaction, export signed file</li>
+                            <li>Back online: Click <strong>Broadcast</strong> button to send to network</li>
+                        </ol>
+                    </div>
+                    <div style="margin-top: 10px; padding: 10px; background-color: #f0f0f0; border-radius: 4px;">
+                        <strong>Option B: Prepare Transaction Offline</strong>
+                        <ol style="margin-top: 5px; margin-bottom: 0;">
+                            <li>On online computer: Go to <strong>Cold Wallet Tools tab</strong>, export UTXOs</li>
+                            <li>Transfer UTXO file to offline computer</li>
+                            <li>On offline computer: Import UTXOs, create and sign transaction</li>
+                            <li>Back online: Click <strong>Broadcast</strong> button to send</li>
+                        </ol>
+                    </div>
+                    <p style="margin-top: 10px; font-size: 13px; color: #666;">
+                        <strong>📘 Full Details:</strong> See the <strong>Cold Wallet tab</strong> in this help window for comprehensive step-by-step instructions, security setup, and best practices for cold wallet operations.
+                    </p>
+                </li>
             </ul>
             
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Transaction Broadcast Queue</h3>
@@ -9471,7 +9504,7 @@ Anyone with your master private key can access all your funds.`;
                         <li>Clear completed transactions manually or wait for auto-cleanup after 24 hours</li>
                     </ul>
                 </li>
-                <li><strong>Import & Broadcast:</strong> Import signed transactions from files and they'll be added to the queue</li>
+                <li><strong>Broadcast Button:</strong> Located in the wallet actions bar (with Create, Load, Save, Reset). Click to import and broadcast signed transaction files</li>
                 <li><strong>Max Available Button:</strong> Quickly calculate the maximum sendable amount accounting for fees</li>
             </ul>
             
@@ -9484,105 +9517,237 @@ Anyone with your master private key can access all your funds.`;
             <!-- End General Tab Content -->
             
             <!-- Cold Wallet Tab Content -->
-            <div id="coldWalletTabContent" class="help-tab-content" style="display: none;">
-            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Cold Wallet Setup & Usage</h3>
+            <div id="coldWalletHelpTabContent" class="help-tab-content" style="display: none;">
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Complete Cold Wallet Transaction Guide</h3>
             
             <div style="padding: 15px; background-color: #f0f9ff; border: 1px solid #bfdbfe; border-radius: 4px; margin-bottom: 20px;">
-                <strong style="color: #1e40af;">What is a Cold Wallet?</strong>
-                <p style="margin-top: 10px; margin-bottom: 0;">
-                    A cold wallet is a cryptocurrency wallet that is completely offline and never connects to the internet. The private keys are stored on an air-gapped computer, making it virtually impossible for hackers to access your funds remotely. This is the most secure way to store large amounts of cryptocurrency.
+                <strong style="color: #1e40af;">🔒 Cold Wallet Overview</strong>
+                <p style="margin-top: 10px; margin-bottom: 10px;">
+                    A cold wallet keeps your private keys on an permanently offline (air-gapped) computer. You prepare transactions online using watch-only mode, sign them offline, then broadcast online.
                 </p>
+                <strong>Key Components:</strong>
+                <ul style="margin-top: 5px; margin-bottom: 0;">
+                    <li><strong>Online Computer:</strong> Uses watch-only mode (public address only, no private keys)</li>
+                    <li><strong>Offline Computer:</strong> Holds private keys, never connects to internet</li>
+                    <li><strong>USB Drive:</strong> Transfers data between computers (JSON files only, never private keys)</li>
+                </ul>
             </div>
             
-            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Setting Up Your Cold Wallet</h3>
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Initial Setup</h3>
             <ol style="margin-bottom: 20px;">
-                <li><strong>Prepare an Offline Computer:</strong> Use a dedicated computer that will never connect to the internet</li>
-                <li><strong>Download This Wallet:</strong> On an online computer, click "Download This Page" link and save the HTML file</li>
-                <li><strong>Transfer to Offline Computer:</strong> Use a USB drive to move the HTML file to your offline computer</li>
-                <li><strong>Create Your Wallet:</strong> Open the HTML file on the offline computer and create a new wallet</li>
-                <li><strong>Save Your Private Key:</strong> Securely store your private key - never expose it to any online device</li>
-                <li><strong>Note Your Address:</strong> Write down your wallet address to use in watch-only mode on online computers</li>
+                <li><strong>Prepare Offline Computer:</strong>
+                    <ul style="margin-top: 5px;">
+                        <li>Use a computer that will NEVER connect to internet</li>
+                        <li>Download wallet HTML file on online computer</li>
+                        <li>Transfer HTML file via USB to offline computer</li>
+                        <li>Open wallet, click "Create" to generate new wallet</li>
+                        <li>Click "Save" to backup wallet (with password protection)</li>
+                        <li>Write down the wallet address (alpha1...)</li>
+                    </ul>
+                </li>
+                <li><strong>Setup Online Computer:</strong>
+                    <ul style="margin-top: 5px;">
+                        <li>Open wallet in browser</li>
+                        <li>DO NOT create or load any wallet</li>
+                        <li>Enter your cold wallet address in "Watch:" field</li>
+                        <li>This enables watch-only mode for monitoring</li>
+                    </ul>
+                </li>
             </ol>
             
-            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Sending Funds from Cold Wallet</h3>
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Understanding Watch-Only Mode</h3>
+            
+            <div style="padding: 15px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px; margin-bottom: 20px;">
+                <strong>🔍 What is Watch-Only Mode?</strong>
+                <p style="margin-top: 10px; margin-bottom: 10px;">
+                    Watch-only mode allows you to monitor any wallet address WITHOUT having its private key. This is the foundation of cold wallet security - you can prepare transactions on an online computer without ever exposing your private keys to the internet.
+                </p>
+                <strong>Key Features:</strong>
+                <ul style="margin-top: 5px; margin-bottom: 0;">
+                    <li>Monitor balance and transaction history</li>
+                    <li>View all available UTXOs</li>
+                    <li>Create unsigned transaction templates</li>
+                    <li>Export data for offline signing</li>
+                    <li>No risk - private keys never touch online computer</li>
+                </ul>
+            </div>
+            
+            <h4 style="margin-bottom: 10px;">How to Enable Watch-Only Mode:</h4>
+            <ol style="margin-bottom: 20px;">
+                <li><strong>Clear any loaded wallet:</strong> If you see wallet buttons, click "Reset" first</li>
+                <li><strong>Locate Watch field:</strong> The "Watch:" input appears in wallet section when no wallet is loaded</li>
+                <li><strong>Enter address:</strong> Type or paste your cold wallet's address (alpha1...)</li>
+                <li><strong>Automatic loading:</strong> Balance, UTXOs, and history load immediately</li>
+                <li><strong>Ready for transactions:</strong> You can now create unsigned transactions</li>
+            </ol>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">PATH 1: Transaction Template Method (Recommended)</h3>
+            <p style="margin-bottom: 15px; color: #666;">Create transaction template online → Sign offline → Broadcast online</p>
             
             <div style="margin-bottom: 20px;">
-                <h4 style="color: #4CAF50; margin-bottom: 10px;">Option A: Prepare Transaction Online (Recommended)</h4>
+                <h4 style="color: #4CAF50; margin-bottom: 10px;">Step-by-Step Instructions</h4>
                 <div style="padding: 15px; background-color: #e6f7ff; border-radius: 4px;">
                     <ol style="margin: 0;">
-                        <li><strong>On Online Computer (Watch-Only Mode):</strong>
+                        <li><strong>ONLINE: Create Watch-Only Session</strong>
                             <ul style="margin-top: 5px;">
-                                <li>Enter your cold wallet address in watch-only mode</li>
-                                <li>Input recipient address and amount</li>
-                                <li>Click Send to create transaction template</li>
-                                <li>Export the template (includes only required UTXOs)</li>
+                                <li>Open wallet in browser (do NOT load any wallet)</li>
+                                <li>Find "Watch:" field in wallet section</li>
+                                <li>Enter your cold wallet address (alpha1...)</li>
+                                <li>Wait for balance and UTXOs to load</li>
+                                <li>Verify the displayed balance is correct</li>
                             </ul>
                         </li>
-                        <li><strong>Transfer to Offline Computer:</strong>
+                        <li><strong>ONLINE: Create Transaction Template</strong>
                             <ul style="margin-top: 5px;">
-                                <li>Save template to USB drive</li>
-                                <li>Move USB to offline computer</li>
+                                <li>In "Destination" field: enter recipient address</li>
+                                <li>Enter amount to send</li>
+                                <li>Optional: Click "Max" for entire balance</li>
+                                <li>Click "Send" button</li>
+                                <li>System creates unsigned transaction template</li>
+                                <li>Click "Export Transaction" in popup</li>
+                                <li>Save as "unsigned_tx_[date].json" to USB drive</li>
+                                <li>Safely eject USB drive</li>
                             </ul>
                         </li>
-                        <li><strong>On Offline Computer:</strong>
+                        <li><strong>OFFLINE: Import and Sign Transaction</strong>
                             <ul style="margin-top: 5px;">
-                                <li>Import the template - transaction details auto-fill</li>
-                                <li>Review all details carefully</li>
-                                <li>Sign the transaction with your private key</li>
-                                <li>Export the signed transaction</li>
+                                <li>Insert USB into offline computer</li>
+                                <li>Open wallet HTML file</li>
+                                <li>Click "Load" and select your wallet file</li>
+                                <li>Enter password if encrypted</li>
+                                <li>Click "Load" again and select unsigned_tx_[date].json</li>
+                                <li>Transaction details auto-populate</li>
+                                <li>VERIFY: recipient address matches exactly</li>
+                                <li>VERIFY: amount is correct</li>
+                                <li>Click "Send" to sign transaction</li>
+                                <li>Click "Export Transaction"</li>
+                                <li>Save as "signed_tx_[date].json" to USB</li>
+                                <li>Safely eject USB drive</li>
                             </ul>
                         </li>
-                        <li><strong>Back to Online Computer:</strong>
+                        <li><strong>ONLINE: Broadcast Signed Transaction</strong>
                             <ul style="margin-top: 5px;">
-                                <li>Transfer signed transaction via USB</li>
-                                <li>Use "Import & Broadcast" to send to network</li>
+                                <li>Insert USB into online computer</li>
+                                <li>In wallet, stay on "Wallet" tab</li>
+                                <li>Click "Broadcast" button (next to Create, Load, Save, Reset)</li>
+                                <li>Select signed_tx_[date].json from USB</li>
+                                <li>Transaction appears in broadcast queue</li>
+                                <li>Status changes: Pending → Broadcasting → Complete</li>
+                                <li>Transaction ID appears when complete</li>
+                                <li>Funds are now sent!</li>
                             </ul>
                         </li>
                     </ol>
                 </div>
             </div>
             
+            <h3 style="margin-top: 30px; margin-bottom: 15px; color: #333;">PATH 2: UTXO Export Method (Alternative)</h3>
+            <p style="margin-bottom: 15px; color: #666;">Export UTXOs online → Create & sign offline → Broadcast online</p>
+            
             <div style="margin-bottom: 20px;">
-                <h4 style="color: #666; margin-bottom: 10px;">Option B: Prepare Transaction Offline</h4>
+                <h4 style="color: #666; margin-bottom: 10px;">Step-by-Step Instructions</h4>
                 <div style="padding: 15px; background-color: #f0f0f0; border-radius: 4px;">
                     <ol style="margin: 0;">
-                        <li><strong>On Online Computer:</strong>
+                        <li><strong>ONLINE: Export UTXOs</strong>
                             <ul style="margin-top: 5px;">
-                                <li>Enter cold wallet address in watch-only mode</li>
-                                <li>Click "Export UTXOs" to save current UTXOs</li>
+                                <li>Open wallet in browser (do NOT load any wallet)</li>
+                                <li>Enter cold wallet address in "Watch:" field</li>
+                                <li>Wait for balance and UTXOs to load</li>
+                                <li>Click on "Cold Wallet Tools" tab (top of page)</li>
+                                <li>Verify UTXOs are displayed in the list</li>
+                                <li>Click "Export UTXO Data" button</li>
+                                <li>Save as "utxos_[date].json" to USB drive</li>
+                                <li>File contains all available UTXOs with amounts</li>
+                                <li>Safely eject USB drive</li>
                             </ul>
                         </li>
-                        <li><strong>Transfer to Offline Computer:</strong>
+                        <li><strong>OFFLINE: Import UTXOs and Create Transaction</strong>
                             <ul style="margin-top: 5px;">
-                                <li>Move UTXO file via USB drive</li>
+                                <li>Insert USB into offline computer</li>
+                                <li>Open wallet HTML file</li>
+                                <li>Click "Load" and select your wallet file</li>
+                                <li>Enter password if encrypted</li>
+                                <li>Click on "Cold Wallet Tools" tab</li>
+                                <li>Click "Import UTXO Data" button</li>
+                                <li>Select utxos_[date].json from USB</li>
+                                <li>UTXOs appear in the list below</li>
+                                <li>Click back to "Wallet" tab</li>
+                                <li>In "Destination": enter recipient address</li>
+                                <li>Enter amount to send</li>
+                                <li>Fee is calculated automatically</li>
+                                <li>Optional: Click "Max" for entire balance minus fee</li>
                             </ul>
                         </li>
-                        <li><strong>On Offline Computer:</strong>
+                        <li><strong>OFFLINE: Sign and Export Transaction</strong>
                             <ul style="margin-top: 5px;">
-                                <li>Import UTXOs from file</li>
-                                <li>Enter recipient address and amount</li>
-                                <li>Review fees and create transaction</li>
-                                <li>Sign and export the transaction</li>
+                                <li>VERIFY: recipient address is correct</li>
+                                <li>VERIFY: amount and fee are acceptable</li>
+                                <li>Click "Send" button</li>
+                                <li>Review confirmation dialog carefully</li>
+                                <li>Click "Export Transaction"</li>
+                                <li>Save as "signed_tx_[date].json" to USB</li>
+                                <li>Transaction is signed with your private key</li>
+                                <li>Safely eject USB drive</li>
                             </ul>
                         </li>
-                        <li><strong>Back to Online Computer:</strong>
+                        <li><strong>ONLINE: Broadcast Signed Transaction</strong>
                             <ul style="margin-top: 5px;">
-                                <li>Transfer signed transaction via USB</li>
-                                <li>Use "Import & Broadcast" to send</li>
+                                <li>Insert USB into online computer</li>
+                                <li>In wallet, stay on "Wallet" tab</li>
+                                <li>Click "Broadcast" button (next to Create, Load, Save, Reset)</li>
+                                <li>Select signed_tx_[date].json from USB</li>
+                                <li>Transaction appears in broadcast queue</li>
+                                <li>Status changes: Pending → Broadcasting → Complete</li>
+                                <li>Transaction ID appears when complete</li>
+                                <li>Funds are now sent!</li>
                             </ul>
                         </li>
                     </ol>
                 </div>
             </div>
+            
+            <h3 style="margin-top: 30px; margin-bottom: 15px; color: #333;">Important Notes & Tips</h3>
+            
+            <div style="padding: 15px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px; margin-bottom: 20px;">
+                <strong>⚠️ Critical Points:</strong>
+                <ul style="margin-top: 10px; margin-bottom: 0;">
+                    <li><strong>File Naming:</strong> Use dates in filenames to avoid confusion (unsigned_tx_2024-01-15.json)</li>
+                    <li><strong>Double Check:</strong> ALWAYS verify recipient address character-by-character on offline computer</li>
+                    <li><strong>USB Safety:</strong> Use a dedicated USB only for wallet operations, never for general use</li>
+                    <li><strong>Watch-Only Field:</strong> Only appears when NO wallet is loaded (no Create/Load)</li>
+                    <li><strong>Transaction Template:</strong> Contains UTXOs and transaction details but NO signature</li>
+                    <li><strong>Signed Transaction:</strong> Contains complete transaction ready for broadcast</li>
+                </ul>
+            </div>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Troubleshooting</h3>
+            <ul style="margin-bottom: 20px;">
+                <li><strong>Watch field not visible?</strong> Click "Reset" to clear any loaded wallet first</li>
+                <li><strong>UTXOs not showing?</strong> Ensure you're connected (green connection status)</li>
+                <li><strong>Can't import transaction?</strong> Use "Load" button, not "Broadcast" for unsigned files</li>
+                <li><strong>Broadcast fails?</strong> Check connection status and transaction queue for errors</li>
+                <li><strong>Wrong balance?</strong> Click "Rescan Wallets" if using BIP32 wallet</li>
+            </ul>
             
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Security Best Practices</h3>
             <ul style="margin-bottom: 20px;">
-                <li><strong>Never Connect:</strong> The offline computer should NEVER connect to the internet</li>
-                <li><strong>Clean USB:</strong> Use a dedicated USB drive, scan for malware before each use</li>
-                <li><strong>Verify Addresses:</strong> Always double-check addresses when creating transactions</li>
-                <li><strong>Physical Security:</strong> Store offline computer in a secure location</li>
-                <li><strong>Backup Keys:</strong> Keep multiple secure backups of your private keys</li>
-                <li><strong>Test First:</strong> Practice with small amounts before moving large funds</li>
+                <li><strong>Air Gap:</strong> Offline computer must NEVER connect to internet, even temporarily</li>
+                <li><strong>USB Hygiene:</strong> 
+                    <ul style="margin-top: 5px;">
+                        <li>Use dedicated USB for wallet operations only</li>
+                        <li>Format USB between uses if possible</li>
+                        <li>Never plug wallet USB into untrusted computers</li>
+                    </ul>
+                </li>
+                <li><strong>Verification:</strong> Always verify on offline computer:
+                    <ul style="margin-top: 5px;">
+                        <li>Recipient address (every character)</li>
+                        <li>Amount being sent</li>
+                        <li>Fee is reasonable (usually 0.0001-0.001 ALPHA)</li>
+                    </ul>
+                </li>
+                <li><strong>Backups:</strong> Keep multiple encrypted backups of wallet in different physical locations</li>
+                <li><strong>Practice:</strong> Test entire process with tiny amounts first (0.001 ALPHA)</li>
             </ul>
             
             <div style="padding: 15px; background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 4px;">
@@ -9596,17 +9761,6 @@ Anyone with your master private key can access all your funds.`;
             </div>
             </div>
             <!-- End Cold Wallet Tab Content -->
-            
-            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Watch-Only Mode</h3>
-            <ul style="margin-bottom: 20px;">
-                <li>Enter any Alpha address in the watch-only field</li>
-                <li>Monitor balance and transactions without private keys</li>
-                <li>Perfect for cold storage monitoring</li>
-            </ul>
-            
-            <p style="margin-top: 20px; padding: 15px; background-color: #f0f9ff; border-radius: 4px;">
-                <em>All wallet data is stored locally on your device. We never have access to your private keys.</em>
-            </p>
         </div>
     </div>
 
