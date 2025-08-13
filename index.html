@@ -3201,6 +3201,33 @@ Anyone with your master private key can access all your funds.`;
                     return;
                 }
                 
+                // Check if this is a rescan - clear cache if so
+                if (scanWalletsBtn.textContent === 'Rescan Wallets') {
+                    // Clear all cached scan results from localStorage
+                    const keysToRemove = [];
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        if (key && (key.startsWith('walletScan_') || key === 'lastScannedWalletData' || key === 'lastLazyScanTime')) {
+                            keysToRemove.push(key);
+                        }
+                    }
+                    
+                    // Remove all scan-related keys
+                    keysToRemove.forEach(key => {
+                        localStorage.removeItem(key);
+                        console.log('Cleared cached data:', key);
+                    });
+                    
+                    // Clear in-memory data
+                    lastScannedWalletData = null;
+                    scannedWallets = [];
+                    
+                    // Update UI to show we're doing a fresh scan
+                    restoreStatus.className = 'info-box info';
+                    restoreStatus.textContent = 'Cache cleared. Starting fresh wallet scan...';
+                    restoreStatus.style.display = 'block';
+                }
+                
                 // Check if we're in decrypt mode
                 if (scanWalletsBtn.textContent === 'Decrypt') {
                     // Handle encrypted wallet decryption
@@ -3343,8 +3370,9 @@ Anyone with your master private key can access all your funds.`;
                     // Generate wallet fingerprint
                     const fingerprint = generateWalletFingerprint(masterKey, masterChainCode);
                     
-                    // Check for cached results
-                    const cachedResults = loadScanResultsFromCache(fingerprint);
+                    // Check for cached results (skip if we just cleared the cache for rescan)
+                    const isRescan = scanWalletsBtn.textContent === 'Rescan Wallets';
+                    const cachedResults = !isRescan ? loadScanResultsFromCache(fingerprint) : null;
                     if (cachedResults && cachedResults.wallets && cachedResults.wallets.length > 0) {
                         
                         // Use cached results but deduplicate first
@@ -4277,6 +4305,23 @@ Anyone with your master private key can access all your funds.`;
                     restoreStatus.style.display = 'block';
                     return;
                 }
+                
+                // Clear any existing scan cache when loading a new wallet
+                const keysToRemove = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && (key.startsWith('walletScan_') || key === 'lastScannedWalletData' || key === 'lastLazyScanTime')) {
+                        keysToRemove.push(key);
+                    }
+                }
+                keysToRemove.forEach(key => {
+                    localStorage.removeItem(key);
+                    console.log('Cleared cached scan data on wallet load:', key);
+                });
+                
+                // Clear in-memory scan data
+                lastScannedWalletData = null;
+                scannedWallets = [];
                 
                 try {
                     // Check if this is a wallet.dat file (SQLite)
