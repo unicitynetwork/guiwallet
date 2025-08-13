@@ -965,7 +965,14 @@
                 // Get first 10 letters and last 6 letters
                 const first10 = firstAddress.substring(0, 10);
                 const last6 = firstAddress.substring(firstAddress.length - 6);
-                filename = `${first10}_${last6}.txt`;
+                
+                // Add wallet type suffix
+                let walletType = '_wif'; // Default for standard wallets
+                if (wallet.isImportedAlphaWallet && wallet.masterChainCode) {
+                    walletType = '_bip32';
+                }
+                
+                filename = `${first10}_${last6}${walletType}.txt`;
             }
             
             saveModal.style.display = 'flex';
