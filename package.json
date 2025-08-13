@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "elliptic": "^6.6.1",
-    "sqlite3": "^5.1.7"
-  }
-}
