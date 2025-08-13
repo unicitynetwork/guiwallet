@@ -17,18 +17,18 @@ The Unicity WEB GUI Wallet serves as the primary interface for:
 
 ## Project Structure
 
-- `index.html` - Single self-contained HTML file containing the entire wallet application with embedded:
+- `index.html` - Single self-contained HTML file (9384 lines) containing the entire wallet application with embedded:
   - CryptoJS library for cryptographic operations
-  - Elliptic curve cryptography implementation
+  - Elliptic curve cryptography implementation (embedded elliptic.js)
   - BIP32/BIP44 HD wallet functionality
   - Bech32 address encoding for SegWit support
   - QR code generation
   - Fulcrum server integration
   - Complete UI and wallet logic
 - `alpha-migrate.sh` - Shell script for migrating funds from wallet to Alpha node
-- `ref_materials/` - Reference materials directory
-- `README.md` - User documentation
-- `CLAUDE.md` - This file (AI assistant guidance)
+- `ref_materials/` - Contains test wallet files (test3.dat, test4.dat, test_wallet.dat) and alpha binary
+- `package.json` - Node.js dependencies (elliptic ^6.6.1)
+- Various test scripts (`test_*.js`, `analyze_*.js`, etc.) for wallet analysis and debugging
 
 ## Key Architecture Components
 
@@ -41,7 +41,7 @@ The Unicity WEB GUI Wallet serves as the primary interface for:
 The wallet uses several embedded cryptographic libraries:
 - **CryptoJS**: Provides AES encryption, PBKDF2 key derivation, and SHA-512 hashing
 - **Elliptic**: Implements secp256k1 elliptic curve operations for Bitcoin/Alpha compatibility
-- **Custom BIP32/BIP44**: HD wallet derivation following Bitcoin standards
+- **Custom BIP32/BIP44**: HD wallet derivation with path `m/44'/0'/{index}'`
 - **Bech32**: SegWit address encoding for `alpha1` prefixed addresses
 
 ### Security Model
@@ -78,11 +78,13 @@ The wallet uses several embedded cryptographic libraries:
   - **Legacy non-HD wallets**: Individual `key` records
 - Extracts private keys from DER-encoded format
 - Uses first available private key as master key
+- Automatically scans for addresses when restoring BIP32 wallets
 
 ### Transaction Management
 - `createTransaction`: Build transactions with UTXO selection
 - `signTransaction`: Offline signing capability
 - `broadcastTransaction`: Submit to network via Fulcrum
+- `broadcastTransactions`: Queue multiple transactions for broadcast
 - `updateTransactionHistory`: Paginated transaction display (20 per page)
 - `updateUtxoListDisplay`: Paginated UTXO display (20 per page)
 
@@ -111,7 +113,29 @@ python3 -m http.server 8000
 
 # Make the migration script executable
 chmod +x alpha-migrate.sh
+
+# For Node.js test scripts
+npm install  # Install elliptic dependency
+node test_bip32.js  # Run BIP32 tests
 ```
+
+## Migration to Alpha Core
+
+The wallet includes tools for migrating funds to Alpha Core nodes:
+
+```bash
+# Use the included migration script
+./alpha-migrate.sh <private_key_wif> <wallet_name>
+
+# Example:
+./alpha-migrate.sh KxaRsSTC8uVbh6eJDwiyRu8oGgWpkFVFq7ff6QbaMTJfBHNZTMpV my_wallet
+```
+
+The migration script:
+1. Creates or uses an existing Alpha wallet
+2. Imports the private key with proper SegWit descriptors using `wpkh()` format
+3. Verifies the import and checks for available funds
+4. Provides instructions for blockchain rescanning if needed
 
 ## Important Technical Notes
 
@@ -121,7 +145,9 @@ chmod +x alpha-migrate.sh
 4. **Key Export**: The wallet exports the child private key, not the master key
 5. **Address Format**: Uses SegWit Bech32 encoding with custom `alpha1` prefix
 6. **Pagination**: Both transactions and UTXOs display 20 items per page
-7. **Future-Ready**: Architecture designed to support offchain layer when implemented
+7. **BIP32 Wallet Scanning**: When restoring BIP32 wallets, automatically scans addresses to find all funds
+8. **Wallet Type Detection**: Auto-detects wallet.dat format (descriptor vs legacy)
+9. **Future-Ready**: Architecture designed to support offchain layer when implemented
 
 ## Testing Considerations
 
@@ -137,6 +163,7 @@ chmod +x alpha-migrate.sh
   - Descriptor wallets (modern format with DER-encoded keys)
   - Legacy HD wallets (with hdchain records)
   - Legacy non-HD wallets (individual keys)
+- Test BIP32 wallet restoration with automatic address scanning
 
 ## Future Integration Points
 
