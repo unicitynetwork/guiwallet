@@ -748,7 +748,15 @@
                 Security Notes
             </a>
         </div>
+        
+        <!-- Main Tab Navigation -->
+        <div style="display: flex; gap: 0; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0; background-color: white; border-radius: 8px 8px 0 0;">
+            <button id="walletTabBtn" class="main-tab-button active" onclick="switchMainTab('wallet')" style="flex: 1; padding: 12px 20px; background: white; border: none; border-bottom: 3px solid #4CAF50; color: #333; font-weight: 600; cursor: pointer; font-size: 14px; transition: all 0.3s;">Wallet</button>
+            <button id="coldWalletTabBtn" class="main-tab-button" onclick="switchMainTab('coldWallet')" style="flex: 1; padding: 12px 20px; background: white; border: none; border-bottom: 3px solid transparent; color: #666; cursor: pointer; font-size: 14px; transition: all 0.3s;">Cold Wallet Tools</button>
+        </div>
 
+        <!-- Wallet Tab Content -->
+        <div id="walletTabContent" class="main-tab-content" style="display: block;">
         <div id="wallet-section" class="card-section">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2 style="margin: 0;">My Wallet</h2>
@@ -858,7 +866,18 @@
                     </svg>
                     Reset
                 </button>
+                <button id="importBroadcastBtn" onclick="document.getElementById('txFileInput').click()" class="wallet-button" style="background-color: #fbbf24;" disabled title="Import and broadcast signed transactions">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path>
+                        <path d="M12 12v9"></path>
+                        <path d="m8 17 4 4 4-4"></path>
+                    </svg>
+                    Broadcast
+                </button>
             </div>
+            
+            <!-- Hidden file input for transaction import -->
+            <input type="file" id="txFileInput" accept=".json" style="display: none;">
 
             <!-- Compact Send Transaction -->
             <div id="sendTransactionSection" style="margin-top: 15px; margin-bottom: 15px;">
@@ -885,11 +904,13 @@
                 </div>
             </div>
         </div>
+        </div>
+        <!-- End Wallet Tab Content -->
         
-        
-        <!-- RPC Connection Section -->
+        <!-- Cold Wallet Tab Content -->
+        <div id="coldWalletTabContent" class="main-tab-content" style="display: none;">
         <div id="rpc-section" class="card-section">
-            <h2>Cold Wallet</h2>
+            <h2>Cold Wallet Tools</h2>
             
             <div id="connectionStatus" style="margin-top: 20px; display: none;">
                 <div class="info-box" style="background-color: rgba(255, 186, 8, 0.1); border-left: 4px solid #ffba08;">
@@ -897,18 +918,6 @@
                 </div>
             </div>
             
-            <!-- Import & Broadcast Transactions -->
-            <div style="margin-top: 20px;">
-                <input type="file" id="txFileInput" accept=".json" style="display: none;">
-                <button id="importBroadcastBtn" onclick="document.getElementById('txFileInput').click()" class="wallet-button" style="background-color: #fbbf24;" disabled>
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="7 10 12 15 17 10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
-                    Import & Broadcast Transactions
-                </button>
-            </div>
             
             <!-- UTXO List Display -->
             <div id="utxoListContainer" style="margin-top: 15px;">
@@ -948,6 +957,8 @@
             <!-- Hidden file input for UTXO import -->
             <input type="file" id="utxoFileInput" accept=".json" style="display: none;">
         </div>
+        </div>
+        <!-- End Cold Wallet Tab Content -->
         
     </div>
 
@@ -7246,6 +7257,69 @@ Anyone with your master private key can access all your funds.`;
                 document.getElementById('helpModal').style.display = 'none';
             }
             
+            // Switch help modal tabs
+            window.switchHelpTab = function(tab) {
+                // Hide all tab contents
+                const tabContents = document.querySelectorAll('.help-tab-content');
+                tabContents.forEach(content => {
+                    content.style.display = 'none';
+                });
+                
+                // Remove active class from all tab buttons
+                const tabButtons = document.querySelectorAll('.help-tab-button');
+                tabButtons.forEach(button => {
+                    button.style.borderBottom = '3px solid transparent';
+                    button.style.color = '#666';
+                    button.style.fontWeight = 'normal';
+                });
+                
+                // Show selected tab content
+                if (tab === 'general') {
+                    document.getElementById('generalTabContent').style.display = 'block';
+                    document.getElementById('generalTab').style.borderBottom = '3px solid #4CAF50';
+                    document.getElementById('generalTab').style.color = '#333';
+                    document.getElementById('generalTab').style.fontWeight = '600';
+                } else if (tab === 'coldWallet') {
+                    document.getElementById('coldWalletTabContent').style.display = 'block';
+                    document.getElementById('coldWalletTab').style.borderBottom = '3px solid #4CAF50';
+                    document.getElementById('coldWalletTab').style.color = '#333';
+                    document.getElementById('coldWalletTab').style.fontWeight = '600';
+                }
+            }
+            
+            // Switch main tabs
+            window.switchMainTab = function(tab) {
+                // Hide all tab contents
+                const tabContents = document.querySelectorAll('.main-tab-content');
+                tabContents.forEach(content => {
+                    content.style.display = 'none';
+                });
+                
+                // Remove active class from all tab buttons
+                const tabButtons = document.querySelectorAll('.main-tab-button');
+                tabButtons.forEach(button => {
+                    button.style.borderBottom = '3px solid transparent';
+                    button.style.color = '#666';
+                    button.style.fontWeight = 'normal';
+                    button.style.backgroundColor = 'white';
+                });
+                
+                // Show selected tab content
+                if (tab === 'wallet') {
+                    document.getElementById('walletTabContent').style.display = 'block';
+                    const btn = document.getElementById('walletTabBtn');
+                    btn.style.borderBottom = '3px solid #4CAF50';
+                    btn.style.color = '#333';
+                    btn.style.fontWeight = '600';
+                } else if (tab === 'coldWallet') {
+                    document.getElementById('coldWalletTabContent').style.display = 'block';
+                    const btn = document.getElementById('coldWalletTabBtn');
+                    btn.style.borderBottom = '3px solid #4CAF50';
+                    btn.style.color = '#333';
+                    btn.style.fontWeight = '600';
+                }
+            }
+            
             // Open disclaimer modal
             window.openDisclaimerModal = function() {
                 document.getElementById('disclaimerModal').style.display = 'block';
@@ -9273,6 +9347,14 @@ Anyone with your master private key can access all your funds.`;
             <span class="close-modal" onclick="closeHelpModal()">&times;</span>
             <h2>How to use this wallet</h2>
             
+            <!-- Tab buttons -->
+            <div style="display: flex; gap: 10px; margin-top: 20px; border-bottom: 2px solid #e0e0e0;">
+                <button id="generalTab" class="help-tab-button active" onclick="switchHelpTab('general')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid #4CAF50; color: #333; font-weight: 600; cursor: pointer;">General Usage</button>
+                <button id="coldWalletTab" class="help-tab-button" onclick="switchHelpTab('coldWallet')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: #666; cursor: pointer;">Cold Wallet</button>
+            </div>
+            
+            <!-- General Usage Tab Content -->
+            <div id="generalTabContent" class="help-tab-content" style="display: block;">
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Getting Started</h3>
             <ul style="margin-bottom: 20px;">
                 <li><strong>Create New Wallet:</strong> Click the "Create" button to generate a new wallet with a secure private key</li>
@@ -9365,32 +9447,7 @@ Anyone with your master private key can access all your funds.`;
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Sending Funds</h3>
             <ul style="margin-bottom: 20px;">
                 <li><strong>Online Mode:</strong> Enter recipient address and amount, review fees, then click Send and broadcast directly</li>
-                <li><strong>Offline Mode (Cold Wallet) - Two Options:</strong>
-                    <div style="margin-top: 10px; padding: 10px; background-color: #e6f7ff; border-radius: 4px;">
-                        <strong>Option A: Prepare Transaction Online (Recommended)</strong>
-                        <ol style="margin-top: 5px;">
-                            <li>In watch-only mode, enter recipient address and amount, then click Send</li>
-                            <li>Export the transaction template (includes only required UTXOs)</li>
-                            <li>Transfer the template file to your offline computer</li>
-                            <li>Import the template - transaction details will auto-fill</li>
-                            <li>Review and sign the transaction offline</li>
-                            <li>Transfer back to online computer and broadcast using "Import & Broadcast"</li>
-                        </ol>
-                    </div>
-                    <div style="margin-top: 10px; padding: 10px; background-color: #f0f0f0; border-radius: 4px;">
-                        <strong>Option B: Prepare Transaction Offline</strong>
-                        <ol style="margin-top: 5px;">
-                            <li>Export UTXOs as JSON file at online computer using "Export UTXOs"</li>
-                            <li>Transfer the UTXO file to your offline computer</li>
-                            <li>Import UTXOs and create the transaction offline by setting the recipient address, amount, review fees</li>
-                            <li>At the offline computer, sign and export the transaction by clicking Send</li>
-                            <li>Transfer back to online computer and broadcast using "Import & Broadcast"</li>
-                        </ol>
-                    </div>
-                    <p style="margin-top: 10px; padding: 10px; background-color: #f3f4f6; border-radius: 4px; font-size: 13px;">
-                        <strong>Note on Cold Wallets:</strong> The wallet used to create and sign transactions should be stored only at an offline machine (cold wallet). The wallet state (UTXOs into the wallet's address) is read at the online machine in watch-only mode (we provide only public address at the online machine). The full wallet is at the isolated offline machine only. This is a very secure way of storing large funds, since it is not possible to access the offline machine, and thus hack it and spend the owner's funds. On the other hand, it takes more effort to follow this flow every time the owner needs to spend funds. That is why it is called a "Cold wallet". Note however, that we do not need the offline machine in order to receive funds to the cold wallet - it is just enough to inform the sender about the cold wallet's public address. This is absolutely safe to do.
-                    </p>
-                </li>
+                <li><strong>Offline Mode:</strong> See the Cold Wallet tab for detailed instructions on secure offline transaction signing</li>
             </ul>
             
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Transaction Broadcast Queue</h3>
@@ -9422,6 +9479,123 @@ Anyone with your master private key can access all your funds.`;
             <ul style="margin-bottom: 20px;">
                 <li><strong>Reset Wallet:</strong> Click the "Reset" button to clear the current wallet data and start fresh</li>
             </ul>
+            
+            </div>
+            <!-- End General Tab Content -->
+            
+            <!-- Cold Wallet Tab Content -->
+            <div id="coldWalletTabContent" class="help-tab-content" style="display: none;">
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Cold Wallet Setup & Usage</h3>
+            
+            <div style="padding: 15px; background-color: #f0f9ff; border: 1px solid #bfdbfe; border-radius: 4px; margin-bottom: 20px;">
+                <strong style="color: #1e40af;">What is a Cold Wallet?</strong>
+                <p style="margin-top: 10px; margin-bottom: 0;">
+                    A cold wallet is a cryptocurrency wallet that is completely offline and never connects to the internet. The private keys are stored on an air-gapped computer, making it virtually impossible for hackers to access your funds remotely. This is the most secure way to store large amounts of cryptocurrency.
+                </p>
+            </div>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Setting Up Your Cold Wallet</h3>
+            <ol style="margin-bottom: 20px;">
+                <li><strong>Prepare an Offline Computer:</strong> Use a dedicated computer that will never connect to the internet</li>
+                <li><strong>Download This Wallet:</strong> On an online computer, click "Download This Page" link and save the HTML file</li>
+                <li><strong>Transfer to Offline Computer:</strong> Use a USB drive to move the HTML file to your offline computer</li>
+                <li><strong>Create Your Wallet:</strong> Open the HTML file on the offline computer and create a new wallet</li>
+                <li><strong>Save Your Private Key:</strong> Securely store your private key - never expose it to any online device</li>
+                <li><strong>Note Your Address:</strong> Write down your wallet address to use in watch-only mode on online computers</li>
+            </ol>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Sending Funds from Cold Wallet</h3>
+            
+            <div style="margin-bottom: 20px;">
+                <h4 style="color: #4CAF50; margin-bottom: 10px;">Option A: Prepare Transaction Online (Recommended)</h4>
+                <div style="padding: 15px; background-color: #e6f7ff; border-radius: 4px;">
+                    <ol style="margin: 0;">
+                        <li><strong>On Online Computer (Watch-Only Mode):</strong>
+                            <ul style="margin-top: 5px;">
+                                <li>Enter your cold wallet address in watch-only mode</li>
+                                <li>Input recipient address and amount</li>
+                                <li>Click Send to create transaction template</li>
+                                <li>Export the template (includes only required UTXOs)</li>
+                            </ul>
+                        </li>
+                        <li><strong>Transfer to Offline Computer:</strong>
+                            <ul style="margin-top: 5px;">
+                                <li>Save template to USB drive</li>
+                                <li>Move USB to offline computer</li>
+                            </ul>
+                        </li>
+                        <li><strong>On Offline Computer:</strong>
+                            <ul style="margin-top: 5px;">
+                                <li>Import the template - transaction details auto-fill</li>
+                                <li>Review all details carefully</li>
+                                <li>Sign the transaction with your private key</li>
+                                <li>Export the signed transaction</li>
+                            </ul>
+                        </li>
+                        <li><strong>Back to Online Computer:</strong>
+                            <ul style="margin-top: 5px;">
+                                <li>Transfer signed transaction via USB</li>
+                                <li>Use "Import & Broadcast" to send to network</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </div>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <h4 style="color: #666; margin-bottom: 10px;">Option B: Prepare Transaction Offline</h4>
+                <div style="padding: 15px; background-color: #f0f0f0; border-radius: 4px;">
+                    <ol style="margin: 0;">
+                        <li><strong>On Online Computer:</strong>
+                            <ul style="margin-top: 5px;">
+                                <li>Enter cold wallet address in watch-only mode</li>
+                                <li>Click "Export UTXOs" to save current UTXOs</li>
+                            </ul>
+                        </li>
+                        <li><strong>Transfer to Offline Computer:</strong>
+                            <ul style="margin-top: 5px;">
+                                <li>Move UTXO file via USB drive</li>
+                            </ul>
+                        </li>
+                        <li><strong>On Offline Computer:</strong>
+                            <ul style="margin-top: 5px;">
+                                <li>Import UTXOs from file</li>
+                                <li>Enter recipient address and amount</li>
+                                <li>Review fees and create transaction</li>
+                                <li>Sign and export the transaction</li>
+                            </ul>
+                        </li>
+                        <li><strong>Back to Online Computer:</strong>
+                            <ul style="margin-top: 5px;">
+                                <li>Transfer signed transaction via USB</li>
+                                <li>Use "Import & Broadcast" to send</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </div>
+            </div>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Security Best Practices</h3>
+            <ul style="margin-bottom: 20px;">
+                <li><strong>Never Connect:</strong> The offline computer should NEVER connect to the internet</li>
+                <li><strong>Clean USB:</strong> Use a dedicated USB drive, scan for malware before each use</li>
+                <li><strong>Verify Addresses:</strong> Always double-check addresses when creating transactions</li>
+                <li><strong>Physical Security:</strong> Store offline computer in a secure location</li>
+                <li><strong>Backup Keys:</strong> Keep multiple secure backups of your private keys</li>
+                <li><strong>Test First:</strong> Practice with small amounts before moving large funds</li>
+            </ul>
+            
+            <div style="padding: 15px; background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 4px;">
+                <strong style="color: #dc2626;">⚠️ Important Reminders:</strong>
+                <ul style="margin-top: 10px; margin-bottom: 0;">
+                    <li>Receiving funds only requires sharing your public address - this is always safe</li>
+                    <li>The private key should ONLY exist on the offline computer</li>
+                    <li>Cold wallets require more effort but provide maximum security for large holdings</li>
+                    <li>Always verify transaction details on the offline computer before signing</li>
+                </ul>
+            </div>
+            </div>
+            <!-- End Cold Wallet Tab Content -->
             
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Watch-Only Mode</h3>
             <ul style="margin-bottom: 20px;">
