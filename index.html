@@ -2689,6 +2689,45 @@ Anyone with your master private key can access all your funds.`;
                 return new Uint8Array(bytes);
             }
             
+            // Base58 decode function for decoding extended keys
+            function base58Decode(str) {
+                const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+                const ALPHABET_MAP = {};
+                for (let i = 0; i < ALPHABET.length; i++) {
+                    ALPHABET_MAP[ALPHABET[i]] = i;
+                }
+                
+                // Count leading zeros (represented as '1' in base58)
+                let zeros = 0;
+                for (let i = 0; i < str.length && str[i] === '1'; i++) {
+                    zeros++;
+                }
+                
+                // Decode from base58 to number
+                let num = BigInt(0);
+                for (let i = 0; i < str.length; i++) {
+                    const char = str[i];
+                    if (!(char in ALPHABET_MAP)) {
+                        throw new Error('Invalid base58 character: ' + char);
+                    }
+                    num = num * BigInt(58) + BigInt(ALPHABET_MAP[char]);
+                }
+                
+                // Convert to bytes
+                const bytes = [];
+                while (num > 0) {
+                    bytes.unshift(Number(num % BigInt(256)));
+                    num = num / BigInt(256);
+                }
+                
+                // Add leading zeros
+                for (let i = 0; i < zeros; i++) {
+                    bytes.unshift(0);
+                }
+                
+                return new Uint8Array(bytes);
+            }
+            
             // Restore Modal Elements
             const restoreModal = document.getElementById('restoreModal');
             const restoreFileInput = document.getElementById('restoreFileInput');
@@ -2822,60 +2861,31 @@ Anyone with your master private key can access all your funds.`;
                     while ((index = findPattern(data, descriptorKeyPattern, index)) !== -1) {
                         walletInfo.isDescriptorWallet = true;
                         
-                        // Skip the pattern and look for public key
-                        let offset = index + descriptorKeyPattern.length;
-                        
-                        // Find compressed public key (33 bytes starting with 0x02 or 0x03)
-                        for (let skip = 0; skip < 100 && offset + skip + 33 < data.length; skip++) {
-                            const pubKeyCandidate = data.slice(offset + skip, offset + skip + 33);
-                            if ((pubKeyCandidate[0] === 0x02 || pubKeyCandidate[0] === 0x03)) {
-                                // Look for private key after public key
-                                // Based on test_wallet.dat analysis, the private key is stored
-                                // immediately after the public key in DER format
-                                let privKeyFound = false;
+                        // Search for DER-encoded private key directly after walletdescriptorkey
+                        // Based on our analysis, the key can be up to 200 bytes after the pattern
+                        let privKeyFound = false;
+                        for (let checkPos = index + descriptorKeyPattern.length; 
+                             checkPos < Math.min(index + descriptorKeyPattern.length + 200, data.length - 40); 
+                             checkPos++) {
+                            
+                            // Look for DER sequence markers
+                            // Pattern: d30201010420 (the pattern that actually works)
+                            if (data[checkPos] === 0xd3 &&
+                                data[checkPos + 1] === 0x02 &&
+                                data[checkPos + 2] === 0x01 &&
+                                data[checkPos + 3] === 0x01 &&
+                                data[checkPos + 4] === 0x04 &&
+                                data[checkPos + 5] === 0x20) {
                                 
-                                // Check if private key follows immediately (0-20 bytes after pubkey)
-                                for (let privOffset = 0; privOffset < 20 && offset + skip + 33 + privOffset + 50 < data.length; privOffset++) {
-                                    const checkPos = offset + skip + 33 + privOffset;
-                                    
-                                    // Look for DER sequence marker: d63081d30201010420
-                                    if (data[checkPos] === 0xd6 && 
-                                        data[checkPos + 1] === 0x30 && 
-                                        data[checkPos + 2] === 0x81 && 
-                                        data[checkPos + 3] === 0xd3 &&
-                                        data[checkPos + 4] === 0x02 &&
-                                        data[checkPos + 5] === 0x01 &&
-                                        data[checkPos + 6] === 0x01 &&
-                                        data[checkPos + 7] === 0x04 &&
-                                        data[checkPos + 8] === 0x20) {
-                                        
-                                        // Extract the 32-byte private key that follows
-                                        const privKey = data.slice(checkPos + 9, checkPos + 41);
-                                        const privKeyHex = Array.from(privKey).map(b => b.toString(16).padStart(2, '0')).join('');
-                                        
-                                        if (isValidPrivateKey(privKeyHex)) {
-                                            walletInfo.descriptorKeys.push(privKeyHex);
-                                            privKeyFound = true;
-                                            break;
-                                        }
-                                    }
-                                    
-                                    // Alternative: Look for standard DER SEQUENCE (0x30)
-                                    if (!privKeyFound && data[checkPos] === 0x30) {
-                                        const derData = data.slice(checkPos, Math.min(checkPos + 200, data.length));
-                                        const privKey = parseDERPrivateKey(derData);
-                                        
-                                        if (privKey) {
-                                            const privKeyHex = Array.from(privKey).map(b => b.toString(16).padStart(2, '0')).join('');
-                                            if (isValidPrivateKey(privKeyHex)) {
-                                                walletInfo.descriptorKeys.push(privKeyHex);
-                                                privKeyFound = true;
-                                                break;
-                                            }
-                                        }
-                                    }
+                                // Extract the 32-byte private key
+                                const privKey = data.slice(checkPos + 6, checkPos + 38);
+                                const privKeyHex = Array.from(privKey).map(b => b.toString(16).padStart(2, '0')).join('');
+                                
+                                if (isValidPrivateKey(privKeyHex)) {
+                                    walletInfo.descriptorKeys.push(privKeyHex);
+                                    privKeyFound = true;
+                                    break;
                                 }
-                                break;
                             }
                         }
                         
@@ -2948,8 +2958,8 @@ Anyone with your master private key can access all your funds.`;
                         childPrivateKey: null,
                         isImportedAlphaWallet: true, // Mark as imported from Alpha wallet.dat
                         // For Alpha descriptor wallets, we need the chain code
-                        // This is the chain code from the xpub in the descriptors
-                        masterChainCode: 'ef9b229fa43b5321834bce029dcca011db64764538f06e5b50b9dd5f38d16678'
+                        // This will be extracted from the wallet.dat file
+                        masterChainCode: result.masterChainCode
                     };
                     
                     // Update global reference
@@ -3439,7 +3449,8 @@ Anyone with your master private key can access all your funds.`;
                             for (let privOffset = 0; privOffset < 20 && offset + skip + 33 + privOffset + 50 < data.length; privOffset++) {
                                 const checkPos = offset + skip + 33 + privOffset;
                                 
-                                // Look for DER sequence marker: d63081d30201010420
+                                // Look for DER sequence markers
+                                // Pattern 1: d63081d30201010420 (full DER sequence)
                                 if (data[checkPos] === 0xd6 && 
                                     data[checkPos + 1] === 0x30 && 
                                     data[checkPos + 2] === 0x81 && 
@@ -3456,7 +3467,27 @@ Anyone with your master private key can access all your funds.`;
                                     
                                     if (isValidPrivateKey(privKeyHex)) {
                                         masterKey = privKeyHex;
-                                        console.log(`Found valid private key: ${privKeyHex}`);
+                                        console.log(`Found valid private key (pattern 1): ${privKeyHex}`);
+                                        break;
+                                    }
+                                }
+                                
+                                // Pattern 2: d30201010420 (shorter DER sequence)
+                                if (!masterKey &&
+                                    data[checkPos] === 0xd3 &&
+                                    data[checkPos + 1] === 0x02 &&
+                                    data[checkPos + 2] === 0x01 &&
+                                    data[checkPos + 3] === 0x01 &&
+                                    data[checkPos + 4] === 0x04 &&
+                                    data[checkPos + 5] === 0x20) {
+                                    
+                                    // Extract the 32-byte private key
+                                    const privKeyBytes = data.slice(checkPos + 6, checkPos + 38);
+                                    const privKeyHex = Array.from(privKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+                                    
+                                    if (isValidPrivateKey(privKeyHex)) {
+                                        masterKey = privKeyHex;
+                                        console.log(`Found valid private key (pattern 2): ${privKeyHex}`);
                                         break;
                                     }
                                 }
@@ -3510,10 +3541,64 @@ Anyone with your master private key can access all your funds.`;
                     }
                 }
                 
-                // For Alpha wallets, use the known chain code
+                // For Alpha wallets, extract the chain code from xpub
+                let masterChainCode = null;
+                
+                // Look for all xpubs in the wallet data and find the master (depth 0)
+                const xpubPattern = new TextEncoder().encode('xpub');
+                const base58Chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+                let searchPos = 0;
+                let foundMasterChainCode = false;
+                
+                while (!foundMasterChainCode && searchPos < data.length) {
+                    let xpubIndex = findPattern(data, xpubPattern, searchPos);
+                    if (xpubIndex === -1) break;
+                    
+                    // Extract the full xpub (approximately 111 characters)
+                    let xpubStr = 'xpub';
+                    let pos = xpubIndex + 4;
+                    
+                    while (pos < data.length && xpubStr.length < 120) {
+                        const char = String.fromCharCode(data[pos]);
+                        if (base58Chars.includes(char)) {
+                            xpubStr += char;
+                            pos++;
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    if (xpubStr.length > 100) {
+                        try {
+                            // Decode the xpub to check depth and extract chain code
+                            const decoded = base58Decode(xpubStr);
+                            const depth = decoded[4];
+                            
+                            // We want the master key at depth 0
+                            if (depth === 0) {
+                                // Chain code is at bytes 13-45 (32 bytes)
+                                const chainCodeBytes = decoded.slice(13, 45);
+                                masterChainCode = Array.from(chainCodeBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+                                console.log('Extracted master chain code from depth 0 xpub:', masterChainCode);
+                                foundMasterChainCode = true;
+                            } else {
+                                console.log('Found xpub at depth', depth, '- skipping, looking for master (depth 0)');
+                            }
+                        } catch (e) {
+                            console.error('Failed to decode xpub:', e);
+                        }
+                    }
+                    
+                    searchPos = xpubIndex + 4;
+                }
+                
+                if (!masterChainCode) {
+                    console.warn('Could not extract chain code from wallet.dat - BIP32 derivation will not work correctly');
+                }
+                
                 return {
                     masterKey,
-                    masterChainCode: 'ef9b229fa43b5321834bce029dcca011db64764538f06e5b50b9dd5f38d16678',
+                    masterChainCode,
                     isAlphaWallet: true
                 };
             }
