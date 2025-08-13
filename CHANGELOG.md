@@ -2,6 +2,44 @@
 
 All notable changes to the Unicity WEB GUI Wallet will be documented in this file.
 
+## [v0.2.0] - 2025-08-13
+
+### Added
+- **BIP32 HD Wallet Support**
+  - Import BIP32 hierarchical deterministic wallets from wallet.dat files
+  - Automatic wallet scanning to discover addresses with balances
+  - Support for multiple derivation paths (up to 100 addresses)
+  - Visual [BIP32] indicator for BIP32 wallet addresses
+  - Preserve BIP32 wallet type through save/load cycles
+
+- **Tabbed Interface**
+  - Main page split into "Wallet" and "Cold Wallet Tools" tabs
+  - Help modal split into "General Usage" and "Cold Wallet" tabs
+  - Improved organization of wallet features
+
+- **Enhanced Cold Wallet Documentation**
+  - Comprehensive step-by-step cold wallet transaction guide
+  - Two fully documented transaction methods
+  - Security best practices and troubleshooting section
+
+- **Smart Wallet Detection**
+  - Automatic detection of wallet type (WIF vs BIP32)
+  - Skip unnecessary scanning for standard WIF wallets
+  - Adaptive UI based on wallet type
+
+### Changed
+- Updated terminology from "Alpha wallet" to "BIP32 wallet" for technical accuracy
+- Moved Import & Broadcast button to main wallet actions bar
+- Improved file change detection and error handling
+- Enhanced wallet type detection regex patterns
+
+### Fixed
+- Fixed "Cannot update cache: missing master key" error in watch-only mode
+- Fixed "Cannot read properties of null" error in performLazyRescan
+- Removed excessive transaction logging from console
+- Fixed BIP32 wallet type preservation when saving/loading
+- Resolved duplicate element IDs causing Cold Wallet tab display issues
+
 ## [v0.1.2] - 2024-01-10
 
 ### Added
