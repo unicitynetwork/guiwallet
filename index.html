@@ -649,7 +649,7 @@
     <div id="restoreModal" class="qr-modal" style="display: none;">
         <div class="qr-content" style="max-width: 700px; max-height: 90vh; overflow-y: auto;">
             <h3 style="margin: 0 0 10px 0;">Load Wallet from File</h3>
-            <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">Upload a wallet backup file (.txt) or Alpha wallet.dat file to load your wallet.</p>
+            <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">Upload a wallet backup file (.txt) or BIP32 wallet.dat file to load your wallet.</p>
             
             <div class="input-group" style="margin-bottom: 10px;">
                 <label for="restoreFileInput" style="font-size: 14px;">Backup File:</label>
@@ -723,14 +723,6 @@
                 </svg>
                 Unicity WEB GUI Wallet
             </h1>
-            <div id="securityWarning" class="warning" style="display: none; margin-top: 10px; padding: 8px 12px; font-size: 12px;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 6px;">
-                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-                    <line x1="12" y1="9" x2="12" y2="13"></line>
-                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                </svg>
-                <span id="securityWarningText" style="font-size: 12px;">Checking connection status...</span>
-            </div>
         </div>
         
         <div style="text-align: right; margin-bottom: 5px; margin-top: -5px;">
@@ -741,6 +733,19 @@
                     <line x1="12" y1="17" x2="12.01" y2="17"></line>
                 </svg>
                 How to use
+            </a>
+            <a href="#" class="help-link" onclick="openDisclaimerModal(); return false;" style="font-size: 12px; margin-left: 20px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+                Disclaimer
+            </a>
+            <a href="#" class="help-link" onclick="openSecurityNotesModal(); return false;" style="font-size: 12px; margin-left: 20px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0110 0v4"></path>
+                </svg>
+                Security Notes
             </a>
         </div>
 
@@ -1041,10 +1046,10 @@ ${encryptedMasterKey}`;
                 if (wallet.isImportedAlphaWallet && wallet.masterChainCode) {
                     encryptedContent += `
 
-MASTER CHAIN CODE (for Alpha wallet compatibility):
+MASTER CHAIN CODE (for BIP32 HD wallet compatibility):
 ${wallet.masterChainCode}
 
-WALLET TYPE: Alpha descriptor wallet (BIP32 HD)`;
+WALLET TYPE: BIP32 hierarchical deterministic wallet`;
                 } else {
                     encryptedContent += `
 
@@ -1081,10 +1086,10 @@ ${wallet.masterPrivateKey}
 MASTER PRIVATE KEY IN WIF FORMAT (for importprivkey command):
 ${masterKeyWIF}
 
-MASTER CHAIN CODE (for Alpha wallet compatibility):
+MASTER CHAIN CODE (for BIP32 HD wallet compatibility):
 ${wallet.masterChainCode}
 
-WALLET TYPE: Alpha descriptor wallet (BIP32 HD)
+WALLET TYPE: BIP32 hierarchical deterministic wallet
 
 ENCRYPTION STATUS: Not encrypted
 This key is in plaintext and not protected. Anyone with this file can access your wallet.`;
@@ -1952,7 +1957,7 @@ Anyone with your master private key can access all your funds.`;
                 
                 // Check if this is an imported Alpha wallet
                 if (wallet.isImportedAlphaWallet && wallet.masterChainCode) {
-                    // For imported Alpha descriptor wallets, use proper BIP32 derivation
+                    // For imported BIP32 HD wallets, use proper BIP32 derivation
                     // Default to BIP84 path for native SegWit: m/84'/1'/0'/0/index
                     // Note: Using testnet (1') as seen in the descriptors
                     
@@ -2308,10 +2313,10 @@ ${wallet.masterPrivateKey}
 MASTER PRIVATE KEY IN WIF FORMAT (for importprivkey command):
 ${masterKeyWIF}
 
-${wallet.isImportedAlphaWallet && wallet.masterChainCode ? `MASTER CHAIN CODE (for Alpha wallet compatibility):
+${wallet.isImportedAlphaWallet && wallet.masterChainCode ? `MASTER CHAIN CODE (for BIP32 HD wallet compatibility):
 ${wallet.masterChainCode}
 
-WALLET TYPE: Alpha descriptor wallet (BIP32 HD)` : 'WALLET TYPE: Standard wallet (HMAC-based)'}
+WALLET TYPE: BIP32 hierarchical deterministic wallet` : 'WALLET TYPE: Standard wallet (HMAC-based)'}
 
 ENCRYPTION STATUS: Not encrypted
 This key is in plaintext and not protected. Anyone with this file can access your wallet.`;
@@ -2833,7 +2838,7 @@ Anyone with your master private key can access all your funds.`;
             async function restoreFromWalletDat(file) {
                 try {
                     restoreStatus.className = 'info-box info';
-                    restoreStatus.textContent = 'Reading Alpha wallet.dat file...';
+                    restoreStatus.textContent = 'Reading BIP32 wallet.dat file...';
                     restoreStatus.style.display = 'block';
                     
                     const data = await readBinaryFile(file);
@@ -2957,7 +2962,7 @@ Anyone with your master private key can access all your funds.`;
                         encryptedMasterKey: null,
                         childPrivateKey: null,
                         isImportedAlphaWallet: true, // Mark as imported from Alpha wallet.dat
-                        // For Alpha descriptor wallets, we need the chain code
+                        // For BIP32 HD wallets, we need the chain code
                         // This will be extracted from the wallet.dat file
                         masterChainCode: result.masterChainCode
                     };
@@ -2990,7 +2995,7 @@ Anyone with your master private key can access all your funds.`;
                         <div>Wallet imported successfully from Alpha ${importType}!</div>
                         <div style="margin-top: 10px; font-size: 0.9em;">
                             <strong>Note:</strong> The imported master key has been recovered. 
-                            The first address generated may differ from your Alpha wallet's addresses 
+                            The first address generated may differ from your original wallet's addresses 
                             due to derivation path differences. You can still use this wallet to manage funds.
                         </div>
                     `;
@@ -4856,32 +4861,10 @@ Anyone with your master private key can access all your funds.`;
                 }
             }
             
-            // Helper to update the connection status UI
+            // Helper to update the connection status UI (removed - no longer showing warnings)
             function updateConnectionUI(isOnline, connectionQuality = 'normal') {
-                const securityWarning = document.getElementById('securityWarning');
-                const securityWarningText = document.getElementById('securityWarningText');
-                
-                securityWarning.style.display = 'block';
-                
-                if (isOnline) {
-                    // We're online - display warning
-                    securityWarning.style.backgroundColor = 'rgba(255, 0, 110, 0.05)';
-                    securityWarning.style.borderLeftColor = 'var(--danger-color)';
-                    
-                    let message = '<strong>Warning:</strong> This wallet is currently running in an online environment. ' +
-                        'For maximum security, <a href="#" onclick="downloadWalletPage(); return false;" style="color: #ffba08; text-decoration: underline;">download this page</a> and open it when you are offline.';
-                        
-                    if (connectionQuality === 'slow') {
-                        message += ' Network connection appears to be slow or limited.';
-                    }
-                    
-                    securityWarningText.innerHTML = message;
-                } else {
-                    // We're offline - display confirmation
-                    securityWarning.style.backgroundColor = 'rgba(6, 214, 160, 0.05)';
-                    securityWarning.style.borderLeftColor = 'var(--success-color)';
-                    securityWarningText.innerHTML = '<strong>Secure:</strong> This wallet is running in an offline environment.';
-                }
+                // Function kept for compatibility but no longer displays warnings
+                // Connection status is now shown only in the connection indicator
             }
             
             // Set up event listeners for online/offline status
@@ -7263,11 +7246,38 @@ Anyone with your master private key can access all your funds.`;
                 document.getElementById('helpModal').style.display = 'none';
             }
             
+            // Open disclaimer modal
+            window.openDisclaimerModal = function() {
+                document.getElementById('disclaimerModal').style.display = 'block';
+            }
+            
+            // Close disclaimer modal
+            window.closeDisclaimerModal = function() {
+                document.getElementById('disclaimerModal').style.display = 'none';
+            }
+            
+            // Open security notes modal
+            window.openSecurityNotesModal = function() {
+                document.getElementById('securityNotesModal').style.display = 'block';
+            }
+            
+            // Close security notes modal
+            window.closeSecurityNotesModal = function() {
+                document.getElementById('securityNotesModal').style.display = 'none';
+            }
+            
             // Close modal when clicking outside
             window.onclick = function(event) {
-                const modal = document.getElementById('helpModal');
-                if (event.target == modal) {
-                    modal.style.display = 'none';
+                const helpModal = document.getElementById('helpModal');
+                const disclaimerModal = document.getElementById('disclaimerModal');
+                const securityNotesModal = document.getElementById('securityNotesModal');
+                
+                if (event.target == helpModal) {
+                    helpModal.style.display = 'none';
+                } else if (event.target == disclaimerModal) {
+                    disclaimerModal.style.display = 'none';
+                } else if (event.target == securityNotesModal) {
+                    securityNotesModal.style.display = 'none';
                 }
             }
             
@@ -9265,11 +9275,21 @@ Anyone with your master private key can access all your funds.`;
             
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Getting Started</h3>
             <ul style="margin-bottom: 20px;">
-                <li><strong>Create New Wallet:</strong> Click "Create Wallet" to generate a new wallet with a secure private key</li>
-                <li><strong>Import Existing Wallet:</strong> 
+                <li><strong>Create New Wallet:</strong> Click the "Create" button to generate a new wallet with a secure private key</li>
+                <li><strong>Load Existing Wallet:</strong> Click the "Load" button to import from:
                     <ul style="margin-top: 5px;">
-                        <li><strong>From backup file (.json):</strong> Restore from a previously exported wallet backup</li>
-                        <li><strong>From Alpha wallet.dat (EXPERIMENTAL):</strong> Import an unencrypted wallet.dat file from Alpha node. This feature is highly experimental and may not work with all wallet configurations. Always backup your wallet.dat before attempting import.</li>
+                        <li><strong>Text Files (.txt):</strong> Import wallets from WIF private keys or previously saved BIP32 keys</li>
+                        <li><strong>BIP32 Wallet Database (.dat):</strong> Import BIP32 hierarchical deterministic wallets from wallet.dat files</li>
+                        <li><strong>Encrypted Backup:</strong> Restore from password-protected wallet backups (click "Decrypt" button after selecting file)</li>
+                    </ul>
+                </li>
+                <li><strong>Wallet Scanning (BIP32):</strong>
+                    <ul style="margin-top: 5px;">
+                        <li>When opening a BIP32 wallet file, the wallet automatically scans for addresses with balances</li>
+                        <li>The scanner will check up to 100 addresses (configurable) for funds</li>
+                        <li>Found addresses are displayed with their balances and derivation paths</li>
+                        <li>Select any discovered wallet to use for transactions</li>
+                        <li>After initial scan, a "Rescan Wallets" button appears to force a fresh scan and clear cache</li>
                     </ul>
                 </li>
                 <li><strong>Network Connection:</strong> The wallet automatically connects to the Unicity network when online. You can also manually connect/disconnect using the endpoint controls</li>
@@ -9277,15 +9297,16 @@ Anyone with your master private key can access all your funds.`;
             
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Importing Wallets</h3>
             <ul style="margin-bottom: 20px;">
-                <li><strong>Standard Backup Import:</strong> Use the "Restore" button to import .json backup files created by this wallet. If the backup is encrypted, you'll need to enter the password.</li>
-                <li><strong>Alpha wallet.dat Import (EXPERIMENTAL):</strong>
+                <li><strong>Standard Backup Import:</strong> Use the "Load" button to import wallet files. If the backup is encrypted, you'll need to enter the password.</li>
+                <li><strong>BIP32 wallet.dat Import (EXPERIMENTAL):</strong>
                     <div style="margin-top: 10px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px;">
                         <strong>⚠️ Important Notes:</strong>
                         <ul style="margin-top: 5px;">
                             <li>Only <strong>unencrypted</strong> wallet.dat files are currently supported</li>
-                            <li>Make a backup copy of your wallet.dat before attempting import</li>
-                            <li>The import extracts the first valid private key found</li>
-                            <li>This feature is experimental and may not work with all wallet types</li>
+                            <li>No backup copy of wallet.dat is needed - the file is only read, not modified</li>
+                            <li><strong>Verify imported addresses:</strong> We cannot guarantee correct address restoration. Always compare with alpha-qt or alpha-cli to ensure the right addresses were loaded</li>
+                            <li>The scanner checks 100 regular addresses and 100 change addresses by default</li>
+                            <li>You can select any non-empty address found during the scan</li>
                             <li>To decrypt wallet.dat: use <code>alpha-cli walletpassphrase "yourpassword" 600</code> then copy the wallet.dat</li>
                         </ul>
                     </div>
@@ -9294,8 +9315,8 @@ Anyone with your master private key can access all your funds.`;
             
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Security</h3>
             <ul style="margin-bottom: 20px;">
-                <li><strong>Encrypt Your Wallet:</strong> Click "Encrypt Wallet" and set a strong password. Write it down - there's no recovery if forgotten!</li>
-                <li><strong>Backup Regularly:</strong> Use "Backup Wallet" to save your encrypted wallet data. Store backups in multiple secure locations</li>
+                <li><strong>Save Your Wallet:</strong> Click the "Save" button to export your wallet with optional password protection. Write down the password - there's no recovery if forgotten!</li>
+                <li><strong>Backup Regularly:</strong> Use the "Save" button to create wallet backups. Store backups in multiple secure locations</li>
                 <li><strong>Offline Mode:</strong> For maximum security, <a href="#" onclick="downloadWalletPage(); return false;">download this page</a> and use it on an offline computer</li>
             </ul>
             
@@ -9363,6 +9384,11 @@ Anyone with your master private key can access all your funds.`;
                 <li><strong>Max Available Button:</strong> Quickly calculate the maximum sendable amount accounting for fees</li>
             </ul>
             
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Additional Features</h3>
+            <ul style="margin-bottom: 20px;">
+                <li><strong>Reset Wallet:</strong> Click the "Reset" button to clear the current wallet data and start fresh</li>
+            </ul>
+            
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Watch-Only Mode</h3>
             <ul style="margin-bottom: 20px;">
                 <li>Enter any Alpha address in the watch-only field</li>
@@ -9373,6 +9399,108 @@ Anyone with your master private key can access all your funds.`;
             <p style="margin-top: 20px; padding: 15px; background-color: #f0f9ff; border-radius: 4px;">
                 <em>All wallet data is stored locally on your device. We never have access to your private keys.</em>
             </p>
+        </div>
+    </div>
+
+    <!-- Disclaimer Modal -->
+    <div id="disclaimerModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeDisclaimerModal()">&times;</span>
+            <h2>Disclaimer</h2>
+            
+            <div style="margin-top: 20px; line-height: 1.6;">
+                <h3 style="margin-bottom: 15px; color: #333;">Use at Your Own Risk</h3>
+                <p style="margin-bottom: 15px;">
+                    This wallet software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and non-infringement.
+                </p>
+                
+                <h3 style="margin-bottom: 15px; color: #333;">No Liability</h3>
+                <p style="margin-bottom: 15px;">
+                    In no event shall the authors, developers, or copyright holders be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the software or the use or other dealings in the software.
+                </p>
+                
+                <h3 style="margin-bottom: 15px; color: #333;">Your Responsibility</h3>
+                <ul style="margin-bottom: 15px;">
+                    <li><strong>Backup your keys:</strong> You are solely responsible for backing up your private keys and seed phrases</li>
+                    <li><strong>Secure your device:</strong> Ensure your computer is free from malware and unauthorized access</li>
+                    <li><strong>Verify transactions:</strong> Always double-check addresses and amounts before sending</li>
+                    <li><strong>Test first:</strong> Consider testing with small amounts before large transactions</li>
+                </ul>
+                
+                <h3 style="margin-bottom: 15px; color: #333;">No Recovery Service</h3>
+                <p style="margin-bottom: 15px;">
+                    Lost private keys cannot be recovered. If you lose access to your private keys, you will permanently lose access to your funds. There is no password recovery or account recovery service.
+                </p>
+                
+                <h3 style="margin-bottom: 15px; color: #333;">Experimental Features</h3>
+                <p style="margin-bottom: 15px;">
+                    Some features, particularly BIP32 wallet.dat import, are experimental and may not work with all wallet configurations. Always maintain backups before using experimental features.
+                </p>
+                
+                <div style="padding: 15px; background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; margin-top: 20px;">
+                    <strong style="color: #dc2626;">By using this wallet, you acknowledge that you understand and accept these terms.</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Security Notes Modal -->
+    <div id="securityNotesModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeSecurityNotesModal()">&times;</span>
+            <h2>Security Notes</h2>
+            
+            <div style="margin-top: 20px; line-height: 1.6;">
+                <h3 style="margin-bottom: 15px; color: #333;">🔒 Private Key Security</h3>
+                <ul style="margin-bottom: 20px;">
+                    <li><strong>Never shared:</strong> Your private keys are never transmitted outside of your computer</li>
+                    <li><strong>Local generation:</strong> All keys are generated locally using secure cryptographic functions</li>
+                    <li><strong>Browser storage:</strong> Keys are stored within your browser's local storage (IndexedDB/localStorage)</li>
+                    <li><strong>No server access:</strong> This wallet runs entirely in your browser - no server has access to your keys</li>
+                </ul>
+                
+                <h3 style="margin-bottom: 15px; color: #333;">💾 Wallet Storage</h3>
+                <ul style="margin-bottom: 20px;">
+                    <li><strong>Browser-based:</strong> Wallet data is stored in your browser's local storage</li>
+                    <li><strong>Encryption available:</strong> You can encrypt your wallet with a password for additional security</li>
+                    <li><strong>Export formats:</strong> 
+                        <ul style="margin-top: 5px;">
+                            <li><strong>WIF format:</strong> Export private keys in Wallet Import Format for compatibility</li>
+                            <li><strong>BIP32 format:</strong> Support for hierarchical deterministic wallets</li>
+                            <li><strong>Text backup:</strong> Human-readable backup files with all wallet information</li>
+                        </ul>
+                    </li>
+                </ul>
+                
+                <h3 style="margin-bottom: 15px; color: #333;">🛡️ Best Security Practices</h3>
+                <ul style="margin-bottom: 20px;">
+                    <li><strong>Offline usage:</strong> For maximum security, save this HTML file and use it on an air-gapped computer</li>
+                    <li><strong>Regular backups:</strong> Export and securely store wallet backups in multiple locations</li>
+                    <li><strong>Password protection:</strong> Always use a strong password when encrypting your wallet</li>
+                    <li><strong>Verify source:</strong> Only use this wallet from trusted sources</li>
+                    <li><strong>Clear browser data:</strong> Clear browser cache/storage when using on shared computers</li>
+                </ul>
+                
+                <h3 style="margin-bottom: 15px; color: #333;">⚠️ Security Warnings</h3>
+                <ul style="margin-bottom: 20px;">
+                    <li><strong>Phishing:</strong> Always verify you're using the correct wallet URL/file</li>
+                    <li><strong>Malware:</strong> Keep your computer free from viruses and keyloggers</li>
+                    <li><strong>Browser extensions:</strong> Be cautious of browser extensions that might access page data</li>
+                    <li><strong>Public computers:</strong> Never use this wallet on public or shared computers</li>
+                </ul>
+                
+                <h3 style="margin-bottom: 15px; color: #333;">🔑 Supported Formats</h3>
+                <ul style="margin-bottom: 20px;">
+                    <li><strong>WIF (Wallet Import Format):</strong> Standard format for importing/exporting private keys</li>
+                    <li><strong>BIP32/BIP44:</strong> Hierarchical deterministic wallet with multiple address derivation</li>
+                    <li><strong>BIP32 wallet.dat:</strong> Import support for BIP32 hierarchical deterministic wallet files (experimental)</li>
+                    <li><strong>Encrypted backups:</strong> AES-encrypted wallet files with PBKDF2 key derivation</li>
+                </ul>
+                
+                <div style="padding: 15px; background-color: #f0f9ff; border: 1px solid #bfdbfe; border-radius: 4px; margin-top: 20px;">
+                    <strong style="color: #1e40af;">Remember:</strong> You are your own bank. With great power comes great responsibility. Always prioritize security and never share your private keys with anyone.
+                </div>
+            </div>
         </div>
     </div>
 
