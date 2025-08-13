@@ -3585,8 +3585,8 @@ Anyone with your master private key can access all your funds.`;
                         walletInfo.utxoCount = balanceInfo.utxoCount;
                     }
                     
-                    // Add to results if has balance above dust threshold or if offline
-                    if (!checkOnline || !electrumConnected || walletInfo.balance > dustThreshold) {
+                    // Add to results if has balance above dust threshold, if offline, or if it's the first address
+                    if (!checkOnline || !electrumConnected || walletInfo.balance > dustThreshold || i === 0) {
                         // If offline, show all addresses
                         if (!checkOnline || !electrumConnected) {
                             walletInfo.balance = -1; // Indicate unknown balance
@@ -3665,8 +3665,8 @@ Anyone with your master private key can access all your funds.`;
                             walletInfo.utxoCount = balanceInfo.utxoCount;
                             }
                         
-                        // Add to results if has balance above dust threshold or if offline
-                        if (!checkOnline || !electrumConnected || walletInfo.balance > dustThreshold) {
+                        // Add to results if has balance above dust threshold, if offline, or if it's the first change address
+                        if (!checkOnline || !electrumConnected || walletInfo.balance > dustThreshold || i === 0) {
                             // If offline, show all addresses
                             if (!checkOnline || !electrumConnected) {
                                 walletInfo.balance = -1; // Indicate unknown balance
