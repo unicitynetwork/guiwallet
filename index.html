@@ -9313,6 +9313,40 @@ Anyone with your master private key can access all your funds.`;
                 </li>
             </ul>
             
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Exporting from Alpha Core (alpha-cli/alpha-qt)</h3>
+            <ul style="margin-bottom: 20px;">
+                <li><strong>Method 1: Direct wallet.dat Copy (Recommended for BIP32 wallets):</strong>
+                    <ol style="margin-top: 5px; margin-left: 20px;">
+                        <li>Stop alpha-qt or alpha daemon: <code>alpha-cli stop</code></li>
+                        <li>Locate your wallet.dat file (usually in ~/.alpha/ or datadir)</li>
+                        <li>If wallet is encrypted, temporarily decrypt it:
+                            <ul style="margin-top: 5px;">
+                                <li>Start alpha daemon/qt again</li>
+                                <li>Run: <code>alpha-cli walletpassphrase "yourpassword" 600</code></li>
+                                <li>Stop the daemon and copy wallet.dat while it's decrypted</li>
+                            </ul>
+                        </li>
+                        <li>Copy the wallet.dat file to a safe location</li>
+                        <li>Use the "Load" button in this wallet to import the wallet.dat file</li>
+                    </ol>
+                </li>
+                <li><strong>Method 2: Export with dumpwallet (Alternative):</strong>
+                    <ol style="margin-top: 5px; margin-left: 20px;">
+                        <li>If wallet is encrypted, unlock it: <code>alpha-cli walletpassphrase "yourpassword" 600</code></li>
+                        <li>Export wallet keys: <code>alpha-cli dumpwallet "wallet_export.txt"</code></li>
+                        <li>The exported file contains all private keys in WIF format</li>
+                        <li>You can import individual WIF keys using the "Load" button</li>
+                        <li>Lock wallet after export: <code>alpha-cli walletlock</code></li>
+                    </ol>
+                </li>
+                <li><strong>Method 3: Backup wallet (For safekeeping):</strong>
+                    <ol style="margin-top: 5px; margin-left: 20px;">
+                        <li>Create a backup: <code>alpha-cli backupwallet "wallet_backup.dat"</code></li>
+                        <li>This creates a copy of your wallet.dat that can be imported the same way</li>
+                    </ol>
+                </li>
+            </ul>
+            
             <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Security</h3>
             <ul style="margin-bottom: 20px;">
                 <li><strong>Save Your Wallet:</strong> Click the "Save" button to export your wallet with optional password protection. Write down the password - there's no recovery if forgotten!</li>
