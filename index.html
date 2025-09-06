@@ -7327,6 +7327,11 @@ Anyone with your master private key can access all your funds.`;
                     document.getElementById('coldWalletTab').style.borderBottom = '3px solid #4CAF50';
                     document.getElementById('coldWalletTab').style.color = '#333';
                     document.getElementById('coldWalletTab').style.fontWeight = '600';
+                } else if (tab === 'debug') {
+                    document.getElementById('debugTabContent').style.display = 'block';
+                    document.getElementById('debugTab').style.borderBottom = '3px solid #4CAF50';
+                    document.getElementById('debugTab').style.color = '#333';
+                    document.getElementById('debugTab').style.fontWeight = '600';
                 }
             }
             
@@ -9865,6 +9870,7 @@ Anyone with your master private key can access all your funds.`;
             <div style="display: flex; gap: 10px; margin-top: 20px; border-bottom: 2px solid #e0e0e0;">
                 <button id="generalTab" class="help-tab-button active" onclick="switchHelpTab('general')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid #4CAF50; color: #333; font-weight: 600; cursor: pointer;">General Usage</button>
                 <button id="coldWalletTab" class="help-tab-button" onclick="switchHelpTab('coldWallet')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: #666; cursor: pointer;">Cold Wallet</button>
+                <button id="debugTab" class="help-tab-button" onclick="switchHelpTab('debug')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: #666; cursor: pointer;">Debug & Bug Reporting</button>
             </div>
             
             <!-- General Usage Tab Content -->
@@ -10275,6 +10281,124 @@ Anyone with your master private key can access all your funds.`;
             </div>
             </div>
             <!-- End Cold Wallet Tab Content -->
+            
+            <!-- Debug & Bug Reporting Tab Content -->
+            <div id="debugTabContent" class="help-tab-content" style="display: none;">
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">🐛 Debug & Bug Reporting System</h3>
+            <p style="margin-bottom: 15px;">
+                The wallet includes a comprehensive debug system that automatically tracks all transaction operations to help developers diagnose and fix issues. All debug data is stored locally and you control what gets shared.
+            </p>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">How to Access Debug Features</h3>
+            <ol style="margin-bottom: 20px;">
+                <li><strong>Debug Button:</strong> Look for the gray <strong>"🐛 Debug"</strong> button in the bottom-right corner of the wallet interface</li>
+                <li><strong>Click to Open:</strong> Click the button to open the Debug Modal with all your transaction history and logs</li>
+                <li><strong>Automatic Tracking:</strong> The system automatically logs all transaction attempts, including successes and failures</li>
+            </ol>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Debug Modal Features</h3>
+            <div style="padding: 15px; background-color: #f0f8ff; border: 1px solid #3b82f6; border-radius: 4px; margin-bottom: 20px;">
+                <strong>The Debug Modal has 4 tabs:</strong>
+                <ul style="margin-top: 10px;">
+                    <li><strong>Summary:</strong> Overview of the current debug session with statistics</li>
+                    <li><strong>Logs:</strong> Detailed chronological log of all operations</li>
+                    <li><strong>Errors:</strong> Filtered view showing only errors and warnings</li>
+                    <li><strong>History:</strong> List of all recent transaction debug sessions</li>
+                </ul>
+            </div>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">What Gets Logged</h3>
+            <ul style="margin-bottom: 20px;">
+                <li><strong>Transaction Preparation:</strong> Address validation, UTXO selection, fee calculation</li>
+                <li><strong>Transaction Signing:</strong> Key derivation, signature creation, witness data</li>
+                <li><strong>Broadcasting:</strong> Network submission, server responses, confirmations</li>
+                <li><strong>Errors:</strong> Detailed error messages, stack traces, and context</li>
+                <li><strong>Transaction Hex:</strong> Complete signed transaction data for debugging</li>
+            </ul>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">How to Report a Bug</h3>
+            
+            <h4 style="margin-top: 15px; margin-bottom: 10px; color: #555;">Option 1: Automatic Submission (Recommended)</h4>
+            <ol style="margin-bottom: 20px;">
+                <li><strong>Open Debug Modal:</strong> Click the "🐛 Debug" button</li>
+                <li><strong>Click Submit Report:</strong> Press the blue <strong>"📤 Submit Report"</strong> button</li>
+                <li><strong>Automatic Processing:</strong> The report is sent to the debug service at https://unicity-debug-report.dyndns.org:3487</li>
+                <li><strong>Get Report ID:</strong> You'll receive a unique Report ID for tracking</li>
+                <li><strong>Optional Cleanup:</strong> Choose whether to clear local debug logs after submission</li>
+            </ol>
+            
+            <h4 style="margin-top: 15px; margin-bottom: 10px; color: #555;">Option 2: Manual Export</h4>
+            <ol style="margin-bottom: 20px;">
+                <li><strong>Open Debug Modal:</strong> Click the "🐛 Debug" button</li>
+                <li><strong>Click Export:</strong> Press the green <strong>"Export Debug Log"</strong> button</li>
+                <li><strong>Save File:</strong> A JSON file will download with all debug data</li>
+                <li><strong>Share Manually:</strong> Send the file to developers via email or issue tracker</li>
+            </ol>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Failed Transaction Recovery</h3>
+            <div style="padding: 15px; background-color: #fef8e1; border: 1px solid #f59e0b; border-radius: 4px; margin-bottom: 20px;">
+                <strong>🔄 Retry Failed Transactions:</strong>
+                <ol style="margin-top: 10px; margin-bottom: 0;">
+                    <li>Click <strong>"Show Failed TXs"</strong> in the Debug Modal</li>
+                    <li>Review the list of failed transactions with their error messages</li>
+                    <li>Click <strong>"Export for Retry"</strong> to save failed transactions</li>
+                    <li>Use the <strong>"Import & Broadcast"</strong> button in the main wallet to retry</li>
+                </ol>
+            </div>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Privacy & Security</h3>
+            <div style="padding: 15px; background-color: #f0fdf4; border: 1px solid #10b981; border-radius: 4px; margin-bottom: 20px;">
+                <strong>✅ Your Privacy is Protected:</strong>
+                <ul style="margin-top: 10px; margin-bottom: 0;">
+                    <li><strong>No Private Keys:</strong> Private keys are NEVER included in debug reports</li>
+                    <li><strong>Automatic Sanitization:</strong> All sensitive fields are automatically removed</li>
+                    <li><strong>Safe Transaction Data:</strong> Transaction IDs and hex are preserved (public once broadcast)</li>
+                    <li><strong>Local Storage:</strong> Debug data is stored locally until you choose to share it</li>
+                    <li><strong>You Control Sharing:</strong> Nothing is sent without your explicit action</li>
+                </ul>
+            </div>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Debug Service Web Interface</h3>
+            <p style="margin-bottom: 15px;">
+                Developers can view submitted reports at: <strong>https://unicity-debug-report.dyndns.org:3487</strong>
+            </p>
+            <ul style="margin-bottom: 20px;">
+                <li><strong>Browse Reports:</strong> See all submitted debug reports with search and filtering</li>
+                <li><strong>Analyze Issues:</strong> View detailed logs, errors, and transaction data</li>
+                <li><strong>Extract Transactions:</strong> Export transaction hex for testing and analysis</li>
+                <li><strong>Track Patterns:</strong> Identify common issues across multiple reports</li>
+            </ul>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Common Issues to Report</h3>
+            <ul style="margin-bottom: 20px;">
+                <li><strong>Transaction Failures:</strong> "Transaction failed to broadcast" or "Invalid transaction" errors</li>
+                <li><strong>Balance Issues:</strong> Incorrect balance display or UTXO problems</li>
+                <li><strong>Signing Errors:</strong> "Failed to sign transaction" or key-related errors</li>
+                <li><strong>Network Problems:</strong> Connection issues with Fulcrum/Electrum servers</li>
+                <li><strong>Import/Export Issues:</strong> Problems with wallet.dat import or UTXO import</li>
+                <li><strong>UI Problems:</strong> Buttons not working, displays not updating</li>
+            </ul>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px; color: #333;">Tips for Better Bug Reports</h3>
+            <ul style="margin-bottom: 20px;">
+                <li><strong>Reproduce First:</strong> Try to reproduce the issue before reporting</li>
+                <li><strong>Clear Steps:</strong> Note the exact steps that led to the problem</li>
+                <li><strong>Check Console:</strong> Open browser console (F12) for additional error messages</li>
+                <li><strong>Include Context:</strong> Mention if you're using cold wallet, BIP32, or watch-only mode</li>
+                <li><strong>Submit Promptly:</strong> Submit debug reports soon after issues occur for complete logs</li>
+            </ul>
+            
+            <div style="padding: 15px; background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 4px;">
+                <strong style="color: #dc2626;">⚠️ Important Notes:</strong>
+                <ul style="margin-top: 10px; margin-bottom: 0;">
+                    <li>Debug logs are limited to 100 sessions to prevent storage overflow</li>
+                    <li>Logs persist across browser sessions until manually cleared</li>
+                    <li>If automatic submission fails, the system will fallback to manual download</li>
+                    <li>For sensitive issues, you can review the debug export before sharing</li>
+                </ul>
+            </div>
+            </div>
+            <!-- End Debug Tab Content -->
         </div>
     </div>
 
