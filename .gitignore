@@ -1,1 +1,23 @@
 ref_materials
+
+# SSL certificates - NEVER commit these!
+debug-service/ssl/
+*.pem
+*.key
+*.crt
+*.pfx
+
+# Debug service reports (may contain sensitive data)
+debug-service/reports/
+
+# Node modules
+node_modules/
+debug-service/node_modules/
+
+# Backup files
+*.backup
+.git.backup/
+
+# OS files
+.DS_Store
+Thumbs.db
