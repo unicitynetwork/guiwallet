@@ -2,6 +2,47 @@
 
 All notable changes to the Unicity WEB GUI Wallet will be documented in this file.
 
+## [v0.3.0] - 2025-09-06
+
+### Added
+- **Comprehensive Debug System**
+  - Transaction debug logging with automatic tracking of all operations
+  - Debug Modal with Summary, Logs, Errors, and History tabs
+  - One-click bug report submission to debug service
+  - Failed transaction recovery and export functionality
+  - Express.js microservice for collecting and analyzing reports
+  - Privacy protection with automatic data sanitization
+
+- **Enhanced Security Features**
+  - Mandatory password verification for encrypted wallets
+  - Proper password field masking for re-entry
+  - Removed ability to skip verification
+  - Critical error prevention for wallet encryption
+
+- **Improved Wallet Management**
+  - Automatic wallet type detection (BIP32 vs WIF) before decryption
+  - Optimized loading for encrypted WIF wallets (no scanning)
+  - Clear wallet type indicators in UI
+  - Better user experience with informative messages
+
+- **Documentation Updates**
+  - New Debug & Bug Reporting tab in help modal
+  - Comprehensive instructions for debug features
+  - Privacy and security information
+  - Troubleshooting guide for common issues
+
+### Changed
+- Version bumped to v0.3.0
+- Password verification is now mandatory for encrypted wallets
+- WIF wallets load directly without address scanning
+- Improved error messages and user feedback
+
+### Fixed
+- Fixed Cold Wallet Tools tab not displaying (incorrect element ID)
+- Fixed undefined updateAddressTable error for encrypted WIF wallets
+- Fixed help modal cold wallet tab reference inconsistency
+- Corrected tab switching logic for main and help modals
+
 ## [v0.2.0] - 2025-08-13
 
 ### Added
