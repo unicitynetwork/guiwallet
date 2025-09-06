@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Unicity WEB GUI Wallet v0.3.0</title>
+    <title>Unicity WEB GUI Wallet</title>
     <!-- 
     Library: CryptoJS v4.1.1
     Description: JavaScript library of crypto standards
@@ -586,7 +586,7 @@
 </head>
 <body>
     <!-- Version Number -->
-    <div style="position: fixed; top: 10px; right: 10px; font-size: 10px; color: #999; z-index: 1000; font-family: monospace;">v0.2.0</div>
+    <div style="position: fixed; top: 10px; right: 10px; font-size: 10px; color: #999; z-index: 1000; font-family: monospace;">v0.3.0</div>
     
     <!-- Notification Container -->
     <div id="notificationContainer" class="notification-container"></div>
@@ -10893,7 +10893,7 @@ Anyone with your master private key can access all your funds.`;
             // Prepare debug data with transaction hex for easy import
             const exportData = {
                 exportTime: new Date().toISOString(),
-                walletVersion: '0.2.0',
+                walletVersion: '0.3.0',
                 sessions: transactionDebugLog.map(session => {
                     // Extract transaction hex from logs
                     const transactions = [];
@@ -11014,7 +11014,7 @@ Anyone with your master private key can access all your funds.`;
                 sessions: transactionDebugLog,
                 readyToImport: failedTxs,
                 metadata: {
-                    walletVersion: 'v0.2.0',
+                    walletVersion: 'v0.3.0',
                     timestamp: new Date().toISOString(),
                     userAgent: navigator.userAgent,
                     totalSessions: transactionDebugLog.length,
