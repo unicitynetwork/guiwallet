@@ -621,6 +621,27 @@
         </div>
     </div>
 
+    <!-- Password Verification Modal -->
+    <div id="passwordVerificationModal" class="qr-modal" style="display: none;">
+        <div class="qr-content" style="max-width: 400px;">
+            <h3>⚠️ Verify Password Required</h3>
+            <p style="margin: 15px 0; color: #dc2626; font-weight: bold;">You MUST verify your password to ensure you can decrypt your wallet!</p>
+            <p style="margin: 15px 0; color: #666;">Please re-enter your password to confirm the wallet was encrypted correctly and can be recovered:</p>
+            
+            <div class="input-group" style="margin-bottom: 15px;">
+                <input type="password" id="passwordVerificationInput" placeholder="Re-enter your password" style="width: 100%;">
+            </div>
+            
+            <div style="padding: 10px; background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; margin-bottom: 15px;">
+                <strong style="color: #dc2626;">⚠️ Warning:</strong> Without verification, you risk losing access to your funds if the password is incorrect or the file is corrupted.
+            </div>
+            
+            <div style="display: flex; justify-content: center;">
+                <button class="button" id="passwordVerificationSubmitBtn" style="width: 100%;">Verify Password</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Save Modal -->
     <div id="saveModal" class="qr-modal" style="display: none;">
         <div class="qr-content" style="max-width: 500px;">
@@ -1004,6 +1025,50 @@
             document.body.style.overflow = '';
         }
         
+        function showPasswordVerificationModal(callback) {
+            const modal = document.getElementById('passwordVerificationModal');
+            const input = document.getElementById('passwordVerificationInput');
+            const submitBtn = document.getElementById('passwordVerificationSubmitBtn');
+            
+            // Clear previous input
+            input.value = '';
+            
+            // Show modal
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+            input.focus();
+            
+            // Handle submit
+            const handleSubmit = () => {
+                const password = input.value;
+                if (!password) {
+                    // Don't allow empty password
+                    input.style.borderColor = '#dc2626';
+                    input.placeholder = 'Password is required for verification';
+                    return;
+                }
+                modal.style.display = 'none';
+                document.body.style.overflow = '';
+                callback(password);
+            };
+            
+            // Set up event listeners
+            submitBtn.onclick = handleSubmit;
+            
+            // Handle Enter key
+            input.onkeypress = (e) => {
+                if (e.key === 'Enter') {
+                    handleSubmit();
+                }
+            };
+            
+            // Reset border color when typing
+            input.oninput = () => {
+                input.style.borderColor = '';
+                input.placeholder = 'Re-enter your password';
+            };
+        }
+        
         function saveWallet() {
             const savePasswordInput = document.getElementById('savePasswordInput');
             const saveFilenameInput = document.getElementById('saveFilenameInput');
@@ -1162,16 +1227,12 @@ Anyone with your master private key can access all your funds.`;
             // Automatically verify the content before user relies on it
             setTimeout(() => {
                 if (password) {
-                    // For encrypted wallets, automatically verify with a re-entered password
-                    const verifyPassword = prompt('Please re-enter your password to verify the wallet was encrypted correctly:');
-                    if (verifyPassword) {
+                    // For encrypted wallets, ALWAYS require password verification
+                    showPasswordVerificationModal((verifyPassword) => {
+                        // verifyPassword will never be null/empty now since we require it
                         // Simulate reading the saved file by using the exact content we saved
                         verifyEncryptedWalletContent(content, password, verifyPassword, wallet);
-                    } else {
-                        window.showInAppNotification('Verification Skipped', 
-                            'Wallet saved but not verified. Please ensure you remember your password!', 
-                            'warning');
-                    }
+                    });
                 } else {
                     // For unencrypted wallets, verify immediately
                     verifyUnencryptedWalletContent(content, wallet);
