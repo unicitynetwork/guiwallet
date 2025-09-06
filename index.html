@@ -3375,22 +3375,89 @@ Anyone with your master private key can access all your funds.`;
                                     encryptedMasterKey: ''
                                 };
                             
-                                // Successfully decrypted - update UI
-                                restoreStatus.className = 'info-box success';
-                                restoreStatus.textContent = 'Wallet decrypted successfully. Starting wallet scan...';
-                                restoreStatus.style.display = 'block';
-                                
-                                // Change button back to Rescan Wallets
-                                scanWalletsBtn.textContent = 'Rescan Wallets';
-                                walletScanOptions.style.display = 'block';
-                                
-                                // Store decrypted data for scanning
-                                window.decryptedWalletData = walletData;
-                                
-                                // Start normal scanning process
-                                setTimeout(() => {
-                                    startWalletScanWithDecryptedData(walletData);
-                                }, 1000);
+                                // Check if this is a WIF wallet (no chain code) or BIP32
+                                if (!walletData.masterChainCode || !walletData.isImportedAlphaWallet) {
+                                    // WIF wallet - no scanning needed, directly load it
+                                    restoreStatus.className = 'info-box success';
+                                    restoreStatus.textContent = 'Standard WIF wallet decrypted successfully. Loading wallet...';
+                                    restoreStatus.style.display = 'block';
+                                    
+                                    // For WIF wallets, directly restore without scanning
+                                    setTimeout(() => {
+                                        // Confirmation before overwriting
+                                        if (wallet.masterPrivateKey) {
+                                            const confirmOverwrite = confirm('This will overwrite your existing wallet. Are you sure you want to proceed?');
+                                            if (!confirmOverwrite) {
+                                                return;
+                                            }
+                                        }
+                                        
+                                        // Create wallet with the decrypted WIF data
+                                        wallet = {
+                                            masterPrivateKey: walletData.masterPrivateKey,
+                                            addresses: walletData.addresses || [],
+                                            isEncrypted: false,
+                                            encryptedMasterKey: '',
+                                            childPrivateKey: null,
+                                            isImportedAlphaWallet: false,
+                                            masterChainCode: null
+                                        };
+                                        
+                                        // Update global reference
+                                        window.walletGlobal = wallet;
+                                        
+                                        // Enable buttons
+                                        updateButtonStates(true);
+                                        
+                                        // Generate first address if none exist
+                                        if (wallet.addresses.length === 0) {
+                                            generateNewAddress();
+                                        } else {
+                                            // Update address display with existing addresses
+                                            const addressList = document.getElementById('addressList');
+                                            if (addressList) {
+                                                addressList.innerHTML = ''; // Clear existing
+                                                wallet.addresses.forEach(addr => {
+                                                    addAddressToUI(addr);
+                                                });
+                                            }
+                                        }
+                                        
+                                        // Save wallet data
+                                        saveWalletData();
+                                        
+                                        // Update status and close modal
+                                        restoreStatus.className = 'info-box success';
+                                        restoreStatus.textContent = 'WIF wallet loaded successfully!';
+                                        
+                                        setTimeout(() => {
+                                            closeRestoreModal();
+                                            
+                                            // Check online status and refresh if connected
+                                            checkConnectionStatus();
+                                            if (window.isConnected) {
+                                                refreshBalance();
+                                            }
+                                        }, 1500);
+                                    }, 500);
+                                } else {
+                                    // BIP32 wallet - needs scanning
+                                    restoreStatus.className = 'info-box success';
+                                    restoreStatus.textContent = 'BIP32 wallet decrypted successfully. Starting address scan...';
+                                    restoreStatus.style.display = 'block';
+                                    
+                                    // Change button back to Rescan Wallets
+                                    scanWalletsBtn.textContent = 'Rescan Wallets';
+                                    walletScanOptions.style.display = 'block';
+                                    
+                                    // Store decrypted data for scanning
+                                    window.decryptedWalletData = walletData;
+                                    
+                                    // Start normal scanning process for BIP32
+                                    setTimeout(() => {
+                                        startWalletScanWithDecryptedData(walletData);
+                                    }, 1000);
+                                }
                                 
                                 return;
                             } catch (decryptError) {
@@ -4825,6 +4892,31 @@ Anyone with your master private key can access all your funds.`;
                     }
                     
                     if (isEncryptedWallet) {
+                        // Detect wallet type from encrypted file
+                        let walletTypeInfo = '';
+                        let isBIP32Encrypted = false;
+                        try {
+                            const fileContent = await file.text();
+                            if (fileContent.includes('WALLET TYPE: BIP32 hierarchical deterministic wallet')) {
+                                walletTypeInfo = ' (BIP32 HD Wallet - will scan for addresses)';
+                                isBIP32Encrypted = true;
+                            } else if (fileContent.includes('WALLET TYPE: Standard wallet')) {
+                                walletTypeInfo = ' (Standard WIF Wallet - single address)';
+                            } else if (fileContent.includes('MASTER CHAIN CODE')) {
+                                // Fallback detection for older format
+                                walletTypeInfo = ' (BIP32 HD Wallet - will scan for addresses)';
+                                isBIP32Encrypted = true;
+                            } else {
+                                walletTypeInfo = ' (Standard WIF Wallet - single address)';
+                            }
+                        } catch (e) {
+                            // If can't detect, assume standard
+                            walletTypeInfo = '';
+                        }
+                        
+                        // Store wallet type for later use
+                        restoreFileInput.dataset.isBIP32Encrypted = isBIP32Encrypted;
+                        
                         // Show decrypt button for encrypted wallets
                         walletScanOptions.style.display = 'none';
                         restoreModalSubmitBtn.style.display = 'none';
@@ -4832,7 +4924,7 @@ Anyone with your master private key can access all your funds.`;
                         scanWalletsBtn.textContent = 'Decrypt';
                         
                         restoreStatus.className = 'info-box warning';
-                        restoreStatus.textContent = 'This is an encrypted wallet. Please enter the password and click Decrypt.';
+                        restoreStatus.textContent = `Encrypted wallet detected${walletTypeInfo}. Please enter the password and click Decrypt.`;
                         restoreStatus.style.display = 'block';
                     } else {
                         // Check if it's a WIF wallet (non-BIP32 text file)
