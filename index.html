@@ -4196,12 +4196,15 @@ Anyone with your master private key can access all your funds.`;
                 // Perform immediate rescan if enough time has passed
                 const timeSinceLastScan = Date.now() - lastLazyScanTime;
                 if (timeSinceLastScan > 3600000) { // 1 hour
-                    performLazyRescan();
+                    // Double-check data still exists before performing rescan
+                    if (lastScannedWalletData && lastScannedWalletData.wallets) {
+                        performLazyRescan();
+                    }
                 }
                 
                 // Set up periodic rescan every hour
                 lazyScanInterval = setInterval(() => {
-                    if (electrumConnected) {
+                    if (electrumConnected && lastScannedWalletData && lastScannedWalletData.wallets) {
                         performLazyRescan();
                     }
                 }, 3600000); // 1 hour
@@ -4542,9 +4545,15 @@ Anyone with your master private key can access all your funds.`;
                     console.log('Cleared cached scan data on wallet load:', key);
                 });
                 
-                // Clear in-memory scan data
+                // Clear in-memory scan data and stop any ongoing rescans
                 lastScannedWalletData = null;
                 scannedWallets = [];
+                
+                // Clear any existing rescan interval
+                if (lazyScanInterval) {
+                    clearInterval(lazyScanInterval);
+                    lazyScanInterval = null;
+                }
                 
                 try {
                     // Check if this is a wallet.dat file (SQLite)
