@@ -8,7 +8,6 @@ gh release create v0.3.0 \
   --repo unicitynetwork/guiwallet \
   --title "Unicity WEB GUI Wallet v0.3.0 - Debug System & Enhanced Security" \
   --notes-file RELEASE_NOTES_v0.3.0.md \
-  --latest \
   index.html#unicity-wallet-v0.3.0.html
 
 echo "Release created successfully!"

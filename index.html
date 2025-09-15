@@ -1760,6 +1760,65 @@ Anyone with your master private key can access all your funds.`;
                 
                 // Helper function to update UI based on wallet data
                 function updateUIFromWallet() {
+                    // Recover childPrivateKey if missing but address exists (fix for corrupted wallets)
+                    if (!wallet.childPrivateKey && wallet.addresses && wallet.addresses.length > 0 && wallet.masterPrivateKey) {
+                        console.log('Recovering missing childPrivateKey for loaded wallet...');
+                        
+                        // For standard wallets, recover the child key
+                        if (!wallet.isImportedAlphaWallet || !wallet.masterChainCode) {
+                            const addressIndex = wallet.addresses[0].index || 0;
+                            const derivationPath = `m/44'/0'/${addressIndex}'`;
+                            
+                            // Derive child key using HMAC (standard wallet method)
+                            const hmacInput = CryptoJS.enc.Hex.parse(wallet.masterPrivateKey);
+                            const hmacKey = CryptoJS.enc.Utf8.parse(derivationPath);
+                            const hmacOutput = CryptoJS.HmacSHA512(hmacInput, hmacKey).toString();
+                            const recoveredChildKey = hmacOutput.substring(0, 64);
+                            
+                            // Verify it matches the address
+                            const ec = new elliptic.ec('secp256k1');
+                            const keyPair = ec.keyFromPrivate(recoveredChildKey);
+                            const publicKey = keyPair.getPublic(true, 'hex');
+                            const sha256Hash = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(publicKey));
+                            const ripemd160Hash = CryptoJS.RIPEMD160(sha256Hash);
+                            const programData = ripemd160Hash.toString();
+                            const witnessVersion = 0;
+                            const derivedAddress = createBech32('alpha', witnessVersion, hexToBytes(programData));
+                            
+                            if (derivedAddress === wallet.addresses[0].address) {
+                                console.log('✓ Successfully recovered childPrivateKey for address:', wallet.addresses[0].address);
+                                wallet.childPrivateKey = recoveredChildKey;
+                                // Save the fixed wallet
+                                saveWalletData();
+                            } else {
+                                console.error('✗ Address mismatch during recovery!');
+                                console.error('Expected:', wallet.addresses[0].address);
+                                console.error('Derived:', derivedAddress);
+                                
+                                // Try scanning for correct index
+                                for (let i = 0; i < 100; i++) {
+                                    const testPath = `m/44'/0'/${i}'`;
+                                    const testHmac = CryptoJS.HmacSHA512(hmacInput, CryptoJS.enc.Utf8.parse(testPath)).toString();
+                                    const testChildKey = testHmac.substring(0, 64);
+                                    const testKeyPair = ec.keyFromPrivate(testChildKey);
+                                    const testPublicKey = testKeyPair.getPublic(true, 'hex');
+                                    const testSha256 = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(testPublicKey));
+                                    const testRipemd = CryptoJS.RIPEMD160(testSha256);
+                                    const testAddress = createBech32('alpha', witnessVersion, hexToBytes(testRipemd.toString()));
+                                    
+                                    if (testAddress === wallet.addresses[0].address) {
+                                        console.log(`✓ Found correct key at index ${i}!`);
+                                        wallet.childPrivateKey = testChildKey;
+                                        wallet.addresses[0].index = i;
+                                        wallet.addresses[0].path = testPath;
+                                        saveWalletData();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
                     // Update UI if wallet exists
                     if (wallet.masterPrivateKey) {
                         // Update regular master key display
@@ -4175,6 +4234,11 @@ Anyone with your master private key can access all your funds.`;
                 }
                 
                 for (let i = 0; i < lastScannedWalletData.wallets.length; i++) {
+                    // Re-check in each iteration in case data was cleared
+                    if (!lastScannedWalletData || !lastScannedWalletData.wallets || !lastScannedWalletData.wallets[i]) {
+                        console.log('Lazy rescan aborted: wallet data was cleared');
+                        return;
+                    }
                     const wallet = lastScannedWalletData.wallets[i];
                     
                     try {
@@ -4569,6 +4633,29 @@ Anyone with your master private key can access all your funds.`;
                         isImportedAlphaWallet = true;
                     }
                     
+                    // Parse addresses from the backup file
+                    let parsedAddresses = [];
+                    const addressSection = fileContent.match(/YOUR ADDRESSES:\s*\n([\s\S]*?)(?:\n\nGenerated on:|$)/);
+                    if (addressSection && addressSection[1]) {
+                        const addressLines = addressSection[1].trim().split('\n');
+                        for (const line of addressLines) {
+                            // Parse lines like: "Address 1: alpha1qllh2t42ytsgnx8fferxwms6npec7whvnaxta7d (Path: m/44'/0'/0')"
+                            // or: "Address 1: alpha1qllh2t42ytsgnx8fferxwms6npec7whvnaxta7d (Path: undefined)"
+                            const addressMatch = line.match(/Address\s+(\d+):\s+(\w+)\s*\(Path:\s*([^)]*)\)/);
+                            if (addressMatch) {
+                                const index = parseInt(addressMatch[1]) - 1; // Convert to 0-based index
+                                const address = addressMatch[2];
+                                const path = addressMatch[3] === 'undefined' ? null : addressMatch[3];
+                                parsedAddresses.push({
+                                    index: index,
+                                    address: address,
+                                    path: path,
+                                    createdAt: new Date().toISOString()
+                                });
+                            }
+                        }
+                    }
+                    
                     // Confirmation before overwriting
                     if (wallet.masterPrivateKey) {
                         const confirmOverwrite = confirm('This will overwrite your existing wallet. Are you sure you want to proceed?');
@@ -4580,10 +4667,10 @@ Anyone with your master private key can access all your funds.`;
                     // Create a new wallet with the restored master key
                     wallet = {
                         masterPrivateKey: masterKey,
-                        addresses: [],
+                        addresses: parsedAddresses, // Use parsed addresses instead of empty array
                         isEncrypted: isEncrypted,
                         encryptedMasterKey: encryptedMasterKey,
-                        childPrivateKey: null, // Will be set when generating first address
+                        childPrivateKey: null, // Will be set when generating first address or recovered
                         isImportedAlphaWallet: isImportedAlphaWallet,
                         masterChainCode: masterChainCode
                     };
@@ -4624,11 +4711,91 @@ Anyone with your master private key can access all your funds.`;
                         // For standard wallets with no addresses, generate one
                         generateNewAddress();
                     } else {
-                        // For standard wallets with addresses, use the loaded ones
-                        // If there are multiple addresses from backup, just keep the first one
+                        // For standard wallets with addresses, recover and verify them
+                        console.log('Recovering standard wallet with parsed addresses:', wallet.addresses);
+                        
+                        // Keep only the first address for standard wallets
                         if (wallet.addresses.length > 1) {
                             wallet.addresses = [wallet.addresses[0]];
                         }
+                        
+                        // Recover childPrivateKey for the first address
+                        const addressIndex = wallet.addresses[0].index || 0;
+                        const derivationPath = `m/44'/0'/${addressIndex}'`;
+                        
+                        // Derive child key using HMAC (standard wallet method)
+                        const hmacInput = CryptoJS.enc.Hex.parse(wallet.masterPrivateKey);
+                        const hmacKey = CryptoJS.enc.Utf8.parse(derivationPath);
+                        const hmacOutput = CryptoJS.HmacSHA512(hmacInput, hmacKey).toString();
+                        const childPrivateKey = hmacOutput.substring(0, 64);
+                        
+                        // Generate address from the derived key to verify
+                        const ec = new elliptic.ec('secp256k1');
+                        const keyPair = ec.keyFromPrivate(childPrivateKey);
+                        const publicKey = keyPair.getPublic(true, 'hex');
+                        
+                        // Calculate address
+                        const sha256Hash = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(publicKey));
+                        const ripemd160Hash = CryptoJS.RIPEMD160(sha256Hash);
+                        const programData = ripemd160Hash.toString();
+                        const witnessVersion = 0;
+                        const derivedAddress = createBech32('alpha', witnessVersion, hexToBytes(programData));
+                        
+                        // Verify the address matches
+                        if (derivedAddress === wallet.addresses[0].address) {
+                            console.log('✓ Address verification successful! Recovered childPrivateKey correctly.');
+                            console.log('  Address:', wallet.addresses[0].address);
+                            console.log('  Path:', derivationPath);
+                            console.log('  Child Private Key (first 8 chars):', childPrivateKey.substring(0, 8) + '...');
+                            wallet.childPrivateKey = childPrivateKey;
+                            wallet.addresses[0].publicKey = publicKey;
+                            wallet.addresses[0].path = derivationPath;
+                            
+                            // Show success message
+                            restoreStatus.className = 'info-box success';
+                            restoreStatus.textContent = 'Wallet restored successfully. Address verified and private key recovered.';
+                            restoreStatus.style.display = 'block';
+                        } else {
+                            console.error('✗ Address verification failed!');
+                            console.error('Expected:', wallet.addresses[0].address);
+                            console.error('Derived:', derivedAddress);
+                            
+                            // Try to recover by scanning for the correct index
+                            let recovered = false;
+                            for (let i = 0; i < 100; i++) {
+                                const testPath = `m/44'/0'/${i}'`;
+                                const testHmac = CryptoJS.HmacSHA512(hmacInput, CryptoJS.enc.Utf8.parse(testPath)).toString();
+                                const testChildKey = testHmac.substring(0, 64);
+                                const testKeyPair = ec.keyFromPrivate(testChildKey);
+                                const testPublicKey = testKeyPair.getPublic(true, 'hex');
+                                const testSha256 = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(testPublicKey));
+                                const testRipemd = CryptoJS.RIPEMD160(testSha256);
+                                const testAddress = createBech32('alpha', witnessVersion, hexToBytes(testRipemd.toString()));
+                                
+                                if (testAddress === wallet.addresses[0].address) {
+                                    console.log(`✓ Found correct derivation at index ${i}!`);
+                                    wallet.childPrivateKey = testChildKey;
+                                    wallet.addresses[0].publicKey = testPublicKey;
+                                    wallet.addresses[0].path = testPath;
+                                    wallet.addresses[0].index = i;
+                                    recovered = true;
+                                    
+                                    restoreStatus.className = 'info-box success';
+                                    restoreStatus.textContent = `Wallet recovered! Found correct key at index ${i}.`;
+                                    restoreStatus.style.display = 'block';
+                                    break;
+                                }
+                            }
+                            
+                            if (!recovered) {
+                                restoreStatus.className = 'info-box warning';
+                                restoreStatus.textContent = 'Warning: Could not verify address. Wallet may not work correctly.';
+                                restoreStatus.style.display = 'block';
+                                // Still set the childPrivateKey to avoid using master key
+                                wallet.childPrivateKey = childPrivateKey;
+                            }
+                        }
+                        
                         addAddressToUI(wallet.addresses[0]);
                     }
                     
@@ -6426,6 +6593,7 @@ Anyone with your master private key can access all your funds.`;
                         // First check current UTXOs
                         if (currentUtxos) {
                             const matchingUtxo = currentUtxos.find(utxo => 
+                                utxo && utxo.tx_hash && prevTxid && 
                                 utxo.tx_hash.toLowerCase() === prevTxid.toLowerCase() && utxo.tx_pos === prevVout
                             );
                             
@@ -6439,6 +6607,7 @@ Anyone with your master private key can access all your funds.`;
                         // Also check offline UTXO data if available
                         if (offlineUtxoData && offlineUtxoData.utxos) {
                             const matchingUtxo = offlineUtxoData.utxos.find(utxo => 
+                                utxo && utxo.tx_hash && prevTxid &&
                                 utxo.tx_hash.toLowerCase() === prevTxid.toLowerCase() && utxo.tx_pos === prevVout
                             );
                             
@@ -6475,6 +6644,7 @@ Anyone with your master private key can access all your funds.`;
                         } else if (currentTransactions) {
                             // Check if this transaction is in our history
                             const prevTx = currentTransactions.find(tx => 
+                                tx && prevTxid &&
                                 ((tx.tx_hash || tx.txid) || '').toLowerCase() === prevTxid.toLowerCase()
                             );
                             
