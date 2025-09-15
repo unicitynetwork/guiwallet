@@ -2198,6 +2198,14 @@ Anyone with your master private key can access all your funds.`;
             
             // Add address to UI
             function addAddressToUI(addressInfo) {
+                console.log('addAddressToUI called with:', addressInfo);
+                
+                // Validate addressInfo
+                if (!addressInfo || !addressInfo.address) {
+                    console.error('Invalid addressInfo provided to addAddressToUI:', addressInfo);
+                    return;
+                }
+                
                 // Show wallet info section
                 walletInfo.style.display = 'block';
                 
@@ -4220,6 +4228,12 @@ Anyone with your master private key can access all your funds.`;
                     return;
                 }
                 
+                // Store a local reference to avoid null issues during async operations
+                const scanData = lastScannedWalletData;
+                if (!scanData || !scanData.wallets || scanData.wallets.length === 0) {
+                    return;
+                }
+                
                 lastLazyScanTime = Date.now();
                 
                 // Update status text for lazy rescan
@@ -4231,19 +4245,13 @@ Anyone with your master private key can access all your funds.`;
                 let totalBalance = 0;
                 let updatedWallets = [];
                 
-                // Scan wallets with rate limiting
-                // Double-check data still exists after async operations
-                if (!lastScannedWalletData || !lastScannedWalletData.wallets) {
-                    return;
-                }
-                
-                for (let i = 0; i < lastScannedWalletData.wallets.length; i++) {
+                for (let i = 0; i < scanData.wallets.length; i++) {
                     // Re-check in each iteration in case data was cleared
-                    if (!lastScannedWalletData || !lastScannedWalletData.wallets || !lastScannedWalletData.wallets[i]) {
+                    if (!scanData || !scanData.wallets || !scanData.wallets[i]) {
                         console.log('Lazy rescan aborted: wallet data was cleared');
                         return;
                     }
-                    const wallet = lastScannedWalletData.wallets[i];
+                    const wallet = scanData.wallets[i];
                     
                     try {
                         // Check balance
@@ -4265,25 +4273,27 @@ Anyone with your master private key can access all your funds.`;
                         // Check if balance changed
                         if (oldBalance !== newBalance) {
                             
-                            // Update the stored data immediately
-                            lastScannedWalletData.wallets[i] = updatedWallet;
-                            
-                            // Recalculate total balance from all wallets scanned so far
-                            let currentTotal = 0;
-                            // Add balances from already updated wallets
-                            for (let j = 0; j < updatedWallets.length; j++) {
-                                if (updatedWallets[j].balance > 0) {
-                                    currentTotal += updatedWallets[j].balance;
+                            // Update the stored data immediately if it still exists
+                            if (lastScannedWalletData && lastScannedWalletData.wallets && lastScannedWalletData.wallets[i]) {
+                                lastScannedWalletData.wallets[i] = updatedWallet;
+                                
+                                // Recalculate total balance from all wallets scanned so far
+                                let currentTotal = 0;
+                                // Add balances from already updated wallets
+                                for (let j = 0; j < updatedWallets.length; j++) {
+                                    if (updatedWallets[j].balance > 0) {
+                                        currentTotal += updatedWallets[j].balance;
+                                    }
                                 }
-                            }
-                            // Add balances from remaining wallets (not yet scanned)
-                            for (let j = i + 1; j < lastScannedWalletData.wallets.length; j++) {
-                                if (lastScannedWalletData.wallets[j].balance > 0) {
-                                    currentTotal += lastScannedWalletData.wallets[j].balance;
+                                // Add balances from remaining wallets (not yet scanned)
+                                for (let j = i + 1; j < scanData.wallets.length; j++) {
+                                    if (scanData.wallets[j].balance > 0) {
+                                        currentTotal += scanData.wallets[j].balance;
+                                    }
                                 }
+                                
+                                lastScannedWalletData.totalBalance = currentTotal;
                             }
-                            
-                            lastScannedWalletData.totalBalance = currentTotal;
                             
                             // Update display immediately
                             updateScannedWalletsDisplay();
@@ -4291,7 +4301,7 @@ Anyone with your master private key can access all your funds.`;
                         }
                         
                         // Rate limit: wait 10 seconds between addresses
-                        if (i < lastScannedWalletData.wallets.length - 1) {
+                        if (i < scanData.wallets.length - 1) {
                             await new Promise(resolve => setTimeout(resolve, 10000));
                         }
                     } catch (error) {
@@ -4304,23 +4314,24 @@ Anyone with your master private key can access all your funds.`;
                     }
                 }
                 
-                // Update stored data
-                lastScannedWalletData = {
-                    ...lastScannedWalletData,
-                    wallets: updatedWallets,
-                    totalBalance: totalBalance
-                };
-                
-                // Update cache only if we have master keys
-                if (lastScannedWalletData.masterKey) {
-                    const fingerprint = generateWalletFingerprint(
-                        lastScannedWalletData.masterKey,
-                        lastScannedWalletData.masterChainCode
-                    );
-                    if (fingerprint) {
-                        saveScanResultsToCache(fingerprint, lastScannedWalletData);
+                // Update stored data only if it still exists
+                if (lastScannedWalletData) {
+                    lastScannedWalletData = {
+                        ...scanData,
+                        wallets: updatedWallets,
+                        totalBalance: totalBalance
+                    };
+                    
+                    // Update cache only if we have master keys
+                    if (lastScannedWalletData.masterKey) {
+                        const fingerprint = generateWalletFingerprint(
+                            lastScannedWalletData.masterKey,
+                            lastScannedWalletData.masterChainCode
+                        );
+                        if (fingerprint) {
+                            saveScanResultsToCache(fingerprint, lastScannedWalletData);
+                        }
                     }
-                } else {
                 }
                 
                 // Update UI
@@ -4532,11 +4543,30 @@ Anyone with your master private key can access all your funds.`;
                     return;
                 }
                 
+                // Clear ALL previous wallet state before loading new wallet
+                console.log('Clearing previous wallet state...');
+                currentUtxos = [];
+                currentTransactions = [];
+                currentTransactionPage = 1;
+                currentUtxoPage = 1;
+                offlineUtxoData = null;
+                
+                // Clear UI displays
+                if (walletBalance) walletBalance.textContent = '0.00000000 ALPHA';
+                if (walletUnconfirmed) walletUnconfirmed.textContent = '';
+                const transactionHistoryList = document.getElementById('transactionHistoryList');
+                if (transactionHistoryList) transactionHistoryList.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Loading wallet...</div>';
+                const currentUtxoList = document.getElementById('currentUtxoList');
+                if (currentUtxoList) currentUtxoList.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Loading wallet...</div>';
+                
                 // Clear any existing scan cache when loading a new wallet
                 const keysToRemove = [];
                 for (let i = 0; i < localStorage.length; i++) {
                     const key = localStorage.key(i);
-                    if (key && (key.startsWith('walletScan_') || key === 'lastScannedWalletData' || key === 'lastLazyScanTime')) {
+                    if (key && (key.startsWith('walletScan_') || 
+                               key.startsWith('walletScanCache_') || 
+                               key === 'lastScannedWalletData' || 
+                               key === 'lastLazyScanTime')) {
                         keysToRemove.push(key);
                     }
                 }
@@ -4573,11 +4603,13 @@ Anyone with your master private key can access all your funds.`;
                     // Check if this is an encrypted wallet
                     if (fileContent.includes('ENCRYPTED MASTER KEY')) {
                         isEncrypted = true;
+                        console.log('Loading encrypted wallet...');
                         
                         // Extract the encrypted master key
                         const encryptedKeyMatch = fileContent.match(/ENCRYPTED MASTER KEY \(password protected\):\s*([^\n]+)/);
                         if (encryptedKeyMatch && encryptedKeyMatch[1]) {
                             encryptedMasterKey = encryptedKeyMatch[1].trim();
+                            console.log('Found encrypted master key');
                             
                             // Get the decryption password
                             const password = restorePasswordInput.value;
@@ -4590,6 +4622,7 @@ Anyone with your master private key can access all your funds.`;
                             
                             // Decrypt the master key
                             try {
+                                console.log('Attempting to decrypt with provided password...');
                                 const salt = "alpha_wallet_salt";
                                 const passwordKey = CryptoJS.PBKDF2(password, salt, { keySize: 256/32, iterations: 100000 }).toString();
                                 
@@ -4603,6 +4636,7 @@ Anyone with your master private key can access all your funds.`;
                                     restoreStatus.style.display = 'block';
                                     return;
                                 }
+                                console.log('Successfully decrypted master key:', masterKey.substring(0, 8) + '...');
                             } catch (e) {
                                 restoreStatus.className = 'info-box error';
                                 restoreStatus.textContent = 'Error decrypting wallet: ' + e.message;
@@ -4646,8 +4680,10 @@ Anyone with your master private key can access all your funds.`;
                     // Parse addresses from the backup file
                     let parsedAddresses = [];
                     const addressSection = fileContent.match(/YOUR ADDRESSES:\s*\n([\s\S]*?)(?:\n\nGenerated on:|$)/);
+                    console.log('Address section found:', !!addressSection);
                     if (addressSection && addressSection[1]) {
                         const addressLines = addressSection[1].trim().split('\n');
+                        console.log('Address lines to parse:', addressLines);
                         for (const line of addressLines) {
                             // Parse lines like: "Address 1: alpha1qllh2t42ytsgnx8fferxwms6npec7whvnaxta7d (Path: m/44'/0'/0')"
                             // or: "Address 1: alpha1qllh2t42ytsgnx8fferxwms6npec7whvnaxta7d (Path: undefined)"
@@ -4656,15 +4692,18 @@ Anyone with your master private key can access all your funds.`;
                                 const index = parseInt(addressMatch[1]) - 1; // Convert to 0-based index
                                 const address = addressMatch[2];
                                 const path = addressMatch[3] === 'undefined' ? null : addressMatch[3];
-                                parsedAddresses.push({
+                                const addressInfo = {
                                     index: index,
                                     address: address,
                                     path: path,
                                     createdAt: new Date().toISOString()
-                                });
+                                };
+                                console.log('Parsed address:', addressInfo);
+                                parsedAddresses.push(addressInfo);
                             }
                         }
                     }
+                    console.log('Total parsed addresses:', parsedAddresses.length, parsedAddresses);
                     
                     // Confirmation before overwriting
                     if (wallet.masterPrivateKey) {
@@ -4723,6 +4762,8 @@ Anyone with your master private key can access all your funds.`;
                     } else {
                         // For standard wallets with addresses, recover and verify them
                         console.log('Recovering standard wallet with parsed addresses:', wallet.addresses);
+                        console.log('Master private key available:', !!wallet.masterPrivateKey);
+                        console.log('Is encrypted:', wallet.isEncrypted);
                         
                         // Keep only the first address for standard wallets
                         if (wallet.addresses.length > 1) {
@@ -4733,11 +4774,16 @@ Anyone with your master private key can access all your funds.`;
                         const addressIndex = wallet.addresses[0].index || 0;
                         const derivationPath = `m/44'/0'/${addressIndex}'`;
                         
+                        console.log('Attempting to derive child key for path:', derivationPath);
+                        console.log('Master key (first 8 chars):', wallet.masterPrivateKey ? wallet.masterPrivateKey.substring(0, 8) + '...' : 'null');
+                        
                         // Derive child key using HMAC (standard wallet method)
                         const hmacInput = CryptoJS.enc.Hex.parse(wallet.masterPrivateKey);
                         const hmacKey = CryptoJS.enc.Utf8.parse(derivationPath);
                         const hmacOutput = CryptoJS.HmacSHA512(hmacInput, hmacKey).toString();
                         const childPrivateKey = hmacOutput.substring(0, 64);
+                        
+                        console.log('Derived child private key (first 8 chars):', childPrivateKey.substring(0, 8) + '...');
                         
                         // Generate address from the derived key to verify
                         const ec = new elliptic.ec('secp256k1');
@@ -4806,11 +4852,39 @@ Anyone with your master private key can access all your funds.`;
                             }
                         }
                         
+                        console.log('About to call addAddressToUI with:', wallet.addresses[0]);
                         addAddressToUI(wallet.addresses[0]);
+                        
+                        // Force wallet info section to be visible
+                        const walletInfoSection = document.getElementById('walletInfo');
+                        if (walletInfoSection) {
+                            walletInfoSection.style.display = 'block';
+                            console.log('Forced walletInfo section to be visible');
+                        }
+                        
+                        // Update the wallet address directly as backup
+                        const walletAddressElement = document.getElementById('walletAddress');
+                        if (walletAddressElement && wallet.addresses[0]) {
+                            walletAddressElement.textContent = wallet.addresses[0].address;
+                            console.log('Directly updated wallet address element to:', wallet.addresses[0].address);
+                        }
                     }
                     
                     // Save the restored wallet
                     saveWalletData();
+                    
+                    // Close the restore modal for non-BIP32 wallets
+                    if (!wallet.isImportedAlphaWallet) {
+                        // Standard wallet - close modal and show wallet UI immediately
+                        closeRestoreModal();
+                        
+                        // Show success notification
+                        if (isEncrypted) {
+                            showInAppNotification('Encrypted Wallet Loaded', 'Successfully decrypted and recovered wallet', 'success');
+                        } else {
+                            showInAppNotification('Wallet Loaded', 'Successfully loaded wallet', 'success');
+                        }
+                    }
                     
                     // If already connected to Fulcrum, refresh balance
                     if (electrumConnected) {
