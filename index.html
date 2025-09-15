@@ -2161,38 +2161,56 @@ Anyone with your master private key can access all your funds.`;
                 // Check if this is an imported Alpha wallet
                 if (wallet.isImportedAlphaWallet && wallet.masterChainCode) {
                     // For imported BIP32 HD wallets, use proper BIP32 derivation
-                    // Default to BIP84 path for native SegWit: m/84'/1'/0'/0/index
-                    // Note: Using testnet (1') as seen in the descriptors
+                    // Use the derivation path from the wallet if available, otherwise default
                     
                     // Derive the path step by step
                     let key = wallet.masterPrivateKey;
                     let chainCode = wallet.masterChainCode;
                     
-                    // m/84' - Purpose (native SegWit)
-                    let result = deriveKeyBIP32(key, chainCode, 84, true);
+                    // Check if we have a stored derivation path from the descriptor
+                    let purpose = 84; // Default to BIP84 for native SegWit
+                    let coinType = 1; // Default to testnet (1) for Alpha network
+                    let account = 0;  // Default account
+                    
+                    // If wallet has descriptor info, use it
+                    if (wallet.descriptorPath) {
+                        // Parse path like "84'/0'/0'" or "44'/0'/0'"
+                        const pathMatch = wallet.descriptorPath.match(/(\d+)'\/(\d+)'\/(\d+)'/);
+                        if (pathMatch) {
+                            purpose = parseInt(pathMatch[1]);
+                            coinType = parseInt(pathMatch[2]);
+                            account = parseInt(pathMatch[3]);
+                            console.log(`Using descriptor path: m/${purpose}'/${coinType}'/${account}'/0/${addressIndex}`);
+                        }
+                    } else {
+                        console.log(`Using default path: m/${purpose}'/${coinType}'/${account}'/0/${addressIndex} (no descriptor path found)`);
+                    }
+                    
+                    // m/purpose' (e.g., 84' for native SegWit, 44' for legacy)
+                    let result = deriveKeyBIP32(key, chainCode, purpose, true);
                     key = result.key;
                     chainCode = result.chainCode;
                     
-                    // m/84'/1' - Coin type (1 = testnet)
-                    result = deriveKeyBIP32(key, chainCode, 1, true);
+                    // m/purpose'/coinType' (0 = mainnet, 1 = testnet)
+                    result = deriveKeyBIP32(key, chainCode, coinType, true);
                     key = result.key;
                     chainCode = result.chainCode;
                     
-                    // m/84'/1'/0' - Account
-                    result = deriveKeyBIP32(key, chainCode, 0, true);
+                    // m/purpose'/coinType'/account'
+                    result = deriveKeyBIP32(key, chainCode, account, true);
                     key = result.key;
                     chainCode = result.chainCode;
                     
-                    // m/84'/1'/0'/0 - External chain
+                    // m/purpose'/coinType'/account'/0 - External chain
                     result = deriveKeyBIP32(key, chainCode, 0, false);
                     key = result.key;
                     chainCode = result.chainCode;
                     
-                    // m/84'/1'/0'/0/index - Address index
+                    // m/purpose'/coinType'/account'/0/index - Address index
                     result = deriveKeyBIP32(key, chainCode, addressIndex, false);
                     childPrivateKey = result.key;
                     
-                    derivationPath = `m/84'/1'/0'/0/${addressIndex}`;
+                    derivationPath = `m/${purpose}'/${coinType}'/${account}'/0/${addressIndex}`;
                     
                     const keyPair = ec.keyFromPrivate(childPrivateKey);
                     publicKey = keyPair.getPublic(true, 'hex');
@@ -3131,7 +3149,17 @@ Anyone with your master private key can access all your funds.`;
                         walletInfo.hdChain = true;
                     }
                     
+                    // Check if wallet is encrypted before trying legacy extraction
+                    const mkeyPattern = new TextEncoder().encode('mkey');
+                    const hasMkey = findPattern(data, mkeyPattern, 0) !== -1;
+                    
+                    if (hasMkey && walletInfo.descriptorKeys.length === 0) {
+                        // Wallet is encrypted and we haven't found any unencrypted descriptor keys
+                        console.warn('Wallet appears to be encrypted - legacy key extraction may fail');
+                    }
+                    
                     // Pattern 3: Search for regular key records (legacy format)
+                    // WARNING: This may find incorrect keys for encrypted wallets!
                     const keyPattern = new TextEncoder().encode('key');
                     index = 0;
                     while ((index = findPattern(data, keyPattern, index)) !== -1) {
@@ -3151,6 +3179,86 @@ Anyone with your master private key can access all your funds.`;
                         index++;
                     }
                     
+                    // Look for wpkh descriptor to extract derivation path
+                    let descriptorPath = null;
+                    const wpkhPattern = new TextEncoder().encode('wpkh([');
+                    let wpkhIndex = findPattern(data, wpkhPattern, 0);
+                    if (wpkhIndex !== -1) {
+                        // Read the descriptor (up to 200 bytes should be enough)
+                        const descriptorArea = data.slice(wpkhIndex, Math.min(wpkhIndex + 200, data.length));
+                        let descriptorStr = '';
+                        
+                        // Convert to string until we hit a non-printable character or closing parenthesis
+                        for (let i = 0; i < descriptorArea.length; i++) {
+                            const byte = descriptorArea[i];
+                            if (byte >= 32 && byte <= 126) { // Printable ASCII
+                                descriptorStr += String.fromCharCode(byte);
+                                if (descriptorStr.includes('*))')) break; // End of descriptor
+                            }
+                        }
+                        
+                        console.log('Found descriptor:', descriptorStr);
+                        
+                        // Parse the descriptor path
+                        // Format: wpkh([fingerprint/84'/0'/0']xpub.../0/*)
+                        const pathMatch = descriptorStr.match(/\[[\da-f]+\/(\d+'\/\d+'\/\d+')\]/);
+                        if (pathMatch) {
+                            descriptorPath = pathMatch[1];
+                            console.log('Extracted descriptor path:', descriptorPath);
+                        }
+                    }
+                    
+                    // Extract chain code from xpub for BIP32 wallets
+                    let masterChainCode = null;
+                    const xpubPattern = new TextEncoder().encode('xpub');
+                    const base58Chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+                    let searchPos = 0;
+                    let foundMasterChainCode = false;
+                    
+                    while (!foundMasterChainCode && searchPos < data.length) {
+                        let xpubIndex = findPattern(data, xpubPattern, searchPos);
+                        if (xpubIndex === -1) break;
+                        
+                        // Extract the full xpub
+                        let xpubStr = 'xpub';
+                        let pos = xpubIndex + 4;
+                        
+                        while (pos < data.length && xpubStr.length < 120) {
+                            const char = String.fromCharCode(data[pos]);
+                            if (base58Chars.includes(char)) {
+                                xpubStr += char;
+                                pos++;
+                            } else {
+                                break;
+                            }
+                        }
+                        
+                        if (xpubStr.length > 100) {
+                            try {
+                                // Decode the xpub to check depth and extract chain code
+                                const decoded = base58Decode(xpubStr);
+                                const depth = decoded[4];
+                                
+                                // We want the master key at depth 0
+                                if (depth === 0) {
+                                    // Chain code is at bytes 13-45 (32 bytes)
+                                    const chainCodeBytes = decoded.slice(13, 45);
+                                    masterChainCode = Array.from(chainCodeBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+                                    console.log('Extracted master chain code from depth 0 xpub:', masterChainCode);
+                                    foundMasterChainCode = true;
+                                }
+                            } catch (e) {
+                                console.error('Failed to decode xpub:', e);
+                            }
+                        }
+                        
+                        searchPos = xpubIndex + 4;
+                    }
+                    
+                    if (!masterChainCode) {
+                        console.warn('Could not extract chain code from wallet.dat - BIP32 derivation will not work correctly');
+                    }
+                    
                     // Determine what we found
                     let masterKey = null;
                     let importType = '';
@@ -3166,7 +3274,12 @@ Anyone with your master private key can access all your funds.`;
                         importType = walletInfo.hdChain ? 'HD wallet' : 'legacy wallet';
                         restoreStatus.textContent = `Found ${walletInfo.legacyKeys.length} key(s) in ${importType}...`;
                     } else {
-                        throw new Error('No valid private keys found in wallet.dat file. The wallet might be encrypted or use an unsupported format.');
+                        // Check if this is an encrypted wallet
+                        if (hasMkey) {
+                            throw new Error('This wallet is encrypted. Please decrypt it in Alpha Core first using: alpha-cli walletpassphrase "yourpassword" 600');
+                        } else {
+                            throw new Error('No valid private keys found in wallet.dat file. The wallet might use an unsupported format.');
+                        }
                     }
                     
                     // Confirmation before overwriting
@@ -3190,8 +3303,9 @@ Anyone with your master private key can access all your funds.`;
                         childPrivateKey: null,
                         isImportedAlphaWallet: true, // Mark as imported from Alpha wallet.dat
                         // For BIP32 HD wallets, we need the chain code
-                        // This will be extracted from the wallet.dat file
-                        masterChainCode: result.masterChainCode
+                        // This was extracted from the wallet.dat file above
+                        masterChainCode: masterChainCode,
+                        descriptorPath: descriptorPath // Store the descriptor path for correct derivation
                     };
                     
                     // Update global reference
@@ -3251,7 +3365,7 @@ Anyone with your master private key can access all your funds.`;
             }
             
             // Derive address at specific index from master key
-            function deriveAddressAtIndex(masterKey, masterChainCode, index, isAlphaWallet = true, isChange = false) {
+            function deriveAddressAtIndex(masterKey, masterChainCode, index, isAlphaWallet = true, isChange = false, descriptorPath = null) {
                 const ec = new elliptic.ec('secp256k1');
                 let childPrivateKey;
                 let derivationPath;
@@ -3261,17 +3375,33 @@ Anyone with your master private key can access all your funds.`;
                     let key = masterKey;
                     let chainCode = masterChainCode;
                     
-                    // m/84'/1'/0'/chain/index
+                    // Parse descriptor path if provided, otherwise use defaults
+                    let purpose = 84; // Default to BIP84
+                    let coinType = 1; // Default to testnet (1) for Alpha network
+                    let account = 0;
+                    
+                    if (descriptorPath) {
+                        // Parse path like "84'/0'/0'" or "84'/1'/0'"
+                        const pathMatch = descriptorPath.match(/(\d+)'\/(\d+)'\/(\d+)'/);
+                        if (pathMatch) {
+                            purpose = parseInt(pathMatch[1]);
+                            coinType = parseInt(pathMatch[2]);
+                            account = parseInt(pathMatch[3]);
+                            console.log(`Using descriptor path: m/${purpose}'/${coinType}'/${account}'/chain/index`);
+                        }
+                    }
+                    
+                    // m/purpose'/coinType'/account'/chain/index
                     // where chain = 0 for external (receiving), 1 for internal (change)
-                    let result = deriveKeyBIP32(key, chainCode, 84, true);
+                    let result = deriveKeyBIP32(key, chainCode, purpose, true);
                     key = result.key;
                     chainCode = result.chainCode;
                     
-                    result = deriveKeyBIP32(key, chainCode, 1, true);
+                    result = deriveKeyBIP32(key, chainCode, coinType, true);
                     key = result.key;
                     chainCode = result.chainCode;
                     
-                    result = deriveKeyBIP32(key, chainCode, 0, true);
+                    result = deriveKeyBIP32(key, chainCode, account, true);
                     key = result.key;
                     chainCode = result.chainCode;
                     
@@ -3281,7 +3411,7 @@ Anyone with your master private key can access all your funds.`;
                     
                     result = deriveKeyBIP32(key, chainCode, index, false);
                     childPrivateKey = result.key;
-                    derivationPath = `m/84'/1'/0'/${isChange ? 1 : 0}/${index}`;
+                    derivationPath = `m/${purpose}'/${coinType}'/${account}'/${isChange ? 1 : 0}/${index}`;
                 } else {
                     // HMAC-based derivation
                     derivationPath = `m/44'/0'/${index}'`;
@@ -3746,6 +3876,7 @@ Anyone with your master private key can access all your funds.`;
                 try {
                     let masterKey = '';
                     let masterChainCode = null;
+                    let descriptorPath = null;
                     let isAlphaWallet = false;
                     
                     if (file.name.endsWith('.dat')) {
@@ -3753,6 +3884,7 @@ Anyone with your master private key can access all your funds.`;
                         const result = await extractFromWalletDat(file);
                         masterKey = result.masterKey;
                         masterChainCode = result.masterChainCode;
+                        descriptorPath = result.descriptorPath;
                         isAlphaWallet = true;
                     } else {
                         // Extract from text backup
@@ -3777,12 +3909,14 @@ Anyone with your master private key can access all your funds.`;
                     extractedWalletData = {
                         masterKey,
                         masterChainCode,
+                        descriptorPath,
                         isAlphaWallet
                     };
                     
                     console.log('Extracted wallet data:', {
                         masterKey: masterKey,
                         masterChainCode: masterChainCode,
+                        descriptorPath: descriptorPath,
                         isAlphaWallet: isAlphaWallet,
                         keyLength: masterKey ? masterKey.length : 0
                     });
@@ -3823,6 +3957,7 @@ Anyone with your master private key can access all your funds.`;
                             totalBalance: recalculatedTotal,
                             masterKey: extractedWalletData.masterKey,
                             masterChainCode: extractedWalletData.masterChainCode,
+                            descriptorPath: extractedWalletData.descriptorPath,
                             isAlphaWallet: extractedWalletData.isAlphaWallet
                         };
                         
@@ -3961,9 +4096,22 @@ Anyone with your master private key can access all your funds.`;
                     index++;
                 }
                 
-                // If no descriptor keys found, try legacy patterns
+                // If no descriptor keys found, check if wallet is encrypted
                 if (!masterKey && foundCount === 0) {
-                    // Try searching for raw private keys (32 bytes)
+                    // Check for encryption markers
+                    const mkeyPattern = new TextEncoder().encode('mkey');
+                    const encryptedPattern = new TextEncoder().encode('encrypted');
+                    
+                    const hasMkey = findPattern(data, mkeyPattern, 0) !== -1;
+                    const hasEncrypted = findPattern(data, encryptedPattern, 0) !== -1;
+                    
+                    if (hasMkey || hasEncrypted) {
+                        // This is an encrypted wallet
+                        throw new Error('This wallet is encrypted. Please decrypt it in Alpha Core first, or provide the wallet password.');
+                    }
+                    
+                    // Try searching for raw private keys (32 bytes) - only for truly legacy wallets
+                    console.warn('Attempting legacy key extraction - this may not find the correct master key');
                     const keyPattern = new TextEncoder().encode('key');
                     index = 0;
                     while ((index = findPattern(data, keyPattern, index)) !== -1 && !masterKey) {
@@ -3974,6 +4122,7 @@ Anyone with your master private key can access all your funds.`;
                             
                             if (isValidPrivateKey(candidateHex)) {
                                 masterKey = candidateHex;
+                                console.warn('Found a private key using legacy extraction - this may not be the master key!');
                                 break;
                             }
                         }
@@ -4044,9 +4193,39 @@ Anyone with your master private key can access all your funds.`;
                     console.warn('Could not extract chain code from wallet.dat - BIP32 derivation will not work correctly');
                 }
                 
+                // Look for wpkh descriptor to extract derivation path
+                let descriptorPath = null;
+                const wpkhPattern = new TextEncoder().encode('wpkh([');
+                let wpkhIndex = findPattern(data, wpkhPattern, 0);
+                if (wpkhIndex !== -1) {
+                    // Read the descriptor (up to 200 bytes should be enough)
+                    const descriptorArea = data.slice(wpkhIndex, Math.min(wpkhIndex + 200, data.length));
+                    let descriptorStr = '';
+                    
+                    // Convert to string until we hit a non-printable character or closing parenthesis
+                    for (let i = 0; i < descriptorArea.length; i++) {
+                        const byte = descriptorArea[i];
+                        if (byte >= 32 && byte <= 126) { // Printable ASCII
+                            descriptorStr += String.fromCharCode(byte);
+                            if (descriptorStr.includes('*))')) break; // End of descriptor
+                        }
+                    }
+                    
+                    console.log('Found descriptor in extractFromWalletDat:', descriptorStr);
+                    
+                    // Parse the descriptor path
+                    // Format: wpkh([fingerprint/84'/0'/0']xpub.../0/*)
+                    const pathMatch = descriptorStr.match(/\[[\da-f]+\/(\d+'\/\d+'\/\d+')\]/);
+                    if (pathMatch) {
+                        descriptorPath = pathMatch[1];
+                        console.log('Extracted descriptor path in extractFromWalletDat:', descriptorPath);
+                    }
+                }
+                
                 return {
                     masterKey,
                     masterChainCode,
+                    descriptorPath,
                     isAlphaWallet: true
                 };
             }
@@ -4080,6 +4259,7 @@ Anyone with your master private key can access all your funds.`;
                     totalBalance: 0,
                     masterKey: extractedWalletData.masterKey,
                     masterChainCode: extractedWalletData.masterChainCode,
+                    descriptorPath: extractedWalletData.descriptorPath,
                     isAlphaWallet: extractedWalletData.isAlphaWallet
                 };
                 
@@ -4106,7 +4286,8 @@ Anyone with your master private key can access all your funds.`;
                         extractedWalletData.masterChainCode,
                         i,
                         extractedWalletData.isAlphaWallet,
-                        false // external address
+                        false, // external address
+                        extractedWalletData.descriptorPath
                     );
                     
                     // Skip logging each address to reduce clutter
@@ -4150,6 +4331,7 @@ Anyone with your master private key can access all your funds.`;
                                 totalBalance: runningTotal,
                                 masterKey: extractedWalletData.masterKey,
                                 masterChainCode: extractedWalletData.masterChainCode,
+                                descriptorPath: extractedWalletData.descriptorPath,
                                 isAlphaWallet: extractedWalletData.isAlphaWallet
                             };
                             
@@ -4186,7 +4368,8 @@ Anyone with your master private key can access all your funds.`;
                             extractedWalletData.masterChainCode,
                             i,
                             extractedWalletData.isAlphaWallet,
-                            true // change address
+                            true, // change address
+                            extractedWalletData.descriptorPath
                         );
                         
                         // Skip logging each address to reduce clutter
@@ -4230,6 +4413,7 @@ Anyone with your master private key can access all your funds.`;
                                     totalBalance: runningTotal,
                                     masterKey: extractedWalletData.masterKey,
                                     masterChainCode: extractedWalletData.masterChainCode,
+                                    descriptorPath: extractedWalletData.descriptorPath,
                                     isAlphaWallet: extractedWalletData.isAlphaWallet
                                 };
                                 
@@ -4279,6 +4463,7 @@ Anyone with your master private key can access all your funds.`;
                     totalBalance: totalBalance,
                     masterKey: extractedWalletData.masterKey,
                     masterChainCode: extractedWalletData.masterChainCode,
+                    descriptorPath: extractedWalletData.descriptorPath,
                     isAlphaWallet: extractedWalletData.isAlphaWallet
                 };
                 
@@ -4376,6 +4561,7 @@ Anyone with your master private key can access all your funds.`;
                             // We don't have the master keys here, but that's ok for display
                             masterKey: null,
                             masterChainCode: null,
+                            descriptorPath: null,
                             isAlphaWallet: true
                         };
                         
@@ -4619,7 +4805,8 @@ Anyone with your master private key can access all your funds.`;
                             lastScannedWalletData.masterChainCode,
                             walletInfo.index,
                             lastScannedWalletData.isAlphaWallet,
-                            walletInfo.isChange
+                            walletInfo.isChange,
+                            lastScannedWalletData.descriptorPath
                         );
                         fullWalletInfo.balance = walletInfo.balance;
                         fullWalletInfo.utxoCount = walletInfo.utxoCount;
@@ -6871,7 +7058,8 @@ Anyone with your master private key can access all your funds.`;
                             wallet.masterChainCode,
                             i,
                             true, // isAlphaWallet
-                            true  // isChange
+                            true, // isChange
+                            wallet.descriptorPath
                         );
                         allOurAddresses.add(changeAddr.address.toLowerCase());
                     }
