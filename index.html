@@ -1824,9 +1824,10 @@ Anyone with your master private key can access all your funds.`;
                         }
                     }
                 }
-                
-                // Helper function to update UI based on wallet data
-                function updateUIFromWallet() {
+            }
+            
+            // Helper function to update UI based on wallet data
+            function updateUIFromWallet() {
                     // Recover childPrivateKey if missing but address exists (fix for corrupted wallets)
                     if (!wallet.childPrivateKey && wallet.addresses && wallet.addresses.length > 0 && wallet.masterPrivateKey) {
                         console.log('Recovering missing childPrivateKey for loaded wallet...');
@@ -1973,7 +1974,6 @@ Anyone with your master private key can access all your funds.`;
                     } else {
                         // encryptionStatus.style.display = 'none'; // Removed with Security section
                     }
-                }
             }
 
             // Initialize wallet with master key using secure randomness
