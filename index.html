@@ -879,6 +879,17 @@
                     </svg>
                     Save
                 </button>
+                <button id="switchWalletBtn" class="wallet-button" title="Switch between multiple wallets">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                        <polyline points="7.5 4.21 12 6.81 16.5 4.21"></polyline>
+                        <polyline points="7.5 19.79 7.5 14.6 3 12"></polyline>
+                        <polyline points="21 12 16.5 14.6 16.5 19.79"></polyline>
+                        <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                        <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                    </svg>
+                    Switch
+                </button>
                 <button id="deleteWalletBtn" class="wallet-button delete-btn" disabled title="Reset wallet data in your browser. This will clear the current wallet.">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
@@ -1689,12 +1700,67 @@ Anyone with your master private key can access all your funds.`;
                 }
             });
             
-            // Load wallet data from IndexedDB or localStorage if available
+            // Load wallet data from localStorage with multi-wallet support
             function loadWalletData() {
                 // Start with buttons disabled by default
                 updateButtonStates(false);
+                
+                // Get all stored wallets
+                const storedWallets = getAllStoredWallets();
+                
+                if (storedWallets.length === 0) {
+                    // No wallets found
+                    console.log('No wallets found in storage');
+                    return;
+                }
+                
+                if (storedWallets.length === 1) {
+                    // Single wallet - load it directly
+                    loadWalletByKey(storedWallets[0].key);
+                } else {
+                    // Multiple wallets - check if there's a current wallet set
+                    const currentWalletKey = localStorage.getItem('currentWalletKey');
+                    if (currentWalletKey && storedWallets.find(w => w.key === currentWalletKey)) {
+                        // Load the current wallet
+                        loadWalletByKey(currentWalletKey);
+                    } else {
+                        // Show wallet selector
+                        showWalletSelector(storedWallets, (selectedKey) => {
+                            if (selectedKey === 'new') {
+                                // User wants to create new wallet - do nothing, let them use the UI
+                                console.log('User selected to create new wallet');
+                            } else if (selectedKey) {
+                                loadWalletByKey(selectedKey);
+                            }
+                        });
+                    }
+                }
+            }
+            
+            // Load wallet by storage key
+            function loadWalletByKey(storageKey) {
                 try {
-                    // Try to load from IndexedDB first
+                    const walletData = localStorage.getItem(storageKey);
+                    if (walletData) {
+                        const parsedWallet = JSON.parse(walletData);
+                        wallet = parsedWallet;
+                        // Update global reference
+                        window.walletGlobal = wallet;
+                        // Set as current wallet
+                        localStorage.setItem('currentWalletKey', storageKey);
+                        updateUIFromWallet();
+                        console.log(`Loaded wallet from key: ${storageKey}`);
+                    }
+                } catch (e) {
+                    console.error('Error loading wallet:', e);
+                    // Try IndexedDB as fallback
+                    loadFromIndexedDB(storageKey);
+                }
+            }
+            
+            // Fallback to IndexedDB
+            function loadFromIndexedDB(storageKey) {
+                try {
                     const request = indexedDB.open("AlphaWalletDB", 1);
                     
                     request.onupgradeneeded = function(event) {
@@ -1706,7 +1772,7 @@ Anyone with your master private key can access all your funds.`;
                     
                     request.onerror = function(event) {
                         console.error("IndexedDB error:", event.target.error);
-                        // Fall back to localStorage
+                        // Fall back to legacy localStorage
                         loadFromLocalStorage();
                     };
                     
@@ -1714,7 +1780,7 @@ Anyone with your master private key can access all your funds.`;
                         const db = event.target.result;
                         const transaction = db.transaction(['wallet'], 'readonly');
                         const store = transaction.objectStore('wallet');
-                        const getRequest = store.get('main-wallet');
+                        const getRequest = store.get(storageKey || 'main-wallet');
                         
                         getRequest.onsuccess = function(event) {
                             if (event.target.result) {
@@ -2603,6 +2669,9 @@ Anyone with your master private key can access all your funds.`;
                 const confirmation = confirm('WARNING: You are about to reset your wallet. This will clear the current wallet from your browser. Make sure you have saved your wallet data before proceeding.\n\nAre you sure you want to reset your wallet?');
                 
                 if (confirmation) {
+                    // Get the current wallet's storage key
+                    const storageKey = getWalletStorageKey(wallet);
+                    
                     // Clear wallet data
                     wallet = {
                         masterPrivateKey: '',
@@ -2614,6 +2683,15 @@ Anyone with your master private key can access all your funds.`;
                     
                     // Update global reference
                     window.walletGlobal = wallet;
+                    
+                    // Remove from storage
+                    if (storageKey) {
+                        localStorage.removeItem(storageKey);
+                        console.log(`Removed wallet with key: ${storageKey}`);
+                    }
+                    
+                    // Clear current wallet key
+                    localStorage.removeItem('currentWalletKey');
                     
                     // Clear UI for both key displays
                     // masterKeyElement.textContent = 'Generate a wallet to see your private key'; // Removed with Security section
@@ -3325,6 +3403,171 @@ Anyone with your master private key can access all your funds.`;
                 }
                 // Use first 8 chars of master key as fingerprint
                 return masterKey.substring(0, 8);
+            }
+            
+            // Generate unique wallet storage key
+            function getWalletStorageKey(walletData) {
+                if (!walletData || !walletData.masterPrivateKey) return null;
+                // Use SHA256 hash of master key to generate unique ID
+                const fingerprint = CryptoJS.SHA256(walletData.masterPrivateKey).toString().substring(0, 16);
+                return `alphaWallet_${fingerprint}`;
+            }
+            
+            // Get all stored wallets
+            function getAllStoredWallets() {
+                const wallets = [];
+                try {
+                    // Check localStorage for all wallet keys
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        if (key && key.startsWith('alphaWallet_')) {
+                            try {
+                                const walletData = JSON.parse(localStorage.getItem(key));
+                                if (walletData) {
+                                    // Derive wallet identifier (address or fingerprint)
+                                    let identifier = 'Unknown Wallet';
+                                    if (walletData.addresses && walletData.addresses.length > 0) {
+                                        identifier = walletData.addresses[0].address;
+                                    }
+                                    wallets.push({
+                                        key: key,
+                                        identifier: identifier,
+                                        isEncrypted: walletData.isEncrypted || false,
+                                        isBIP32: walletData.isImportedAlphaWallet || false,
+                                        createdAt: walletData.addresses?.[0]?.createdAt || 'Unknown'
+                                    });
+                                }
+                            } catch (e) {
+                                console.error('Error parsing wallet:', key, e);
+                            }
+                        }
+                    }
+                    
+                    // Also check for legacy wallet
+                    const legacyWallet = localStorage.getItem('alphaWallet');
+                    if (legacyWallet) {
+                        try {
+                            const walletData = JSON.parse(legacyWallet);
+                            if (walletData) {
+                                let identifier = 'Legacy Wallet';
+                                if (walletData.addresses && walletData.addresses.length > 0) {
+                                    identifier = walletData.addresses[0].address;
+                                }
+                                wallets.push({
+                                    key: 'alphaWallet',
+                                    identifier: identifier,
+                                    isEncrypted: walletData.isEncrypted || false,
+                                    isBIP32: walletData.isImportedAlphaWallet || false,
+                                    createdAt: walletData.addresses?.[0]?.createdAt || 'Unknown',
+                                    isLegacy: true
+                                });
+                            }
+                        } catch (e) {
+                            console.error('Error parsing legacy wallet:', e);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error getting stored wallets:', e);
+                }
+                return wallets;
+            }
+            
+            // Show wallet selector when multiple wallets exist
+            function showWalletSelector(wallets, callback) {
+                // Create modal
+                const modal = document.createElement('div');
+                modal.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(0, 0, 0, 0.5);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 10000;
+                `;
+                
+                const dialog = document.createElement('div');
+                dialog.style.cssText = `
+                    background: white;
+                    border-radius: 12px;
+                    padding: 24px;
+                    max-width: 600px;
+                    width: 90%;
+                    max-height: 80vh;
+                    overflow-y: auto;
+                `;
+                
+                dialog.innerHTML = `
+                    <h2 style="margin-top: 0; color: #333;">Select Wallet</h2>
+                    <p style="color: #666; margin-bottom: 20px;">Multiple wallets detected. Please select which wallet to load:</p>
+                    <div id="walletSelectorList"></div>
+                    <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+                        <button id="walletSelectorCancel" style="padding: 8px 16px; background: #e0e0e0; border: none; border-radius: 6px; cursor: pointer;">Cancel</button>
+                        <button id="walletSelectorNew" style="padding: 8px 16px; background: var(--primary-color); color: white; border: none; border-radius: 6px; cursor: pointer;">Create New Wallet</button>
+                    </div>
+                `;
+                
+                modal.appendChild(dialog);
+                document.body.appendChild(modal);
+                
+                const list = dialog.querySelector('#walletSelectorList');
+                
+                // Add wallet options
+                wallets.forEach((walletInfo, index) => {
+                    const item = document.createElement('div');
+                    item.style.cssText = `
+                        padding: 12px;
+                        margin-bottom: 10px;
+                        border: 2px solid #e0e0e0;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        transition: all 0.2s;
+                    `;
+                    
+                    item.innerHTML = `
+                        <div style="font-family: monospace; font-size: 12px; color: #333; word-break: break-all;">
+                            ${walletInfo.identifier}
+                        </div>
+                        <div style="margin-top: 5px; font-size: 11px; color: #999;">
+                            ${walletInfo.isEncrypted ? '🔒 Encrypted' : '🔓 Unencrypted'} 
+                            ${walletInfo.isBIP32 ? '• BIP32' : '• Standard'}
+                            ${walletInfo.isLegacy ? '• Legacy' : ''}
+                            • Created: ${walletInfo.createdAt !== 'Unknown' ? new Date(walletInfo.createdAt).toLocaleDateString() : 'Unknown'}
+                        </div>
+                    `;
+                    
+                    item.onmouseover = () => {
+                        item.style.borderColor = 'var(--primary-color)';
+                        item.style.background = '#f0f9ff';
+                    };
+                    
+                    item.onmouseout = () => {
+                        item.style.borderColor = '#e0e0e0';
+                        item.style.background = 'white';
+                    };
+                    
+                    item.onclick = () => {
+                        document.body.removeChild(modal);
+                        callback(walletInfo.key);
+                    };
+                    
+                    list.appendChild(item);
+                });
+                
+                // Handle cancel
+                dialog.querySelector('#walletSelectorCancel').onclick = () => {
+                    document.body.removeChild(modal);
+                    callback(null);
+                };
+                
+                // Handle create new
+                dialog.querySelector('#walletSelectorNew').onclick = () => {
+                    document.body.removeChild(modal);
+                    callback('new');
+                };
             }
             
             // Start wallet scan with decrypted data
@@ -5115,6 +5358,53 @@ Anyone with your master private key can access all your funds.`;
             saveWalletBtn.addEventListener('click', showSaveModal);
             deleteWalletBtn.addEventListener('click', deleteWallet);
             restoreWalletBtn.addEventListener('click', showRestoreModal);
+            
+            // Switch wallet button
+            const switchWalletBtn = document.getElementById('switchWalletBtn');
+            switchWalletBtn.addEventListener('click', function() {
+                const storedWallets = getAllStoredWallets();
+                if (storedWallets.length === 0) {
+                    showInAppNotification('No Wallets', 'No wallets found. Create or restore a wallet first.', 'warning');
+                } else if (storedWallets.length === 1) {
+                    showInAppNotification('Single Wallet', 'Only one wallet exists. Create or restore another wallet to switch.', 'info');
+                } else {
+                    showWalletSelector(storedWallets, (selectedKey) => {
+                        if (selectedKey === 'new') {
+                            // Clear current wallet and let user create new
+                            wallet = {
+                                masterPrivateKey: '',
+                                addresses: [],
+                                isEncrypted: false,
+                                encryptedMasterKey: ''
+                            };
+                            window.walletGlobal = wallet;
+                            updateButtonStates(false);
+                            // Clear UI
+                            walletInfo.style.display = 'none';
+                            localStorage.removeItem('currentWalletKey');
+                            showInAppNotification('Ready', 'Ready to create new wallet', 'info');
+                        } else if (selectedKey) {
+                            // Clear current state before loading new wallet
+                            currentUtxos = [];
+                            currentTransactions = [];
+                            lastScannedWalletData = null;
+                            scannedWallets = [];
+                            
+                            // Load selected wallet
+                            loadWalletByKey(selectedKey);
+                            showInAppNotification('Wallet Switched', 'Successfully switched wallet', 'success');
+                            
+                            // Refresh if connected
+                            if (electrumConnected) {
+                                setTimeout(() => {
+                                    refreshBalance();
+                                    updateTransactionHistory();
+                                }, 500);
+                            }
+                        }
+                    });
+                }
+            });
             // migrateWalletBtn.addEventListener('click', toggleMigrateSection); // Removed with Security section
             
             // Restore modal event listeners
@@ -5232,41 +5522,69 @@ Anyone with your master private key can access all your funds.`;
                 checkPasswordStrength(this.value);
             });
             
-            // Save wallet data using IndexedDB (works across tabs)
+            // Save wallet data using unique key per wallet
             function saveWalletData() {
                 try {
-                    const request = indexedDB.open("AlphaWalletDB", 1);
+                    // Get unique storage key for this wallet
+                    const storageKey = getWalletStorageKey(wallet);
+                    if (!storageKey) {
+                        console.error("Cannot save wallet: no master key available");
+                        return;
+                    }
                     
-                    request.onupgradeneeded = function(event) {
-                        const db = event.target.result;
-                        if (!db.objectStoreNames.contains('wallet')) {
-                            db.createObjectStore('wallet', { keyPath: 'id' });
+                    // Save to localStorage with unique key
+                    localStorage.setItem(storageKey, JSON.stringify(wallet));
+                    console.log(`Wallet data saved to localStorage with key: ${storageKey}`);
+                    
+                    // Also save the current wallet key for quick access
+                    localStorage.setItem('currentWalletKey', storageKey);
+                    
+                    // Migrate legacy wallet if it exists and matches current wallet
+                    const legacyWallet = localStorage.getItem('alphaWallet');
+                    if (legacyWallet) {
+                        try {
+                            const legacyData = JSON.parse(legacyWallet);
+                            // Check if it's the same wallet by comparing addresses
+                            if (legacyData.addresses && wallet.addresses && 
+                                legacyData.addresses[0]?.address === wallet.addresses[0]?.address) {
+                                // Remove legacy storage
+                                localStorage.removeItem('alphaWallet');
+                                console.log('Migrated legacy wallet to new storage format');
+                            }
+                        } catch (e) {
+                            console.error('Error migrating legacy wallet:', e);
                         }
-                    };
+                    }
                     
-                    request.onerror = function(event) {
-                        console.error("IndexedDB error:", event.target.error);
-                        // Fallback to localStorage
-                        localStorage.setItem('alphaWallet', JSON.stringify(wallet));
-                    };
-                    
-                    request.onsuccess = function(event) {
-                        const db = event.target.result;
-                        const transaction = db.transaction(['wallet'], 'readwrite');
-                        const store = transaction.objectStore('wallet');
+                    // Also try IndexedDB for better storage (but keep localStorage as primary)
+                    try {
+                        const request = indexedDB.open("AlphaWalletDB", 1);
                         
-                        // Always use the same ID to ensure we're updating the same wallet
-                        const walletData = { ...wallet, id: 'main-wallet' };
-                        store.put(walletData);
-                        
-                        transaction.oncomplete = function() {
-                            console.log("Wallet data saved to IndexedDB");
+                        request.onupgradeneeded = function(event) {
+                            const db = event.target.result;
+                            if (!db.objectStoreNames.contains('wallet')) {
+                                db.createObjectStore('wallet', { keyPath: 'id' });
+                            }
                         };
-                    };
+                        
+                        request.onsuccess = function(event) {
+                            const db = event.target.result;
+                            const transaction = db.transaction(['wallet'], 'readwrite');
+                            const store = transaction.objectStore('wallet');
+                            
+                            // Use storage key as ID
+                            const walletData = { ...wallet, id: storageKey };
+                            store.put(walletData);
+                            
+                            transaction.oncomplete = function() {
+                                console.log("Wallet also saved to IndexedDB");
+                            };
+                        };
+                    } catch (e) {
+                        // IndexedDB is optional, localStorage is primary
+                    }
                 } catch (e) {
                     console.error("Error saving wallet data", e);
-                    // Fallback to localStorage
-                    localStorage.setItem('alphaWallet', JSON.stringify(wallet));
                 }
             }
             
