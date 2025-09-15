@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Unicity WEB GUI Wallet</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
     <!-- 
     Library: CryptoJS v4.1.1
     Description: JavaScript library of crypto standards
@@ -2218,7 +2219,7 @@ Anyone with your master private key can access all your funds.`;
                 updateUtxoListDisplay();
                 
                 // If already connected to Fulcrum, refresh balance
-                if (electrumConnected && !wallet.addresses.find(a => a.address.toLowerCase() === addressInfo.address.toLowerCase())) {
+                if (electrumConnected && !wallet.addresses.find(a => a && a.address && addressInfo && addressInfo.address && a.address.toLowerCase() === addressInfo.address.toLowerCase())) {
                     setTimeout(() => {
                         refreshBalance();
                         updateTransactionHistory();
@@ -6483,6 +6484,12 @@ Anyone with your master private key can access all your funds.`;
                 let senderAddress = null;
                 let fromAddresses = [];
                 
+                // Validate input
+                if (!txDetails) {
+                    console.warn('calculateTransactionAmount: txDetails is null/undefined');
+                    return { amount: 0, isIncoming: false, destinations, ourOutputs, senderAddress, fromAddresses };
+                }
+                
                 // Normalize our address to lowercase for comparison
                 const ourAddressLower = ourAddress ? ourAddress.toLowerCase() : null;
                 
@@ -6587,8 +6594,10 @@ Anyone with your master private key can access all your funds.`;
                 // We need to check both current UTXOs and historical transactions
                 if (txDetails.vin) {
                     txDetails.vin.forEach(input => {
+                        if (!input) return; // Skip null/undefined inputs
                         const prevTxid = input.txid;
                         const prevVout = input.vout;
+                        if (!prevTxid) return; // Skip if no txid
                         
                         // First check current UTXOs
                         if (currentUtxos) {
