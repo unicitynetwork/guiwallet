@@ -3693,64 +3693,20 @@ Anyone with your master private key can access all your funds.`;
                                     restoreStatus.textContent = 'Standard WIF wallet decrypted successfully. Loading wallet...';
                                     restoreStatus.style.display = 'block';
                                     
-                                    // For WIF wallets, directly restore without scanning
-                                    setTimeout(() => {
-                                        // Confirmation before overwriting
-                                        if (wallet.masterPrivateKey) {
-                                            const confirmOverwrite = confirm('This will overwrite your existing wallet. Are you sure you want to proceed?');
-                                            if (!confirmOverwrite) {
-                                                return;
-                                            }
-                                        }
-                                        
-                                        // Create wallet with the decrypted WIF data
-                                        wallet = {
-                                            masterPrivateKey: walletData.masterPrivateKey,
-                                            addresses: walletData.addresses || [],
-                                            isEncrypted: false,
-                                            encryptedMasterKey: '',
-                                            childPrivateKey: null,
-                                            isImportedAlphaWallet: false,
-                                            masterChainCode: null
-                                        };
-                                        
-                                        // Update global reference
-                                        window.walletGlobal = wallet;
-                                        
-                                        // Enable buttons
-                                        updateButtonStates(true);
-                                        
-                                        // Generate first address if none exist
-                                        if (wallet.addresses.length === 0) {
-                                            generateNewAddress();
-                                        } else {
-                                            // Update address display with existing addresses
-                                            const addressList = document.getElementById('addressList');
-                                            if (addressList) {
-                                                addressList.innerHTML = ''; // Clear existing
-                                                wallet.addresses.forEach(addr => {
-                                                    addAddressToUI(addr);
-                                                });
-                                            }
-                                        }
-                                        
-                                        // Save wallet data
-                                        saveWalletData();
-                                        
-                                        // Update status and close modal
-                                        restoreStatus.className = 'info-box success';
-                                        restoreStatus.textContent = 'WIF wallet loaded successfully!';
-                                        
-                                        setTimeout(() => {
-                                            closeRestoreModal();
-                                            
-                                            // Check online status and refresh if connected
-                                            checkConnectionStatus();
-                                            if (window.isConnected) {
-                                                refreshBalance();
-                                            }
-                                        }, 1500);
-                                    }, 500);
+                                    // For WIF wallets, just call restoreWallet() after ensuring password is set
+                                    // This makes encrypted wallets follow the exact same flow as unencrypted ones
+                                    // The restoreWallet function will handle:
+                                    // - Address parsing and recovery
+                                    // - childPrivateKey derivation
+                                    // - Proper UI updates
+                                    // - Modal closing
+                                    // - Balance refresh
+                                    
+                                    // Make sure the password field has the decryption password
+                                    restorePasswordInput.value = password;
+                                    
+                                    // Call restoreWallet which handles everything properly
+                                    restoreWallet();
                                 } else {
                                     // BIP32 wallet - needs scanning
                                     restoreStatus.className = 'info-box success';
