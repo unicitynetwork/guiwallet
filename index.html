@@ -5999,7 +5999,110 @@ Anyone with your master private key can access all your funds.`;
             // electrumConnected already declared at top
             let currentScriptHashSubscription = null;
             let headerSubscriptionActive = false;
-            
+
+            // ===== AUTOMATIC RECONNECTION SYSTEM =====
+            // State machine: disconnected → connecting → connected
+            //                     ↑            ↓              ↓
+            //                     └────── reconnecting ←─────┘
+            //
+            // States:
+            // - disconnected: No connection, Connect button visible
+            // - connecting: Initial connection attempt in progress
+            // - connected: Successfully connected, Disconnect button visible
+            // - reconnecting: Auto-retry every 5s, Reconnecting button visible (cancels on click)
+            //
+            // Behavior:
+            // - Connect button clicked → enter 'connecting' state, attempt connection
+            // - Connection succeeds → enter 'connected' state, stop reconnection timer
+            // - Connection lost while 'connected' → enter 'reconnecting' state, retry every 5s
+            // - Disconnect clicked while 'connected' → enter 'disconnected' state
+            // - Reconnecting button clicked → cancel reconnection, enter 'disconnected' state
+
+            let reconnectionState = 'disconnected'; // 'disconnected', 'connecting', 'connected', 'reconnecting'
+            let reconnectionTimer = null;
+            let reconnectionAttempts = 0;
+            const RECONNECTION_INTERVAL = 5000; // 5 seconds
+
+            // Update connection button UI based on state
+            function updateConnectionButton() {
+                const connectBtn = document.getElementById('connectRpcBtn');
+                const disconnectBtn = document.getElementById('disconnectRpcBtn');
+
+                if (reconnectionState === 'connected') {
+                    connectBtn.style.display = 'none';
+                    disconnectBtn.style.display = 'inline-flex';
+                    disconnectBtn.style.backgroundColor = '#ff006e';
+                    disconnectBtn.innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M18 6 6 18"></path>
+                            <path d="m6 6 12 12"></path>
+                        </svg>
+                        Disconnect
+                    `;
+                } else if (reconnectionState === 'reconnecting') {
+                    connectBtn.style.display = 'none';
+                    disconnectBtn.style.display = 'inline-flex';
+                    disconnectBtn.style.backgroundColor = '#ffba08';
+                    disconnectBtn.innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M18 6 6 18"></path>
+                            <path d="m6 6 12 12"></path>
+                        </svg>
+                        Reconnecting... (Cancel)
+                    `;
+                } else if (reconnectionState === 'connecting') {
+                    connectBtn.style.display = 'none';
+                    disconnectBtn.style.display = 'inline-flex';
+                    disconnectBtn.style.backgroundColor = '#6c757d';
+                    disconnectBtn.innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                        Connecting...
+                    `;
+                } else { // disconnected
+                    connectBtn.style.display = 'inline-flex';
+                    disconnectBtn.style.display = 'none';
+                }
+            }
+
+            // Start automatic reconnection attempts
+            function startReconnection() {
+                // Clear any existing reconnection timer
+                if (reconnectionTimer) {
+                    clearTimeout(reconnectionTimer);
+                    reconnectionTimer = null;
+                }
+
+                reconnectionState = 'reconnecting';
+                updateConnectionButton();
+
+                console.log(`Starting reconnection attempts (attempt ${reconnectionAttempts + 1})`);
+
+                // Attempt to reconnect
+                reconnectionTimer = setTimeout(() => {
+                    reconnectionAttempts++;
+                    console.log(`Reconnection attempt ${reconnectionAttempts}`);
+                    connectToElectrum(true); // silent mode
+
+                    // If still in reconnecting state after connection attempt, schedule next attempt
+                    if (reconnectionState === 'reconnecting') {
+                        startReconnection();
+                    }
+                }, RECONNECTION_INTERVAL);
+            }
+
+            // Stop automatic reconnection
+            function stopReconnection() {
+                if (reconnectionTimer) {
+                    clearTimeout(reconnectionTimer);
+                    reconnectionTimer = null;
+                }
+                reconnectionAttempts = 0;
+                console.log('Stopped reconnection attempts');
+            }
+
             // Helper function to subscribe to address changes
             function subscribeToAddressChanges(address) {
                 if (!electrumConnected || !address) return;
@@ -6089,6 +6192,13 @@ Anyone with your master private key can access all your funds.`;
                     }
                 }
 
+                // Update state to connecting (unless we're already in reconnecting mode)
+                if (reconnectionState !== 'reconnecting') {
+                    reconnectionState = 'connecting';
+                    updateConnectionButton();
+                }
+                // If we're in reconnecting mode, keep that state so onclose knows to continue retrying
+
                 // Show connecting status
                 connectionStatusDiv.style.display = 'block';
                 connectionStatusText.textContent = 'Connecting to ' + serverUrl + '...';
@@ -6098,18 +6208,24 @@ Anyone with your master private key can access all your funds.`;
                     
                     electrumSocket.onopen = function() {
                         electrumConnected = true;
+
+                        // Update reconnection state to connected and stop any reconnection attempts
+                        reconnectionState = 'connected';
+                        stopReconnection();
+                        updateConnectionButton();
+
                         updateUtxoListDisplay(); // Update UTXO list display when connected
                         const infoBox = connectionStatusDiv.querySelector('.info-box');
                         if (infoBox) {
                             infoBox.style.backgroundColor = 'rgba(6, 214, 160, 0.1)';
                             infoBox.style.borderLeftColor = 'var(--success-color)';
                         }
-                        connectionStatusText.textContent = 'Connected to Fulcrum server';
+
+                        const reconnectMsg = reconnectionAttempts > 0 ? ` (after ${reconnectionAttempts} attempts)` : '';
+                        reconnectionAttempts = 0;
+                        connectionStatusText.textContent = 'Connected to Fulcrum server' + reconnectMsg;
                         showInAppNotification('Connected', 'Successfully connected to Fulcrum server', 'success');
-                        
-                        // Update buttons
-                        connectRpcBtn.style.display = 'none';
-                        disconnectRpcBtn.style.display = 'inline-flex';
+
                         rpcServerInput.disabled = true;
                         
                         // Resume broadcast queue if needed
@@ -6271,7 +6387,7 @@ Anyone with your master private key can access all your funds.`;
                         }
                     };
                     
-                    electrumSocket.onclose = function() {
+                    electrumSocket.onclose = function(event) {
                         // CRITICAL FIX: Clear the socket reference to prevent stale connections
                         electrumSocket = null;
                         electrumConnected = false;
@@ -6291,12 +6407,48 @@ Anyone with your master private key can access all your funds.`;
                             clearInterval(lazyScanInterval);
                             lazyScanInterval = null;
                         }
-                        connectionStatusText.textContent = 'Disconnected from server';
 
-                        // Update buttons
-                        connectRpcBtn.style.display = 'inline-flex';
-                        disconnectRpcBtn.style.display = 'none';
-                        rpcServerInput.disabled = false;
+                        // Determine if this was an unexpected disconnect or manual disconnect
+                        const wasConnected = reconnectionState === 'connected';
+                        const wasReconnecting = reconnectionState === 'reconnecting';
+                        const wasConnecting = reconnectionState === 'connecting';
+
+                        // If we were connected and connection was lost unexpectedly, start reconnection
+                        if (wasConnected) {
+                            console.log('Connection lost unexpectedly, starting automatic reconnection');
+                            connectionStatusText.textContent = 'Connection lost - Reconnecting...';
+                            startReconnection();
+                        } else if (wasReconnecting) {
+                            // If we were in reconnecting mode and this attempt failed
+                            // The timer is already scheduled, just update UI
+                            console.log('Reconnection attempt failed, timer will retry');
+                            connectionStatusText.textContent = 'Connection failed - Retrying in 5s...';
+                            reconnectionState = 'reconnecting';
+                            updateConnectionButton();
+                        } else if (wasConnecting) {
+                            // If we were in connecting state (initial connect attempt)
+                            // This likely came from manual connect or initial failed connection
+                            // Check if we should enter reconnection mode
+                            if (reconnectionTimer) {
+                                // We have a reconnection timer running, stay in reconnecting mode
+                                console.log('Connection attempt failed during reconnection cycle');
+                                reconnectionState = 'reconnecting';
+                                updateConnectionButton();
+                                connectionStatusText.textContent = 'Connection failed - Retrying in 5s...';
+                            } else {
+                                // No reconnection timer, this was a one-off connection attempt
+                                reconnectionState = 'disconnected';
+                                updateConnectionButton();
+                                connectionStatusText.textContent = 'Connection failed';
+                                rpcServerInput.disabled = false;
+                            }
+                        } else {
+                            // Manual disconnect or already disconnected
+                            reconnectionState = 'disconnected';
+                            updateConnectionButton();
+                            connectionStatusText.textContent = 'Disconnected from server';
+                            rpcServerInput.disabled = false;
+                        }
 
                         // Hide balance display
                         // balanceDisplay.style.display = 'none'; // Removed duplicate balance display
@@ -6324,6 +6476,28 @@ Anyone with your master private key can access all your funds.`;
             
             // Disconnect from Electrum server
             function disconnectFromElectrum() {
+                // Check current state to determine behavior
+                if (reconnectionState === 'reconnecting') {
+                    // If in reconnecting state, clicking button should cancel reconnection
+                    console.log('Canceling reconnection attempts');
+                    stopReconnection();
+                    reconnectionState = 'disconnected';
+                    updateConnectionButton();
+                    connectionStatusText.textContent = 'Reconnection canceled';
+                    showInAppNotification('Canceled', 'Reconnection attempts canceled', 'info');
+                    return;
+                }
+
+                // Manual disconnect from connected/connecting state
+                console.log('Manual disconnect requested');
+
+                // Stop any reconnection attempts
+                stopReconnection();
+
+                // Set state to disconnected BEFORE closing socket
+                // This prevents the onclose handler from starting reconnection
+                reconnectionState = 'disconnected';
+
                 if (electrumSocket) {
                     // CRITICAL FIX: Remove event handlers before closing to prevent reconnection loops
                     try {
@@ -6338,6 +6512,7 @@ Anyone with your master private key can access all your funds.`;
                     electrumSocket = null;
                     showInAppNotification('Disconnected', 'Manually disconnected from Fulcrum server', 'info');
                 }
+
                 electrumConnected = false;
                 electrumCallbacks = {};
                 updateUtxoListDisplay(); // Update UTXO list display when disconnected
@@ -6352,7 +6527,10 @@ Anyone with your master private key can access all your funds.`;
                 }
 
                 // Update UI
+                updateConnectionButton();
                 updateCommonBalance();
+                connectionStatusText.textContent = 'Disconnected from server';
+                rpcServerInput.disabled = false;
             }
             
             // Make an Electrum RPC request
@@ -6579,7 +6757,23 @@ Anyone with your master private key can access all your funds.`;
             }
             
             // Event listeners for RPC buttons
-            connectRpcBtn.onclick = connectToElectrum;
+            // Connect button handler - starts reconnection mode
+            connectRpcBtn.onclick = function() {
+                // When clicking connect from disconnected state, go to reconnecting mode
+                console.log('Connect button clicked - starting reconnection mode');
+                reconnectionState = 'connecting';
+                updateConnectionButton();
+                connectToElectrum(false); // Not silent, show notifications
+
+                // If connection fails, enter reconnecting mode
+                setTimeout(() => {
+                    if (reconnectionState === 'connecting' && !electrumConnected) {
+                        startReconnection();
+                    }
+                }, 3000); // Give initial connection 3 seconds
+            };
+
+            // Disconnect/Cancel button handler
             disconnectRpcBtn.onclick = disconnectFromElectrum;
             // refreshBalanceBtn.onclick = refreshBalance; // Removed duplicate balance display
             
