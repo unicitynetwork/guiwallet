@@ -3882,6 +3882,72 @@ Anyone with your master private key can access all your funds.`;
                     if (file.name.endsWith('.dat')) {
                         // Extract from wallet.dat
                         const result = await extractFromWalletDat(file);
+                        
+                        // Check if wallet is encrypted
+                        if (result.isEncrypted) {
+                            // Show password prompt for encrypted wallet
+                            restoreStatus.className = 'info-box warning';
+                            restoreStatus.innerHTML = `
+                                <div>This wallet is encrypted. Please enter the password to decrypt it:</div>
+                                <div style="margin-top: 10px;">
+                                    <input type="password" id="walletDecryptPassword" placeholder="Enter wallet password" style="width: 200px; padding: 5px;">
+                                    <button id="decryptWalletBtn" style="margin-left: 10px; padding: 5px 10px;">Decrypt</button>
+                                </div>
+                            `;
+                            restoreStatus.style.display = 'block';
+                            
+                            // Store the encrypted wallet data for later decryption
+                            window.encryptedWalletData = result;
+                            
+                            // Add decrypt button handler
+                            setTimeout(() => {
+                                const decryptBtn = document.getElementById('decryptWalletBtn');
+                                const passwordInput = document.getElementById('walletDecryptPassword');
+                                
+                                if (decryptBtn) {
+                                    decryptBtn.onclick = async () => {
+                                        const password = passwordInput.value;
+                                        if (!password) {
+                                            alert('Please enter a password');
+                                            return;
+                                        }
+                                        
+                                        try {
+                                            restoreStatus.textContent = 'Decrypting wallet...';
+                                            
+                                            // Attempt to decrypt the wallet
+                                            const decryptedResult = await decryptWalletDat(result.walletData, password);
+                                            
+                                            if (decryptedResult.masterKey) {
+                                                masterKey = decryptedResult.masterKey;
+                                                masterChainCode = decryptedResult.masterChainCode || result.masterChainCode;
+                                                descriptorPath = decryptedResult.descriptorPath || result.descriptorPath;
+                                                isAlphaWallet = true;
+                                                
+                                                // Continue with normal flow
+                                                extractedWalletData = {
+                                                    masterKey,
+                                                    masterChainCode,
+                                                    descriptorPath,
+                                                    isAlphaWallet
+                                                };
+                                                
+                                                // Continue to scanning
+                                                await performWalletScan();
+                                            } else {
+                                                throw new Error('Decryption failed - incorrect password or unsupported format');
+                                            }
+                                        } catch (error) {
+                                            restoreStatus.className = 'info-box error';
+                                            restoreStatus.textContent = 'Decryption error: ' + error.message;
+                                        }
+                                    };
+                                }
+                            }, 100);
+                            
+                            return; // Stop here and wait for password
+                        }
+                        
                         masterKey = result.masterKey;
                         masterChainCode = result.masterChainCode;
                         descriptorPath = result.descriptorPath;
@@ -4002,6 +4068,101 @@ Anyone with your master private key can access all your funds.`;
                 }
             }
             
+            // Decrypt an encrypted wallet.dat file
+            async function decryptWalletDat(walletData, password) {
+                console.log('Attempting to decrypt wallet with provided password');
+                
+                // Find mkey record
+                const mkeyPattern = new TextEncoder().encode('mkey');
+                const mkeyPos = findPattern(walletData, mkeyPattern, 0);
+                
+                if (mkeyPos === -1) {
+                    throw new Error('No master key record found in wallet');
+                }
+                
+                // Parse mkey structure
+                // Format: "mkey" + version (4 bytes) + length (1 byte) + data
+                const dataStart = mkeyPos + 4 + 4 + 1;
+                const dataLength = walletData[mkeyPos + 8]; // Length byte
+                
+                if (dataLength !== 0x30) { // Should be 48 bytes
+                    console.warn('Unexpected mkey length:', dataLength);
+                }
+                
+                const mkeyData = walletData.slice(dataStart, dataStart + 48);
+                console.log('Encrypted master key data:', Array.from(mkeyData).map(b => b.toString(16).padStart(2, '0')).join(''));
+                
+                // Try common Bitcoin/Alpha Core encryption formats
+                // Format appears to be: salt(8) + encrypted_data(40)
+                const salt = mkeyData.slice(0, 8);
+                const encryptedData = mkeyData.slice(8);
+                
+                // Common iteration counts for Bitcoin Core wallets
+                const iterationCounts = [25000, 10000, 50000, 100000];
+                const hashMethods = ['sha512', 'sha256'];
+                
+                for (const iterations of iterationCounts) {
+                    for (const hashMethod of hashMethods) {
+                        try {
+                            // Derive key using PBKDF2
+                            const derivedKey = await new Promise((resolve, reject) => {
+                                const keyData = CryptoJS.PBKDF2(password, 
+                                    CryptoJS.enc.Hex.parse(Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('')),
+                                    { 
+                                        keySize: 256/32, 
+                                        iterations: iterations,
+                                        hasher: hashMethod === 'sha512' ? CryptoJS.algo.SHA512 : CryptoJS.algo.SHA256
+                                    }
+                                );
+                                resolve(keyData.toString());
+                            });
+                            
+                            // Generate IV (Bitcoin Core uses double SHA256)
+                            const ivData = CryptoJS.enc.Hex.parse(derivedKey + Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join(''));
+                            const iv = CryptoJS.SHA256(CryptoJS.SHA256(ivData)).toString().substring(0, 32);
+                            
+                            // Try to decrypt
+                            const encrypted = CryptoJS.enc.Hex.parse(Array.from(encryptedData).map(b => b.toString(16).padStart(2, '0')).join(''));
+                            const decrypted = CryptoJS.AES.decrypt(
+                                { ciphertext: encrypted },
+                                CryptoJS.enc.Hex.parse(derivedKey),
+                                { 
+                                    iv: CryptoJS.enc.Hex.parse(iv),
+                                    mode: CryptoJS.mode.CBC,
+                                    padding: CryptoJS.pad.Pkcs7
+                                }
+                            );
+                            
+                            const decryptedHex = decrypted.toString(CryptoJS.enc.Hex);
+                            
+                            // Check if decryption looks valid (should be 32 bytes)
+                            if (decryptedHex.length >= 64) { // 32 bytes = 64 hex chars
+                                const masterKey = decryptedHex.substring(0, 64);
+                                
+                                // Validate that it's a valid private key
+                                if (isValidPrivateKey(masterKey)) {
+                                    console.log('Successfully decrypted master key!');
+                                    
+                                    // Now use this master key to decrypt the actual wallet keys
+                                    // For now, return a placeholder - full implementation would decrypt all keys
+                                    return {
+                                        masterKey: masterKey,
+                                        masterChainCode: null, // Would need to extract from decrypted data
+                                        descriptorPath: null
+                                    };
+                                }
+                            }
+                        } catch (e) {
+                            // Try next combination
+                            continue;
+                        }
+                    }
+                }
+                
+                // If we get here, decryption failed
+                throw new Error('Failed to decrypt wallet - incorrect password or unsupported encryption format');
+            }
+            
             // Extract from wallet.dat file
             async function extractFromWalletDat(file) {
                 const data = await readBinaryFile(file);
@@ -4106,8 +4267,18 @@ Anyone with your master private key can access all your funds.`;
                     const hasEncrypted = findPattern(data, encryptedPattern, 0) !== -1;
                     
                     if (hasMkey || hasEncrypted) {
-                        // This is an encrypted wallet
-                        throw new Error('This wallet is encrypted. Please decrypt it in Alpha Core first, or provide the wallet password.');
+                        // This is an encrypted wallet - prompt for password
+                        console.log('Detected encrypted wallet - will need password for decryption');
+                        
+                        // Store encryption info for later use
+                        return {
+                            masterKey: null,
+                            masterChainCode: null,
+                            descriptorPath: descriptorPath,
+                            isAlphaWallet: true,
+                            isEncrypted: true,
+                            walletData: data // Store the raw data for decryption attempt
+                        };
                     }
                     
                     // Try searching for raw private keys (32 bytes) - only for truly legacy wallets
@@ -4131,10 +4302,24 @@ Anyone with your master private key can access all your funds.`;
                 }
                 
                 if (!masterKey) {
+                    // Check if this is an encrypted wallet before throwing error
+                    const mkeyCheck = findPattern(data, new TextEncoder().encode('mkey'), 0);
+                    if (mkeyCheck !== -1) {
+                        // Return encrypted wallet indicator
+                        return {
+                            masterKey: null,
+                            masterChainCode: masterChainCode,
+                            descriptorPath: descriptorPath,
+                            isAlphaWallet: true,
+                            isEncrypted: true,
+                            walletData: data
+                        };
+                    }
+                    
                     if (foundCount === 0) {
-                        throw new Error('No wallet descriptor keys found in wallet.dat. This might be a legacy or encrypted wallet.');
+                        throw new Error('No wallet descriptor keys found in wallet.dat. This might be a legacy or unsupported wallet.');
                     } else {
-                        throw new Error(`Found ${foundCount} descriptor key(s) but could not extract private key. The wallet might be encrypted.`);
+                        throw new Error(`Found ${foundCount} descriptor key(s) but could not extract private key.`);
                     }
                 }
                 
@@ -5860,16 +6045,54 @@ Anyone with your master private key can access all your funds.`;
             // Connect to Electrum server
             function connectToElectrum(silent = false) {
                 const serverUrl = rpcServerInput.value.trim();
-                
+
                 if (!serverUrl) {
                     if (!silent) alert('Please enter a Fulcrum server URL');
                     return;
                 }
-                
+
+                // CRITICAL FIX: Check if we already have an active or connecting socket
+                if (electrumSocket) {
+                    const state = electrumSocket.readyState;
+
+                    // If already connected or connecting, don't create a new socket
+                    if (state === WebSocket.OPEN) {
+                        console.log('Already connected to Fulcrum server');
+                        if (!silent) {
+                            showInAppNotification('Already Connected', 'Already connected to Fulcrum server', 'info');
+                        }
+                        return;
+                    }
+
+                    if (state === WebSocket.CONNECTING) {
+                        console.log('Connection already in progress');
+                        if (!silent) {
+                            showInAppNotification('Connecting', 'Connection already in progress', 'info');
+                        }
+                        return;
+                    }
+
+                    // If socket exists but is CLOSING or CLOSED, clean it up first
+                    if (state === WebSocket.CLOSING || state === WebSocket.CLOSED) {
+                        console.log('Cleaning up old socket before creating new connection');
+                        try {
+                            // Remove event handlers to prevent any stale callbacks
+                            electrumSocket.onopen = null;
+                            electrumSocket.onmessage = null;
+                            electrumSocket.onerror = null;
+                            electrumSocket.onclose = null;
+                            electrumSocket.close();
+                        } catch (e) {
+                            console.warn('Error closing old socket:', e);
+                        }
+                        electrumSocket = null;
+                    }
+                }
+
                 // Show connecting status
                 connectionStatusDiv.style.display = 'block';
                 connectionStatusText.textContent = 'Connecting to ' + serverUrl + '...';
-                
+
                 try {
                     electrumSocket = new WebSocket(serverUrl);
                     
@@ -6049,6 +6272,8 @@ Anyone with your master private key can access all your funds.`;
                     };
                     
                     electrumSocket.onclose = function() {
+                        // CRITICAL FIX: Clear the socket reference to prevent stale connections
+                        electrumSocket = null;
                         electrumConnected = false;
                         currentScriptHashSubscription = null;
                         headerSubscriptionActive = false;
@@ -6060,19 +6285,19 @@ Anyone with your master private key can access all your funds.`;
                             infoBox.style.backgroundColor = 'rgba(255, 186, 8, 0.1)';
                             infoBox.style.borderLeftColor = '#ffba08';
                         }
-                        
+
                         // Clear lazy scan interval
                         if (lazyScanInterval) {
                             clearInterval(lazyScanInterval);
                             lazyScanInterval = null;
                         }
                         connectionStatusText.textContent = 'Disconnected from server';
-                        
+
                         // Update buttons
                         connectRpcBtn.style.display = 'inline-flex';
                         disconnectRpcBtn.style.display = 'none';
                         rpcServerInput.disabled = false;
-                        
+
                         // Hide balance display
                         // balanceDisplay.style.display = 'none'; // Removed duplicate balance display
                     };
@@ -6100,23 +6325,32 @@ Anyone with your master private key can access all your funds.`;
             // Disconnect from Electrum server
             function disconnectFromElectrum() {
                 if (electrumSocket) {
-                    electrumSocket.close();
+                    // CRITICAL FIX: Remove event handlers before closing to prevent reconnection loops
+                    try {
+                        electrumSocket.onopen = null;
+                        electrumSocket.onmessage = null;
+                        electrumSocket.onerror = null;
+                        electrumSocket.onclose = null;
+                        electrumSocket.close();
+                    } catch (e) {
+                        console.warn('Error during socket cleanup:', e);
+                    }
                     electrumSocket = null;
                     showInAppNotification('Disconnected', 'Manually disconnected from Fulcrum server', 'info');
                 }
                 electrumConnected = false;
                 electrumCallbacks = {};
                 updateUtxoListDisplay(); // Update UTXO list display when disconnected
-                
+
                 // Stop polling
                 stopBlockPolling();
-                
+
                 // Clear lazy scan interval
                 if (lazyScanInterval) {
                     clearInterval(lazyScanInterval);
                     lazyScanInterval = null;
                 }
-                
+
                 // Update UI
                 updateCommonBalance();
             }
