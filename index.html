@@ -2180,39 +2180,31 @@ Anyone with your master private key can access all your funds.`;
                             purpose = parseInt(pathMatch[1]);
                             coinType = parseInt(pathMatch[2]);
                             account = parseInt(pathMatch[3]);
-                            console.log(`Using descriptor path: m/${purpose}'/${coinType}'/${account}'/0/${addressIndex}`);
                         }
-                    } else {
-                        console.log(`Using default path: m/${purpose}'/${coinType}'/${account}'/0/${addressIndex} (no descriptor path found)`);
                     }
-                    
+
                     // m/purpose' (e.g., 84' for native SegWit, 44' for legacy)
                     let result = deriveKeyBIP32(key, chainCode, purpose, true);
-                    console.log(`DEBUG: After m/${purpose}': key=${result.key.substring(0, 16)}...`);
                     key = result.key;
                     chainCode = result.chainCode;
 
                     // m/purpose'/coinType' (0 = mainnet, 1 = testnet)
                     result = deriveKeyBIP32(key, chainCode, coinType, true);
-                    console.log(`DEBUG: After m/${purpose}'/${coinType}': key=${result.key.substring(0, 16)}...`);
                     key = result.key;
                     chainCode = result.chainCode;
 
                     // m/purpose'/coinType'/account'
                     result = deriveKeyBIP32(key, chainCode, account, true);
-                    console.log(`DEBUG: After m/${purpose}'/${coinType}'/${account}': key=${result.key.substring(0, 16)}...`);
                     key = result.key;
                     chainCode = result.chainCode;
 
                     // m/purpose'/coinType'/account'/0 - External chain
                     result = deriveKeyBIP32(key, chainCode, 0, false);
-                    console.log(`DEBUG: After m/${purpose}'/${coinType}'/${account}'/0: key=${result.key.substring(0, 16)}...`);
                     key = result.key;
                     chainCode = result.chainCode;
 
                     // m/purpose'/coinType'/account'/0/index - Address index
                     result = deriveKeyBIP32(key, chainCode, addressIndex, false);
-                    console.log(`DEBUG: After m/${purpose}'/${coinType}'/${account}'/0/${addressIndex}: key=${result.key}`);
                     childPrivateKey = result.key;
                     
                     derivationPath = `m/${purpose}'/${coinType}'/${account}'/0/${addressIndex}`;
@@ -3392,20 +3384,13 @@ Anyone with your master private key can access all your funds.`;
                 // Parse CMasterKey structure
                 let pos = 0;
 
-                console.log('decryptMasterKey: mkeyValue total length:', mkeyValue.length);
-                console.log('decryptMasterKey: first 10 bytes:', Array.from(mkeyValue.slice(0, 10)).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
-
                 // vchCryptedKey (vector)
-                console.log('Reading cryptedKeyLen at pos', pos, ', byte value:', '0x' + mkeyValue[pos].toString(16));
                 const cryptedKeyLen = readCompactSize(mkeyValue, pos);
-                console.log('cryptedKeyLen:', cryptedKeyLen);
                 pos += cryptedKeyLen.bytes;
                 const vchCryptedKey = mkeyValue.slice(pos, pos + cryptedKeyLen.value);
                 pos += cryptedKeyLen.value;
-                console.log('vchCryptedKey extracted, new pos:', pos);
 
                 // vchSalt (vector)
-                console.log('Reading saltLen at pos', pos, ', byte value:', '0x' + mkeyValue[pos].toString(16));
                 const saltLen = readCompactSize(mkeyValue, pos);
                 pos += saltLen.bytes;
                 const vchSalt = mkeyValue.slice(pos, pos + saltLen.value);
@@ -3419,8 +3404,6 @@ Anyone with your master private key can access all your funds.`;
                 // nDeriveIterations (uint32)
                 const nDeriveIterations = mkeyValue[pos] | (mkeyValue[pos + 1] << 8) |
                                          (mkeyValue[pos + 2] << 16) | (mkeyValue[pos + 3] << 24);
-
-                console.log('Decrypting master key with', nDeriveIterations, 'iterations');
 
                 // Derive key and IV using SHA-512 (Bitcoin Core's method)
                 const passwordBytes = CryptoJS.enc.Utf8.parse(password);
@@ -3455,8 +3438,6 @@ Anyone with your master private key can access all your funds.`;
                 const password = restorePasswordInput ? restorePasswordInput.value : '';
                 const restoreStatus = document.getElementById('restoreStatus');
 
-                console.log('Password input found:', !!restorePasswordInput, 'Password length:', password.length);
-
                 if (!password) {
                     restoreStatus.className = 'info-box error';
                     restoreStatus.textContent = 'Please enter a password';
@@ -3468,7 +3449,6 @@ Anyone with your master private key can access all your funds.`;
                     restoreStatus.textContent = 'Decrypting wallet...';
 
                     const data = window.encryptedWalletData;
-                    console.log('Starting decryption process with data size:', data.length);
 
                     // Step 1: Find and decrypt master key (mkey record)
                     // SQLite stores data as key-value pairs
@@ -3482,22 +3462,10 @@ Anyone with your master private key can access all your funds.`;
                         throw new Error('Could not find mkey record');
                     }
 
-                    console.log('Found mkey at position:', mkeyIndex);
-
                     // The mkey value comes after: 04 "mkey" 01 00000030 (example)
-                    // Look for the pattern more carefully - we need the full record
-                    // Skip back 1 byte to get the length prefix
-                    let pos = mkeyIndex - 1;
-                    const keyLength = data[pos];
-                    console.log('Key length byte:', keyLength);
-
                     // Skip: length + "mkey" + index byte
-                    pos = mkeyIndex + 4; // After "mkey"
-
-                    // The next byte should be the index (typically 0x01)
-                    const keyIndex = data[pos];
-                    console.log('Key index:', keyIndex);
-                    pos++;
+                    let pos = mkeyIndex + 4; // After "mkey"
+                    pos++; // Skip index byte
 
                     // Skip 3 zero bytes padding (SQLite format)
                     pos += 3;
@@ -3511,13 +3479,11 @@ Anyone with your master private key can access all your funds.`;
                     // - 1 byte padding = 67 bytes total
                     //
                     // However, we should parse this dynamically by reading the structure
-                    // Let's extract a safe amount (100 bytes) and let decryptMasterKey parse it
+                    // Extract mkey value (100 bytes is safe, decryptMasterKey will parse it)
                     const mkeyValue = data.slice(pos, pos + 100);
-                    console.log('mkey value (first 67 bytes):', Array.from(mkeyValue.slice(0, 67)).map(b => b.toString(16).padStart(2, '0')).join(''));
 
                     // Decrypt master key
                     const masterKeyHex = decryptMasterKey(mkeyValue, password);
-                    console.log('Master key decrypted:', masterKeyHex);
 
                     if (!masterKeyHex || masterKeyHex.length !== 64) {
                         throw new Error('Master key decryption failed - invalid key length');
@@ -3546,8 +3512,6 @@ Anyone with your master private key can access all your funds.`;
                             descStr += String.fromCharCode(descBytes[i]);
                         }
 
-                        console.log('Found descriptor:', descStr.substring(0, 100));
-
                         // Look for native SegWit receive descriptor: wpkh(...84h/1h/0h/0/*)
                         if (descStr.startsWith('wpkh(xpub') && descStr.includes('/0/*)')) {
                             // Extract xpub
@@ -3558,8 +3522,6 @@ Anyone with your master private key can access all your funds.`;
                                 // Extract descriptor ID (32 bytes after "walletdescriptor" prefix)
                                 const descIdStart = descriptorIndex + descriptorPattern.length;
                                 descriptorId = data.slice(descIdStart, descIdStart + 32);
-
-                                console.log('Found receive descriptor with xpub');
                                 break;
                             }
                         }
@@ -3572,10 +3534,8 @@ Anyone with your master private key can access all your funds.`;
                     }
 
                     // Step 3: Extract chain code from xpub
-                    console.log('Decoding xpub:', xpubString);
                     const xpubDecoded = base58Decode(xpubString);
                     const chainCode = Array.from(xpubDecoded.slice(13, 45)).map(b => b.toString(16).padStart(2, '0')).join('');
-                    console.log('Extracted chain code from xpub:', chainCode);
 
                     // Step 4: Find and decrypt the BIP32 master private key
                     // Search for walletdescriptorckey record with this descriptor ID
@@ -3594,8 +3554,6 @@ Anyone with your master private key can access all your funds.`;
                             const pubkeyLen = data[pos];
                             pos++;
                             const pubkey = data.slice(pos, pos + pubkeyLen);
-
-                            console.log('Found encrypted BIP32 master key, pubkey:', Array.from(pubkey).map(b => b.toString(16).padStart(2, '0')).join(''));
 
                             // Find the value field (encrypted key) - need to search for it in the SQLite record
                             // The value should be nearby, let's search forward
@@ -3620,7 +3578,6 @@ Anyone with your master private key can access all your funds.`;
                                     bip32MasterKey = CryptoJS.enc.Hex.stringify(decrypted);
 
                                     if (bip32MasterKey.length === 64) {
-                                        console.log('Decrypted BIP32 master key:', bip32MasterKey);
                                         break;
                                     }
                                 }
@@ -3647,30 +3604,10 @@ Anyone with your master private key can access all your funds.`;
                         descriptorPath: "84'/1'/0'" // BIP84 for Alpha network
                     };
 
-                    console.log('Wallet object created:', {
-                        masterKeyLength: wallet.masterPrivateKey.length,
-                        chainCodeLength: wallet.masterChainCode.length,
-                        descriptorPath: wallet.descriptorPath,
-                        isImportedAlphaWallet: wallet.isImportedAlphaWallet
-                    });
-
                     window.walletGlobal = wallet;
 
                     // Generate first address
-                    console.log('Generating first address...');
-                    console.log('DEBUG: Master key:', wallet.masterPrivateKey);
-                    console.log('DEBUG: Chain code:', wallet.masterChainCode);
-                    console.log('DEBUG: Descriptor path:', wallet.descriptorPath);
-
                     generateNewAddress();
-
-                    const firstAddress = wallet.addresses[0];
-                    console.log('First address generated:', firstAddress);
-
-                    // Verify derivation manually
-                    const testPath = "m/84'/1'/0'/0/0";
-                    const testDerivedKey = deriveHDPath(wallet.masterPrivateKey, wallet.masterChainCode, testPath);
-                    console.log('DEBUG: Manual derivation for', testPath, ':', testDerivedKey);
 
                     // Save the wallet
                     saveWalletData();
