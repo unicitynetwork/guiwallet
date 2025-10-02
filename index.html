@@ -2293,8 +2293,10 @@ Anyone with your master private key can access all your funds.`;
                 // Update address - show BIP32 indicator if it's a BIP32 wallet
                 if (wallet.isImportedAlphaWallet && wallet.masterChainCode) {
                     walletAddress.innerHTML = `${addressInfo.address} <span style="color: #06d6a0; font-size: 12px; font-weight: bold;">[BIP32]</span>`;
+                    walletAddress.dataset.address = addressInfo.address; // Store plain address for copying
                 } else {
                     walletAddress.textContent = addressInfo.address;
+                    walletAddress.dataset.address = addressInfo.address;
                 }
                 walletAddressLink.href = `https://www.unicity.network/address/${addressInfo.address}`;
                 
@@ -8899,7 +8901,9 @@ Anyone with your master private key can access all your funds.`;
             window.copyAddress = function(type) {
                 let address = '';
                 if (type === 'wallet') {
-                    address = document.getElementById('walletAddress').textContent;
+                    const walletAddressEl = document.getElementById('walletAddress');
+                    // Use data-address attribute if available (for BIP32 addresses), otherwise use textContent
+                    address = walletAddressEl.dataset.address || walletAddressEl.textContent;
                 } else if (type === 'watchonly') {
                     address = document.getElementById('watchOnlyAddress').value;
                 }
