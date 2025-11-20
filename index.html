@@ -1630,6 +1630,11 @@ Anyone with your master private key can access all your funds.`;
             window.transactionDebugLog = [];
             window.currentTransactionDebug = null;
             const MAX_DEBUG_LOGS = 100;
+
+            console.log('[DEBUG] ========================================');
+            console.log('[DEBUG] Debug system initialized at page load');
+            console.log('[DEBUG] Initial transactionDebugLog:', window.transactionDebugLog);
+            console.log('[DEBUG] ========================================');
             
             // Ensure encryption status is hidden by default
             // encryptionStatus.style.display = 'none'; // Removed with Security section
@@ -2924,6 +2929,113 @@ Anyone with your master private key can access all your funds.`;
                 return chk;
             }
             
+            // ============================================
+            // BigInt Utility Library for Satoshi Math
+            // ============================================
+            const SatoshiMath = {
+                SATOSHI_PER_ALPHA: 100000000n,
+                DUST_THRESHOLD: 546n,
+                FEE_PER_TX: 10000n,
+
+                /**
+                 * Parse ALPHA string to satoshis (BigInt)
+                 * Example: "0.12345678" -> 12345678n
+                 */
+                alphaToSatoshis: function(alphaString) {
+                    if (!alphaString || alphaString === '') return 0n;
+
+                    // Remove whitespace and validate format
+                    const cleaned = alphaString.trim();
+                    const match = cleaned.match(/^(\d+)(?:\.(\d{0,8}))?$/);
+
+                    if (!match) {
+                        throw new Error('Invalid ALPHA amount format: ' + alphaString);
+                    }
+
+                    const wholePart = BigInt(match[1] || '0');
+                    const fractionalPart = (match[2] || '').padEnd(8, '0');
+
+                    return wholePart * this.SATOSHI_PER_ALPHA + BigInt(fractionalPart);
+                },
+
+                /**
+                 * Convert satoshis (BigInt) to ALPHA string
+                 * Example: 12345678n -> "0.12345678"
+                 */
+                satoshisToAlpha: function(satoshisBigInt, options = {}) {
+                    const {
+                        showSymbol = false,
+                        minDecimals = 0,
+                        maxDecimals = 8,
+                        removeTrailingZeros = false
+                    } = options;
+
+                    const satoshis = BigInt(satoshisBigInt);
+
+                    // Handle negative values
+                    const isNegative = satoshis < 0n;
+                    const absSatoshis = isNegative ? -satoshis : satoshis;
+
+                    const str = absSatoshis.toString().padStart(9, '0');
+                    let integerPart = str.slice(0, -8) || '0';
+                    let decimalPart = str.slice(-8);
+
+                    // Apply decimal constraints
+                    if (removeTrailingZeros) {
+                        decimalPart = decimalPart.replace(/0+$/, '');
+                    }
+                    if (decimalPart.length < minDecimals) {
+                        decimalPart = decimalPart.padEnd(minDecimals, '0');
+                    }
+                    if (decimalPart.length > maxDecimals) {
+                        decimalPart = decimalPart.slice(0, maxDecimals);
+                    }
+
+                    const sign = isNegative ? '-' : '';
+                    const formatted = decimalPart
+                        ? `${sign}${integerPart}.${decimalPart}`
+                        : `${sign}${integerPart}`;
+
+                    return showSymbol ? `${formatted} ALPHA` : formatted;
+                },
+
+                /**
+                 * Safe conversion from Number to BigInt
+                 */
+                fromNumber: function(num) {
+                    if (!Number.isInteger(num)) {
+                        console.warn('Converting non-integer to BigInt:', num);
+                        return BigInt(Math.floor(num));
+                    }
+                    return BigInt(num);
+                },
+
+                /**
+                 * Safe conversion from BigInt to Number (for display only)
+                 */
+                toNumber: function(bigint) {
+                    const num = Number(bigint);
+                    if (bigint > Number.MAX_SAFE_INTEGER) {
+                        console.warn('BigInt exceeds MAX_SAFE_INTEGER, precision may be lost');
+                    }
+                    return num;
+                },
+
+                /**
+                 * Sum array of values (Numbers or BigInts)
+                 */
+                sum: function(values) {
+                    return values.reduce((acc, val) => acc + BigInt(val), 0n);
+                }
+            };
+
+            // Enable JSON serialization for BigInt
+            if (!BigInt.prototype.toJSON) {
+                BigInt.prototype.toJSON = function() {
+                    return this.toString();
+                };
+            }
+
             // Helper function to convert bytes to hex string
             function bytesToHex(bytes) {
                 return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -4347,7 +4459,7 @@ Anyone with your master private key can access all your funds.`;
                         const deduplicationNote = cachedResults.wallets.length !== uniqueWallets.length 
                             ? `<br><em style="font-size: 11px; color: #ff6b6b;">Removed ${cachedResults.wallets.length - uniqueWallets.length} duplicate(s)</em>` 
                             : '';
-                        scanStatus.innerHTML = `Found ${uniqueWallets.length} wallet(s) from cache<br>Total balance: <strong>${(recalculatedTotal / 100000000).toFixed(8)} ALPHA</strong>${deduplicationNote}<br><em style="font-size: 11px;">Last scan: ${new Date(cachedResults.timestamp).toLocaleString()}</em>`;
+                        scanStatus.innerHTML = `Found ${uniqueWallets.length} wallet(s) from cache<br>Total balance: <strong>${SatoshiMath.satoshisToAlpha(recalculatedTotal)} ALPHA</strong>${deduplicationNote}<br><em style="font-size: 11px;">Last scan: ${new Date(cachedResults.timestamp).toLocaleString()}</em>`;
                         scanProgress.style.width = '100%';
                         scanCounter.textContent = `${uniqueWallets.length} cached`;
                         
@@ -4821,7 +4933,7 @@ Anyone with your master private key can access all your funds.`;
                             });
                             
                             // Update status with running total
-                            scanStatus.innerHTML = `Scanning... Found ${scannedWallets.length} wallet(s)<br>Current total: <strong>${(runningTotal / 100000000).toFixed(8)} ALPHA</strong>`;
+                            scanStatus.innerHTML = `Scanning... Found ${scannedWallets.length} wallet(s)<br>Current total: <strong>${SatoshiMath.satoshisToAlpha(runningTotal)} ALPHA</strong>`;
                             
                             // Update lastScannedWalletData with current data
                             lastScannedWalletData = {
@@ -4903,7 +5015,7 @@ Anyone with your master private key can access all your funds.`;
                                 });
                                 
                                 // Update status with running total
-                                scanStatus.innerHTML = `Scanning... Found ${scannedWallets.length} wallet(s)<br>Current total: <strong>${(runningTotal / 100000000).toFixed(8)} ALPHA</strong>`;
+                                scanStatus.innerHTML = `Scanning... Found ${scannedWallets.length} wallet(s)<br>Current total: <strong>${SatoshiMath.satoshisToAlpha(runningTotal)} ALPHA</strong>`;
                                 
                                 // Update lastScannedWalletData with current data
                                 lastScannedWalletData = {
@@ -4971,7 +5083,7 @@ Anyone with your master private key can access all your funds.`;
                 
                 // Update scan status with total balance
                 if (scannedWallets.length > 0) {
-                    scanStatus.innerHTML = `Found ${scannedWallets.length} wallet(s) with funds<br>Total balance: <strong>${(totalBalance / 100000000).toFixed(8)} ALPHA</strong>`;
+                    scanStatus.innerHTML = `Found ${scannedWallets.length} wallet(s) with funds<br>Total balance: <strong>${SatoshiMath.satoshisToAlpha(totalBalance)} ALPHA</strong>`;
                 } else {
                     scanStatus.textContent = !checkOnline || !electrumConnected ? 'Scan complete (offline mode)' : 'No wallets with funds found';
                 }
@@ -5014,7 +5126,7 @@ Anyone with your master private key can access all your funds.`;
                 } else if (nonZeroWallets > 1) {
                     // Show total balance if multiple wallets found and not scanning
                     const totalBalance = lastScannedWalletData.totalBalance || 0;
-                    document.getElementById('totalScannedAmount').textContent = `${(totalBalance / 100000000).toFixed(8)} ALPHA`;
+                    document.getElementById('totalScannedAmount').textContent = `${SatoshiMath.satoshisToAlpha(totalBalance)} ALPHA`;
                     totalScannedBalance.style.display = 'inline';
                     totalScannedLoading.style.display = 'none';
                 } else {
@@ -5261,7 +5373,7 @@ Anyone with your master private key can access all your funds.`;
                 header.style.cssText = 'padding: 20px; border-bottom: 1px solid #e9ecef;';
                 header.innerHTML = `
                     <h3 style="margin: 0;">Scanned Wallets</h3>
-                    <p style="margin: 10px 0 0 0; color: #666;">Total balance: <strong>${(lastScannedWalletData.totalBalance / 100000000).toFixed(8)} ALPHA</strong></p>
+                    <p style="margin: 10px 0 0 0; color: #666;">Total balance: <strong>${SatoshiMath.satoshisToAlpha(lastScannedWalletData.totalBalance)} ALPHA</strong></p>
                 `;
                 
                 const content = document.createElement('div');
@@ -5286,7 +5398,7 @@ Anyone with your master private key can access all your funds.`;
                             </div>
                             <div style="text-align: right;">
                                 <div style="font-weight: bold; color: var(--primary-color);">
-                                    ${walletInfo.balance === -1 ? 'Balance Unknown' : `${(walletInfo.balance / 100000000).toFixed(8)} ALPHA`}
+                                    ${walletInfo.balance === -1 ? 'Balance Unknown' : `${SatoshiMath.satoshisToAlpha(walletInfo.balance)} ALPHA`}
                                 </div>
                                 <div style="font-size: 11px; color: #666;">
                                     ${walletInfo.balance === -1 ? 'Offline' : 'Click to load'}
@@ -5358,7 +5470,7 @@ Anyone with your master private key can access all your funds.`;
                         </div>
                         <div style="text-align: right;">
                             <div style="font-weight: bold; color: var(--primary-color);">
-                                ${walletInfo.balance === -1 ? 'Balance Unknown' : `${(walletInfo.balance / 100000000).toFixed(8)} ALPHA`}
+                                ${walletInfo.balance === -1 ? 'Balance Unknown' : `${SatoshiMath.satoshisToAlpha(walletInfo.balance)} ALPHA`}
                             </div>
                             <div style="font-size: 11px; color: #666;">
                                 ${walletInfo.balance === -1 ? 'Offline' : 'Click to load'}
@@ -7046,11 +7158,11 @@ Anyone with your master private key can access all your funds.`;
                         const total = confirmed + unconfirmed;
                         
                         // Convert from satoshis to ALPHA (1 ALPHA = 100,000,000 satoshis)
-                        const alphaBalance = (total / 100000000).toFixed(8);
+                        const alphaBalance = SatoshiMath.satoshisToAlpha(total);
                         // balanceAmount.textContent = alphaBalance + ' ALPHA'; // Removed duplicate balance display
                         
                         if (unconfirmed > 0) {
-                            const unconfirmedAlpha = (unconfirmed / 100000000).toFixed(8);
+                            const unconfirmedAlpha = SatoshiMath.satoshisToAlpha(unconfirmed);
                             // balanceAmount.innerHTML += '<br><small style="color: #999;">(' + unconfirmedAlpha + ' unconfirmed)</small>'; // Removed duplicate balance display
                         }
                     }
@@ -7353,22 +7465,22 @@ Anyone with your master private key can access all your funds.`;
                                 address: address
                             }));
                             
-                            // Calculate balances
-                            let confirmed = 0;
-                            let unconfirmed = 0;
-                            
+                            // Calculate balances using BigInt for precision
+                            let confirmed = 0n;
+                            let unconfirmed = 0n;
+
                             result.forEach(utxo => {
                                 if (utxo.height > 0) {
-                                    confirmed += utxo.value;
+                                    confirmed += BigInt(utxo.value);
                                 } else {
-                                    unconfirmed += utxo.value;
+                                    unconfirmed += BigInt(utxo.value);
                                 }
                             });
-                            
+
                             // Update display
-                            watchOnlyBalance.textContent = (confirmed / 100000000).toFixed(8) + ' ALPHA';
-                            if (unconfirmed > 0) {
-                                watchOnlyUnconfirmed.textContent = '(' + (unconfirmed / 100000000).toFixed(8) + ')';
+                            watchOnlyBalance.textContent = SatoshiMath.satoshisToAlpha(confirmed) + ' ALPHA';
+                            if (unconfirmed > 0n) {
+                                watchOnlyUnconfirmed.textContent = '(' + SatoshiMath.satoshisToAlpha(unconfirmed) + ')';
                             } else {
                                 watchOnlyUnconfirmed.textContent = '';
                             }
@@ -7415,7 +7527,7 @@ Anyone with your master private key can access all your funds.`;
                                     
                                     if (txDetails && watchOnlyAddressValue) {
                                         const result = calculateTransactionAmount(txDetails, watchOnlyAddressValue);
-                                        const amount = (Math.abs(result.netAmount) / 100000000).toFixed(8);
+                                        const amount = SatoshiMath.satoshisToAlpha(Math.abs(result.netAmount));
                                         
                                         if (result.isIncoming) {
                                             notificationTitle = tx.height === 0 ? 
@@ -7481,25 +7593,25 @@ Anyone with your master private key can access all your funds.`;
             }
             
             function updateCommonBalance() {
-                let confirmedBalance = 0;
-                let unconfirmedBalance = 0;
+                let confirmedBalance = 0n;
+                let unconfirmedBalance = 0n;
                 let utxoSource = 'none';
                 let blockHeight = currentBlockHeight || lastUpdateBlockHeight;
                 let lastUpdate = currentBlockTime;
-                
+
                 // Get consumed UTXOs
                 const consumedUtxos = getConsumedUtxos();
-                
-                // Calculate balances from UTXOs
+
+                // Calculate balances from UTXOs using BigInt for precision
                 if (currentUtxos && currentUtxos.length > 0) {
                     currentUtxos.forEach(utxo => {
                         const utxoKey = `${utxo.txid}:${utxo.vout}`;
                         // Only count UTXO if it's not consumed
                         if (!consumedUtxos.has(utxoKey)) {
                             if (utxo.height > 0) {
-                                confirmedBalance += utxo.value;
+                                confirmedBalance += BigInt(utxo.value);
                             } else {
-                                unconfirmedBalance += utxo.value;
+                                unconfirmedBalance += BigInt(utxo.value);
                             }
                         }
                     });
@@ -7515,9 +7627,9 @@ Anyone with your master private key can access all your funds.`;
                         // Only count UTXO if it's not consumed
                         if (!consumedUtxos.has(utxoKey)) {
                             if (utxo.height > 0) {
-                                confirmedBalance += utxo.value;
+                                confirmedBalance += BigInt(utxo.value);
                             } else {
-                                unconfirmedBalance += utxo.value;
+                                unconfirmedBalance += BigInt(utxo.value);
                             }
                         }
                     });
@@ -7530,20 +7642,20 @@ Anyone with your master private key can access all your funds.`;
                         lastUpdate = new Date(offlineUtxoData.timestamp);
                     }
                 }
-                
+
                 // Update wallet info display if it exists
                 if (walletBalance) {
-                    walletBalance.textContent = `${(confirmedBalance / 100000000).toFixed(8)} ALPHA`;
+                    walletBalance.textContent = `${SatoshiMath.satoshisToAlpha(confirmedBalance)} ALPHA`;
                 }
                 if (walletUnconfirmed) {
-                    if (unconfirmedBalance > 0) {
+                    if (unconfirmedBalance > 0n) {
                         walletUnconfirmed.style.display = 'inline';
-                        walletUnconfirmed.textContent = `(${(unconfirmedBalance / 100000000).toFixed(8)})`;
+                        walletUnconfirmed.textContent = `(${SatoshiMath.satoshisToAlpha(unconfirmedBalance)})`;
                     } else {
                         walletUnconfirmed.style.display = 'none';
                     }
                 }
-                
+
                 // Update total balance in scanned wallets if current address balance changed
                 if (lastScannedWalletData && lastScannedWalletData.wallets && wallet && wallet.addresses && wallet.addresses.length > 0) {
                     const currentAddress = wallet.addresses[0].address;
@@ -7552,27 +7664,28 @@ Anyone with your master private key can access all your funds.`;
                     // Find and update the current wallet in scanned wallets
                     let walletUpdated = false;
                     let walletIndex = -1;
+                    const totalBalanceNum = Number(totalBalance);  // Convert for storage
                     lastScannedWalletData.wallets.forEach((w, idx) => {
                         if (w.address === currentAddress) {
                             const oldBalance = w.balance || 0;
-                            if (oldBalance !== totalBalance) {
-                                w.balance = totalBalance;
+                            if (oldBalance !== totalBalanceNum) {
+                                w.balance = totalBalanceNum;
                                 walletUpdated = true;
                                 walletIndex = idx;
                             }
                         }
                     });
-                    
+
                     if (walletUpdated) {
-                        // Recalculate total balance by summing all individual balances
-                        let newTotalBalance = 0;
+                        // Recalculate total balance by summing all individual balances using BigInt
+                        let newTotalBalance = 0n;
                         lastScannedWalletData.wallets.forEach((w, idx) => {
                             if (w.balance > 0) {
-                                newTotalBalance += w.balance;
+                                newTotalBalance += BigInt(w.balance);
                             }
                         });
                         const oldTotal = lastScannedWalletData.totalBalance || 0;
-                        lastScannedWalletData.totalBalance = newTotalBalance;
+                        lastScannedWalletData.totalBalance = Number(newTotalBalance);  // Convert for storage
                         
                         // Update cache only if we have master keys
                         if (lastScannedWalletData.masterKey) {
@@ -7608,7 +7721,7 @@ Anyone with your master private key can access all your funds.`;
                 // Update old balance display elements for backwards compatibility
                 const totalBalanceEl = document.getElementById('totalBalance');
                 if (totalBalanceEl) {
-                    totalBalanceEl.textContent = ((confirmedBalance + unconfirmedBalance) / 100000000).toFixed(8);
+                    totalBalanceEl.textContent = SatoshiMath.satoshisToAlpha(confirmedBalance + unconfirmedBalance);
                 }
                 
                 const lastUpdateBlockEl = document.getElementById('lastUpdateBlock');
@@ -7701,7 +7814,7 @@ Anyone with your master private key can access all your funds.`;
                     // Calculate net amount and direction from full transaction details
                     const result = calculateTransactionAmount(txDetails, ourAddress);
                     isIncoming = result.isIncoming;
-                    amount = (Math.abs(result.netAmount) / 100000000).toFixed(8);
+                    amount = SatoshiMath.satoshisToAlpha(Math.abs(result.netAmount));
                     destinations = result.destinations;
                     senderAddress = result.senderAddress;
                     
@@ -7852,7 +7965,7 @@ Anyone with your master private key can access all your funds.`;
                 // First check all outputs to see what we received
                 if (txDetails.vout) {
                     txDetails.vout.forEach((output, index) => {
-                        const value = output.value * 100000000; // Convert to satoshis
+                        const value = Math.round(output.value * 100000000); // Convert to satoshis (round to avoid floating-point errors)
                         
                         if (output.scriptPubKey) {
                             // Extract address from various possible fields
@@ -7965,7 +8078,7 @@ Anyone with your master private key can access all your funds.`;
                                 
                                 if (prevOutputAddress && allOurAddresses.has(prevOutputAddress.toLowerCase())) {
                                     isOurInput = true;
-                                    inputAmount += prevOutput.value * 100000000; // Convert to satoshis
+                                    inputAmount += Math.round(prevOutput.value * 100000000); // Convert to satoshis (round to avoid floating-point errors)
                                 }
                             }
                         } else if (currentTransactions) {
@@ -8442,7 +8555,7 @@ Anyone with your master private key can access all your funds.`;
                                 walletVersion: '1.0.0',
                                 exportedFrom: window.location.hostname || 'offline-wallet',
                                 utxoCount: (utxos || []).length,
-                                totalValue: (utxos || []).reduce((sum, utxo) => sum + (utxo.value || 0), 0)
+                                totalValue: Number(SatoshiMath.sum((utxos || []).map(u => u.value || 0)))
                             }
                         };
                         
@@ -8507,7 +8620,7 @@ Anyone with your master private key can access all your funds.`;
                             walletVersion: '1.0.0',
                             exportedFrom: window.location.hostname || 'offline-wallet',
                             utxoCount: spentUtxos.length,
-                            totalValue: spentUtxos.reduce((sum, utxo) => sum + (utxo.value || 0), 0),
+                            totalValue: Number(SatoshiMath.sum(spentUtxos.map(u => u.value || 0))),
                             recipientAddress: recipientAddress,
                             sendAmount: totalAmount,
                             exportType: 'transaction_template'
@@ -8659,7 +8772,7 @@ Anyone with your master private key can access all your funds.`;
                 });
                 
                 // Display balance
-                const alphaBalance = (totalBalance / 100000000).toFixed(8);
+                const alphaBalance = SatoshiMath.satoshisToAlpha(totalBalance);
                 offlineBalanceAmount.textContent = alphaBalance + ' ALPHA';
                 
                 // Display timestamp and block height
@@ -8684,7 +8797,7 @@ Anyone with your master private key can access all your funds.`;
                         
                         const txId = utxo.tx_hash || utxo.txid || 'Unknown';
                         const vout = utxo.tx_pos !== undefined ? utxo.tx_pos : (utxo.vout || 0);
-                        const value = (utxo.value / 100000000).toFixed(8);
+                        const value = SatoshiMath.satoshisToAlpha(utxo.value);
                         const height = utxo.height;
                         
                         utxoDiv.innerHTML = `
@@ -8761,8 +8874,8 @@ Anyone with your master private key can access all your funds.`;
                 pageUtxos.forEach((utxo, pageIndex) => {
                     const globalIndex = startIndex + pageIndex;
                     const utxoDiv = document.createElement('div');
-                    
-                    const amount = (utxo.value / 100000000).toFixed(8);
+
+                    const amount = SatoshiMath.satoshisToAlpha(utxo.value);
                     const txid = utxo.tx_hash || utxo.txid;
                     const vout = utxo.tx_pos !== undefined ? utxo.tx_pos : utxo.vout;
                     const height = utxo.height || 0;
@@ -9264,8 +9377,11 @@ Anyone with your master private key can access all your funds.`;
                     },
                     
                     save: function() {
+                        console.log('[DEBUG] save() called for session:', this.id, 'operation:', this.operation);
+                        console.log('[DEBUG] Before save - transactionDebugLog length:', window.transactionDebugLog.length);
+
                         // Add to global debug log
-                        transactionDebugLog.push({
+                        window.transactionDebugLog.push({
                             id: this.id,
                             operation: this.operation,
                             startTime: this.startTime,
@@ -9273,22 +9389,25 @@ Anyone with your master private key can access all your funds.`;
                             status: this.status,
                             logs: this.logs
                         });
-                        
+
+                        console.log('[DEBUG] After save - transactionDebugLog length:', window.transactionDebugLog.length);
+
                         // Keep only last MAX_DEBUG_LOGS entries
-                        if (transactionDebugLog.length > MAX_DEBUG_LOGS) {
-                            transactionDebugLog = transactionDebugLog.slice(-MAX_DEBUG_LOGS);
+                        if (window.transactionDebugLog.length > MAX_DEBUG_LOGS) {
+                            window.transactionDebugLog = window.transactionDebugLog.slice(-MAX_DEBUG_LOGS);
                         }
-                        
+
                         // Save to localStorage for persistence
                         try {
-                            localStorage.setItem('transactionDebugLog', JSON.stringify(transactionDebugLog));
+                            localStorage.setItem('transactionDebugLog', JSON.stringify(window.transactionDebugLog));
+                            console.log('[DEBUG] Saved to localStorage successfully');
                         } catch (e) {
                             console.error('Failed to save debug log to localStorage:', e);
                         }
                     }
                 };
-                
-                currentTransactionDebug = debugSession;
+
+                window.currentTransactionDebug = debugSession;
                 return debugSession;
             }
             
@@ -9297,7 +9416,7 @@ Anyone with your master private key can access all your funds.`;
                 try {
                     const saved = localStorage.getItem('transactionDebugLog');
                     if (saved) {
-                        transactionDebugLog = JSON.parse(saved);
+                        window.transactionDebugLog = JSON.parse(saved);
                     }
                 } catch (e) {
                     console.error('Failed to load debug log from localStorage:', e);
@@ -9617,7 +9736,7 @@ Anyone with your master private key can access all your funds.`;
                                                 const address = wallet.addresses && wallet.addresses.length > 0 ? 
                                                     wallet.addresses[0].address : watchOnlyAddressValue;
                                                 const result = calculateTransactionAmount(txDetails, address);
-                                                const amount = (Math.abs(result.netAmount) / 100000000).toFixed(8);
+                                                const amount = SatoshiMath.satoshisToAlpha(Math.abs(result.netAmount));
                                                 
                                                 if (result.isIncoming) {
                                                     notificationTitle = tx.height === 0 ? 
@@ -9721,45 +9840,57 @@ Anyone with your master private key can access all your funds.`;
                     showInAppNotification('No UTXOs', 'No UTXOs available to calculate maximum amount', 'warning');
                     return;
                 }
-                
-                // Calculate total available
-                const totalAvailable = availableUtxos.reduce((sum, utxo) => sum + utxo.value, 0);
-                
+
+                // Calculate total available using BigInt for precision
+                const totalAvailable = SatoshiMath.sum(availableUtxos.map(u => u.value));
+
                 // Calculate fees - we need one transaction per UTXO in Alpha
-                const feePerTx = 10000; // 0.0001 ALPHA fee per transaction
-                const totalFees = availableUtxos.length * feePerTx;
-                
+                const feePerTx = SatoshiMath.FEE_PER_TX;
+                const totalFees = BigInt(availableUtxos.length) * feePerTx;
+
                 // Calculate maximum sendable amount
                 const maxSendable = totalAvailable - totalFees;
-                
-                if (maxSendable <= 0) {
+
+                if (maxSendable <= 0n) {
                     showInAppNotification('Insufficient Balance', 'Total balance is too low to cover transaction fees', 'error');
                     return;
                 }
-                
+
                 // Convert to ALPHA and set the amount field
-                const maxAlpha = maxSendable / 100000000;
-                document.getElementById('sendAmount').value = maxAlpha.toFixed(8);
-                
+                const maxAlphaStr = SatoshiMath.satoshisToAlpha(maxSendable);
+                document.getElementById('sendAmount').value = maxAlphaStr;
+
                 // Show notification
-                showInAppNotification('Max Amount', `Maximum sendable: ${maxAlpha.toFixed(8)} ALPHA (${availableUtxos.length} UTXOs, ${(totalFees / 100000000).toFixed(8)} ALPHA in fees)`, 'info');
+                const feesAlphaStr = SatoshiMath.satoshisToAlpha(totalFees);
+                showInAppNotification('Max Amount', `Maximum sendable: ${maxAlphaStr} ALPHA (${availableUtxos.length} UTXOs, ${feesAlphaStr} ALPHA in fees)`, 'info');
             };
             
             // Prepare send transaction with enhanced debugging
             window.prepareSendTransaction = function() {
                 // Start debug session
                 const debugSession = startTransactionDebug('prepare_send');
-                
+
                 try {
                     const recipientAddress = document.getElementById('recipientAddress').value.trim();
-                    const sendAmount = parseFloat(document.getElementById('sendAmount').value);
-                    
+                    const sendAmountStr = document.getElementById('sendAmount').value.trim();
+
+                    // Parse amount using BigInt for precision
+                    let amountSatoshis;
+                    try {
+                        amountSatoshis = SatoshiMath.alphaToSatoshis(sendAmountStr);
+                    } catch (parseError) {
+                        debugSession.log('error', 'Amount parsing failed', { error: parseError.message, input: sendAmountStr });
+                        showTransactionError('Invalid Amount Format', 'Please enter a valid ALPHA amount (e.g., 1.23456789)', debugSession);
+                        return;
+                    }
+
                     debugSession.log('info', 'Starting transaction preparation', {
                         recipientAddress,
-                        sendAmount,
+                        sendAmount: sendAmountStr,
+                        amountSatoshis: amountSatoshis.toString(),
                         timestamp: new Date().toISOString()
                     });
-                    
+
                     // Validate inputs with detailed error reporting
                     if (!recipientAddress) {
                         const error = 'No recipient address provided';
@@ -9767,14 +9898,14 @@ Anyone with your master private key can access all your funds.`;
                         showTransactionError(error, 'Please enter a recipient address', debugSession);
                         return;
                     }
-                    
+
                     if (!recipientAddress.startsWith('alpha1')) {
                         const error = 'Invalid address format';
                         debugSession.log('error', error, { providedAddress: recipientAddress });
                         showTransactionError(error, 'Address must start with "alpha1"', debugSession);
                         return;
                     }
-                    
+
                     // Validate address checksum
                     try {
                         validateBech32Address(recipientAddress);
@@ -9784,10 +9915,10 @@ Anyone with your master private key can access all your funds.`;
                         showTransactionError('Invalid Address', `Address validation failed: ${addrError.message}`, debugSession);
                         return;
                     }
-                    
-                    if (!sendAmount || sendAmount <= 0) {
+
+                    if (!sendAmountStr || amountSatoshis <= 0n) {
                         const error = 'Invalid amount';
-                        debugSession.log('error', error, { providedAmount: sendAmount });
+                        debugSession.log('error', error, { providedAmount: sendAmountStr, satoshis: amountSatoshis.toString() });
                         showTransactionError(error, 'Please enter a valid amount greater than 0', debugSession);
                         return;
                     }
@@ -9856,21 +9987,18 @@ Anyone with your master private key can access all your funds.`;
                         showTransactionError(error, 'Please load UTXO data first (either connect online or import UTXO file)', debugSession);
                         return;
                     }
-                
-                // Convert amount to satoshis (1 ALPHA = 100000000 satoshis)
-                const amountSatoshis = Math.floor(sendAmount * 100000000);
-                
+
                 // Get the sender address (wallet address or watch-only address)
                 const senderAddress = watchOnlyMode ? watchOnlyAddressValue : wallet.addresses[0].address;
-                
+
                     // Collect UTXOs for the required amount
                     debugSession.log('info', 'Collecting UTXOs for transaction', {
-                        amountSatoshis,
-                        amountAlpha: sendAmount,
+                        amountSatoshis: amountSatoshis.toString(),
+                        amountAlpha: sendAmountStr,
                         availableUtxosCount: availableUtxos.length,
                         senderAddress
                     });
-                    
+
                     const txPlan = collectUtxosForAmount(availableUtxos, amountSatoshis, recipientAddress, senderAddress);
                     
                     if (!txPlan.success) {
@@ -9895,10 +10023,10 @@ Anyone with your master private key can access all your funds.`;
                     // In watch-only mode, export transaction template instead of showing confirmation
                     if (watchOnlyMode) {
                         debugSession.log('info', 'Exporting transaction template (watch-only mode)');
-                        exportTransactionTemplate(txPlan.transactions, recipientAddress, sendAmount, senderAddress);
+                        exportTransactionTemplate(txPlan.transactions, recipientAddress, sendAmountStr, senderAddress);
                     } else {
                         debugSession.log('info', 'Showing transaction confirmation dialog');
-                        showTransactionConfirmation(txPlan.transactions, recipientAddress, sendAmount);
+                        showTransactionConfirmation(txPlan.transactions, recipientAddress, sendAmountStr);
                     }
                     
                     debugSession.complete('Transaction preparation completed successfully');
@@ -9916,73 +10044,74 @@ Anyone with your master private key can access all your funds.`;
             function collectUtxosForAmount(utxoList, amountSatoshis, recipientAddress, senderAddress) {
                 // Sort UTXOs by value (ascending) to minimize number of transactions
                 const sortedUtxos = [...utxoList].sort((a, b) => a.value - b.value);
-                
-                // Calculate total available
-                const totalAvailable = sortedUtxos.reduce((sum, utxo) => sum + utxo.value, 0);
-                
-                if (totalAvailable < amountSatoshis) {
+
+                // Calculate total available using BigInt for precision
+                const totalAvailable = SatoshiMath.sum(sortedUtxos.map(u => u.value));
+                const amountBI = BigInt(amountSatoshis);
+
+                if (totalAvailable < amountBI) {
                     return {
                         success: false,
-                        error: `Insufficient funds. Available: ${(totalAvailable / 100000000).toFixed(8)} ALPHA, Required: ${(amountSatoshis / 100000000).toFixed(8)} ALPHA`
+                        error: `Insufficient funds. Available: ${SatoshiMath.satoshisToAlpha(totalAvailable)} ALPHA, Required: ${SatoshiMath.satoshisToAlpha(amountBI)} ALPHA`
                     };
                 }
-                
+
                 const transactions = [];
-                let remainingAmount = amountSatoshis;
-                const feePerTx = 10000; // 0.0001 ALPHA fee per transaction
-                
+                let remainingAmount = amountBI;
+                const feePerTx = SatoshiMath.FEE_PER_TX;
+
                 // Since Alpha requires one input per transaction, we need to create multiple transactions
                 for (const utxo of sortedUtxos) {
-                    if (remainingAmount <= 0) break;
-                    
-                    const utxoValue = utxo.value;
+                    if (remainingAmount <= 0n) break;
+
+                    const utxoValue = BigInt(utxo.value);
                     let txAmount;
-                    let changeAmount = 0;
-                    
+                    let changeAmount = 0n;
+
                     if (utxoValue >= remainingAmount + feePerTx) {
                         // This UTXO covers the remaining amount plus fee
                         txAmount = remainingAmount;
                         changeAmount = utxoValue - remainingAmount - feePerTx;
-                        remainingAmount = 0;
+                        remainingAmount = 0n;
                     } else {
                         // Use entire UTXO minus fee
                         txAmount = utxoValue - feePerTx;
                         remainingAmount -= txAmount;
-                        
-                        if (txAmount <= 0) {
+
+                        if (txAmount <= 0n) {
                             // UTXO too small to cover fee
                             continue;
                         }
                     }
-                    
+
                     transactions.push({
                         input: utxo,
                         outputs: [
-                            { address: recipientAddress, value: txAmount }
+                            { address: recipientAddress, value: Number(txAmount) }  // Convert for compatibility
                         ],
-                        fee: feePerTx,
-                        changeAmount: changeAmount,
+                        fee: Number(feePerTx),
+                        changeAmount: Number(changeAmount),
                         changeAddress: senderAddress // Send change back to sender address
                     });
-                    
+
                     // Add change output if needed (but avoid dust outputs)
                     // Dust threshold: 546 satoshis is typical for P2WPKH
-                    const DUST_THRESHOLD = 546;
+                    const DUST_THRESHOLD = SatoshiMath.DUST_THRESHOLD;
                     if (changeAmount > DUST_THRESHOLD) {
                         transactions[transactions.length - 1].outputs.push({
                             address: senderAddress,
-                            value: changeAmount
+                            value: Number(changeAmount)  // Convert for compatibility
                         });
-                    } else if (changeAmount > 0) {
+                    } else if (changeAmount > 0n) {
                         // If change is dust, add it to the fee instead
                         console.log(`Change amount ${changeAmount} is below dust threshold, adding to fee`);
                     }
                 }
-                
-                if (remainingAmount > 0) {
+
+                if (remainingAmount > 0n) {
                     return {
                         success: false,
-                        error: `Unable to collect enough UTXOs. Short by ${(remainingAmount / 100000000).toFixed(8)} ALPHA after fees.`
+                        error: `Unable to collect enough UTXOs. Short by ${SatoshiMath.satoshisToAlpha(remainingAmount)} ALPHA after fees.`
                     };
                 }
                 
@@ -10126,10 +10255,10 @@ Anyone with your master private key can access all your funds.`;
                         <div style="margin-top: 15px; padding: 10px; background: #f9fafb; border-radius: 8px;">
                             <div><strong>Transaction ${index + 1}:</strong></div>
                             <div style="margin-top: 5px; font-size: 0.9em;">
-                                <div>Input UTXO: ${(tx.input.value / 100000000).toFixed(8)} ALPHA</div>
-                                <div>Send to recipient: ${(tx.outputs[0].value / 100000000).toFixed(8)} ALPHA</div>
-                                ${tx.changeAmount > 0 ? `<div>Change to wallet: ${(tx.changeAmount / 100000000).toFixed(8)} ALPHA</div>` : ''}
-                                <div>Fee: ${(tx.fee / 100000000).toFixed(8)} ALPHA</div>
+                                <div>Input UTXO: ${SatoshiMath.satoshisToAlpha(tx.input.value)} ALPHA</div>
+                                <div>Send to recipient: ${SatoshiMath.satoshisToAlpha(tx.outputs[0].value)} ALPHA</div>
+                                ${tx.changeAmount > 0 ? `<div>Change to wallet: ${SatoshiMath.satoshisToAlpha(tx.changeAmount)} ALPHA</div>` : ''}
+                                <div>Fee: ${SatoshiMath.satoshisToAlpha(tx.fee)} ALPHA</div>
                             </div>
                         </div>
                     `;
@@ -10138,7 +10267,7 @@ Anyone with your master private key can access all your funds.`;
                 detailsHtml += `
                     </div>
                     <div style="margin-top: 20px; padding: 10px; background: #fef3c7; border-radius: 8px;">
-                        <strong>Total Fees:</strong> ${(totalFees / 100000000).toFixed(8)} ALPHA
+                        <strong>Total Fees:</strong> ${SatoshiMath.satoshisToAlpha(totalFees)} ALPHA
                     </div>
                 `;
                 
@@ -10872,22 +11001,22 @@ Anyone with your master private key can access all your funds.`;
                 // Summary with clickable items
                 statusHTML += '<div style="margin-bottom: 10px; font-size: 12px;">';
                 if (broadcastingCount > 0) {
-                    statusHTML += `<span style="color: #0066cc;">● Broadcasting now... (${(broadcastingAmount / 100000000).toFixed(8)} ALPHA)</span><br>`;
+                    statusHTML += `<span style="color: #0066cc;">● Broadcasting now... (${SatoshiMath.satoshisToAlpha(broadcastingAmount)} ALPHA)</span><br>`;
                 }
                 if (pendingCount > 0) {
-                    statusHTML += `<a href="#" onclick="showQueueDetails('pending'); return false;" style="color: #666; text-decoration: none; cursor: pointer;">◯ ${pendingCount} pending (${(pendingAmount / 100000000).toFixed(8)} ALPHA)</a><br>`;
+                    statusHTML += `<a href="#" onclick="showQueueDetails('pending'); return false;" style="color: #666; text-decoration: none; cursor: pointer;">◯ ${pendingCount} pending (${SatoshiMath.satoshisToAlpha(pendingAmount)} ALPHA)</a><br>`;
                 }
                 if (completeCount > 0) {
-                    statusHTML += `<a href="#" onclick="showQueueDetails('complete'); return false;" style="color: #00a000; text-decoration: none; cursor: pointer;">✓ ${completeCount} complete (${(completeAmount / 100000000).toFixed(8)} ALPHA)</a><br>`;
+                    statusHTML += `<a href="#" onclick="showQueueDetails('complete'); return false;" style="color: #00a000; text-decoration: none; cursor: pointer;">✓ ${completeCount} complete (${SatoshiMath.satoshisToAlpha(completeAmount)} ALPHA)</a><br>`;
                 }
                 if (failedCount > 0) {
-                    statusHTML += `<a href="#" onclick="showQueueDetails('failed'); return false;" style="color: #cc0000; text-decoration: none; cursor: pointer;">✗ ${failedCount} failed (${(failedAmount / 100000000).toFixed(8)} ALPHA)</a><br>`;
+                    statusHTML += `<a href="#" onclick="showQueueDetails('failed'); return false;" style="color: #cc0000; text-decoration: none; cursor: pointer;">✗ ${failedCount} failed (${SatoshiMath.satoshisToAlpha(failedAmount)} ALPHA)</a><br>`;
                 }
                 if (cancelledCount > 0) {
-                    statusHTML += `<a href="#" onclick="showQueueDetails('cancelled'); return false;" style="color: #f59e0b; text-decoration: none; cursor: pointer;">⊘ ${cancelledCount} cancelled (${(cancelledAmount / 100000000).toFixed(8)} ALPHA)</a><br>`;
+                    statusHTML += `<a href="#" onclick="showQueueDetails('cancelled'); return false;" style="color: #f59e0b; text-decoration: none; cursor: pointer;">⊘ ${cancelledCount} cancelled (${SatoshiMath.satoshisToAlpha(cancelledAmount)} ALPHA)</a><br>`;
                 }
-                
-                statusHTML += `<br><strong>Total queued: ${(totalAmount / 100000000).toFixed(8)} ALPHA</strong>`;
+
+                statusHTML += `<br><strong>Total queued: ${SatoshiMath.satoshisToAlpha(totalAmount)} ALPHA</strong>`;
                 
                 // Progress bar
                 if (totalAmount > 0) {
@@ -10897,7 +11026,7 @@ Anyone with your master private key can access all your funds.`;
                             <div style="background: #e0e0e0; height: 20px; border-radius: 10px; overflow: hidden; position: relative;">
                                 <div style="background: #10b981; height: 100%; width: ${progressPercent}%; transition: width 0.3s ease;"></div>
                                 <div style="position: absolute; top: 0; left: 0; right: 0; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600;">
-                                    ${(completeAmount / 100000000).toFixed(8)} / ${(totalAmount / 100000000).toFixed(8)} ALPHA (${progressPercent.toFixed(1)}%)
+                                    ${SatoshiMath.satoshisToAlpha(completeAmount)} / ${SatoshiMath.satoshisToAlpha(totalAmount)} ALPHA (${progressPercent.toFixed(1)}%)
                                 </div>
                             </div>
                         </div>
@@ -11112,8 +11241,8 @@ Anyone with your master private key can access all your funds.`;
                         destinations = outputs.map(output => output.address).filter(addr => addr);
                         totalAmount = outputs.reduce((sum, output) => sum + (output.value || 0), 0);
                     }
-                    
-                    const amount = totalAmount > 0 ? (totalAmount / 100000000).toFixed(8) : 'Unknown';
+
+                    const amount = totalAmount > 0 ? SatoshiMath.satoshisToAlpha(totalAmount) : 'Unknown';
                     const recipient = destinations.length > 0 ? destinations.join(', ') : 'Unknown';
                     
                     // Get from address - the input is a UTXO that should have an address field
@@ -12177,7 +12306,7 @@ Anyone with your master private key can access all your funds.`;
                 </div>
                 
                 <!-- Debug tab contents -->
-                <div id="debugTabContent">
+                <div id="modalDebugTabContent">
                     <!-- Content will be dynamically inserted here -->
                 </div>
             </div>
@@ -12197,20 +12326,39 @@ Anyone with your master private key can access all your funds.`;
     <script>
         // Debug modal functions
         window.showTransactionDebugModal = function(sessionId) {
+            console.log('[DEBUG] showTransactionDebugModal called with sessionId:', sessionId);
+            console.log('[DEBUG] window.transactionDebugLog:', window.transactionDebugLog);
+
             const modal = document.getElementById('transactionDebugModal');
             if (!modal) {
-                console.error('Transaction debug modal not found');
+                console.error('[DEBUG] Transaction debug modal not found');
                 return;
             }
-            
-            // Find the session or show all if no sessionId
+
+            // Find the session or default behavior
             if (sessionId) {
                 const session = window.transactionDebugLog.find(s => s.id === sessionId);
+                console.log('[DEBUG] Found session by ID:', session);
                 window.currentTransactionDebug = session || null;
+                modal.style.display = 'block';
+                showDebugTab('summary');
+            } else {
+                console.log('[DEBUG] No sessionId provided. transactionDebugLog length:', window.transactionDebugLog.length);
+                // No session specified - auto-select most recent or show history
+                if (window.transactionDebugLog.length > 0) {
+                    // Auto-select the most recent session
+                    window.currentTransactionDebug = window.transactionDebugLog[window.transactionDebugLog.length - 1];
+                    console.log('[DEBUG] Auto-selected most recent session:', window.currentTransactionDebug);
+                    modal.style.display = 'block';
+                    showDebugTab('summary');
+                } else {
+                    // No sessions available - show history tab (will display empty state)
+                    console.log('[DEBUG] No sessions available, showing history tab');
+                    window.currentTransactionDebug = null;
+                    modal.style.display = 'block';
+                    showDebugTab('history');
+                }
             }
-            
-            modal.style.display = 'block';
-            showDebugTab('summary');
         }
         
         window.closeTransactionDebugModal = function() {
@@ -12221,24 +12369,31 @@ Anyone with your master private key can access all your funds.`;
         }
         
         window.showDebugTab = function(tabName) {
+            console.log('[DEBUG] showDebugTab called with:', tabName);
+            console.log('[DEBUG] transactionDebugLog length:', window.transactionDebugLog ? window.transactionDebugLog.length : 'undefined');
+            console.log('[DEBUG] currentTransactionDebug:', window.currentTransactionDebug);
+
             // Update tab buttons
             document.querySelectorAll('.debug-tab-btn').forEach(btn => {
                 btn.style.color = '#6b7280';
                 btn.style.borderBottom = '3px solid transparent';
             });
-            
+
             const activeBtn = document.querySelector(`.debug-tab-btn[data-tab="${tabName}"]`);
             if (activeBtn) {
                 activeBtn.style.color = '#2563eb';
                 activeBtn.style.borderBottom = '3px solid #2563eb';
             }
-            
+
             // Update content
-            const contentDiv = document.getElementById('debugTabContent');
-            if (!contentDiv) return;
+            const contentDiv = document.getElementById('modalDebugTabContent');
+            if (!contentDiv) {
+                console.error('[DEBUG] modalDebugTabContent div not found!');
+                return;
+            }
             
             let content = '';
-            
+
             switch(tabName) {
                 case 'summary':
                     content = generateDebugSummary();
@@ -12253,7 +12408,9 @@ Anyone with your master private key can access all your funds.`;
                     content = generateDebugHistory();
                     break;
             }
-            
+
+            console.log('[DEBUG] Generated content length:', content ? content.length : 0);
+            console.log('[DEBUG] Content preview:', content ? content.substring(0, 100) : 'empty');
             contentDiv.innerHTML = content;
         }
         
@@ -12354,7 +12511,14 @@ Anyone with your master private key can access all your funds.`;
         
         function generateDebugHistory() {
             if (window.transactionDebugLog.length === 0) {
-                return '<p style="color: #6b7280; padding: 20px;">No transaction debug history available</p>';
+                return `
+                    <div style="padding: 40px; text-align: center; color: #6b7280;">
+                        <div style="font-size: 48px; margin-bottom: 15px;">📝</div>
+                        <h3 style="color: #374151; margin-bottom: 10px;">No Debug History Yet</h3>
+                        <p style="margin-bottom: 20px;">Debug information will appear here after you perform transactions.</p>
+                        <p style="font-size: 14px; color: #9ca3af;">Try sending ALPHA to an address to generate debug logs.</p>
+                    </div>
+                `;
             }
             
             let html = '<div style="padding: 10px; max-height: 500px; overflow-y: auto;">';
@@ -12368,7 +12532,7 @@ Anyone with your master private key can access all your funds.`;
                 
                 html += `
                     <div style="margin-bottom: 10px; padding: 10px; background-color: white; border: 1px solid #e5e7eb; border-radius: 4px; cursor: pointer;"
-                         onclick="currentTransactionDebug = transactionDebugLog.find(s => s.id === '${session.id}'); showDebugTab('summary');">
+                         onclick="window.currentTransactionDebug = window.transactionDebugLog.find(s => s.id === '${session.id}'); showDebugTab('summary');">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <div>
                                 <strong>${session.operation}</strong>
