@@ -10239,7 +10239,7 @@ Anyone with your master private key can access all your funds.`;
                         <strong>Recipient:</strong> <span style="font-family: monospace; word-break: break-all;">${recipientAddress}</span>
                     </div>
                     <div style="margin-bottom: 20px;">
-                        <strong>Total Amount:</strong> ${totalAmount.toFixed(8)} ALPHA
+                        <strong>Total Amount:</strong> ${SatoshiMath.satoshisToAlpha(SatoshiMath.alphaToSatoshis(totalAmount))} ALPHA
                     </div>
                     <div style="margin-bottom: 20px;">
                         <strong>Number of Transactions:</strong> ${transactions.length}
