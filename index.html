@@ -1688,17 +1688,11 @@ Anyone with your master private key can access all your funds.`;
             // Vesting classification state
             const VESTING_THRESHOLD = 280000;  // Block 280000 is the cutoff
             let vestingMode = 'all';  // 'all', 'vested', 'unvested'
-            let classifiedUtxos = {
-                vested: [],
-                unvested: [],
-                all: []
-            };
-            let vestingBalances = {
-                vested: 0n,
-                unvested: 0n,
-                all: 0n
-            };
             let vestingClassificationInProgress = false;
+
+            // Per-address vesting cache: address -> { classifiedUtxos, vestingBalances }
+            window.addressVestingCache = new Map();
+            let addressVestingCache = window.addressVestingCache;
 
             // HTML elements
             // const masterKeyElement = document.getElementById('masterKey'); // Removed with Security section
@@ -2862,8 +2856,7 @@ Anyone with your master private key can access all your funds.`;
                     currentUtxos = [];
                     offlineUtxoData = null;
                     // Clear vesting classification state
-                    classifiedUtxos = { vested: [], unvested: [], all: [] };
-                    vestingBalances = { vested: 0n, unvested: 0n, all: 0n };
+                    addressVestingCache.clear();
                     VestingClassifier.clearCache();
                     // Reset pagination
                     currentTransactionPage = 1;
@@ -3176,7 +3169,7 @@ Anyone with your master private key can access all your funds.`;
              * VESTED: Coins from coinbase transactions in blocks <= VESTING_THRESHOLD (280000)
              * UNVESTED: Coins from coinbase transactions in blocks > VESTING_THRESHOLD
              */
-            const VestingClassifier = {
+            window.VestingClassifier = {
                 // In-memory cache: txid -> { blockHeight, isCoinbase, inputTxId }
                 memoryCache: new Map(),
 
@@ -3222,11 +3215,16 @@ Anyone with your master private key can access all your funds.`;
                         const cached = this.memoryCache.get(currentTxHash);
                         if (cached) {
                             if (cached.isCoinbase) {
-                                return { coinbaseHeight: cached.blockHeight };
+                                // Skip cache if blockHeight is null - needs re-fetch
+                                if (cached.blockHeight !== null && cached.blockHeight !== undefined) {
+                                    return { coinbaseHeight: cached.blockHeight };
+                                }
+                                // Fall through to re-fetch
+                            } else {
+                                // Follow the input chain
+                                currentTxHash = cached.inputTxId;
+                                continue;
                             }
-                            // Follow the input chain
-                            currentTxHash = cached.inputTxId;
-                            continue;
                         }
 
                         // Check IndexedDB cache
@@ -3235,10 +3233,15 @@ Anyone with your master private key can access all your funds.`;
                             // Also store in memory cache
                             this.memoryCache.set(currentTxHash, dbCached);
                             if (dbCached.isCoinbase) {
-                                return { coinbaseHeight: dbCached.blockHeight };
+                                // Skip cache if blockHeight is null - needs re-fetch
+                                if (dbCached.blockHeight !== null && dbCached.blockHeight !== undefined) {
+                                    return { coinbaseHeight: dbCached.blockHeight };
+                                }
+                                // Fall through to re-fetch
+                            } else {
+                                currentTxHash = dbCached.inputTxId;
+                                continue;
                             }
-                            currentTxHash = dbCached.inputTxId;
-                            continue;
                         }
 
                         // Fetch from Fulcrum
@@ -3249,8 +3252,11 @@ Anyone with your master private key can access all your funds.`;
 
                         // Determine if this is a coinbase transaction
                         const isCoinbase = this.isCoinbaseTransaction(txData);
-                        const blockHeight = txData.confirmations ?
-                            (currentBlockHeight - txData.confirmations + 1) : null;
+                        // Calculate block height - need both confirmations and currentBlockHeight
+                        let blockHeight = null;
+                        if (txData.confirmations && currentBlockHeight !== null && currentBlockHeight !== undefined) {
+                            blockHeight = currentBlockHeight - txData.confirmations + 1;
+                        }
 
                         // Get input transaction ID (if not coinbase)
                         let inputTxId = null;
@@ -3305,11 +3311,18 @@ Anyone with your master private key can access all your funds.`;
                  */
                 async fetchTransaction(txHash) {
                     return new Promise((resolve) => {
-                        electrumRequest('blockchain.transaction.get', [txHash, true], (error, result) => {
+                        // Note: electrumRequest callback signature is (result, error) - result first on success,
+                        // or (null, error) on error
+                        electrumRequest('blockchain.transaction.get', [txHash, true], (result, error) => {
                             if (error) {
-                                resolve({ error: error.message || 'Failed to fetch transaction' });
-                            } else {
+                                const errorMsg = typeof error === 'object' ? (error.message || JSON.stringify(error)) : String(error);
+                                resolve({ error: errorMsg || 'Failed to fetch transaction' });
+                            } else if (result && typeof result === 'object' && result.txid) {
+                                // Valid transaction data
                                 resolve(result);
+                            } else {
+                                // Unexpected result format
+                                resolve({ error: 'Invalid transaction data received' });
                             }
                         });
                     });
@@ -3430,8 +3443,79 @@ Anyone with your master private key can access all your funds.`;
                  */
                 clearCache() {
                     this.memoryCache.clear();
+                },
+
+                /**
+                 * Clear IndexedDB vesting cache (for when cached data is stale)
+                 */
+                async clearIndexedDBCache() {
+                    return new Promise((resolve) => {
+                        try {
+                            const request = indexedDB.open('AlphaWallet', 2);
+                            request.onerror = () => resolve(false);
+                            request.onsuccess = (event) => {
+                                const db = event.target.result;
+                                if (!db.objectStoreNames.contains(this.DB_STORE_NAME)) {
+                                    db.close();
+                                    resolve(true);
+                                    return;
+                                }
+                                const transaction = db.transaction([this.DB_STORE_NAME], 'readwrite');
+                                const store = transaction.objectStore(this.DB_STORE_NAME);
+                                const clearRequest = store.clear();
+                                clearRequest.onsuccess = () => {
+                                    db.close();
+                                    console.log('Vesting IndexedDB cache cleared');
+                                    resolve(true);
+                                };
+                                clearRequest.onerror = () => {
+                                    db.close();
+                                    resolve(false);
+                                };
+                            };
+                        } catch (err) {
+                            resolve(false);
+                        }
+                    });
+                },
+
+                /**
+                 * Clear all caches (memory and IndexedDB)
+                 */
+                async clearAllCaches() {
+                    this.memoryCache.clear();
+                    await this.clearIndexedDBCache();
                 }
             };
+
+            /**
+             * Get or initialize vesting cache for a specific address
+             * @param {string} address - The address to get cache for
+             * @returns {Object} { classifiedUtxos, vestingBalances }
+             */
+            function getAddressVestingCache(address) {
+                if (!address) return null;
+                if (!addressVestingCache.has(address)) {
+                    addressVestingCache.set(address, {
+                        classifiedUtxos: { vested: [], unvested: [], all: [] },
+                        vestingBalances: { vested: 0n, unvested: 0n, all: 0n }
+                    });
+                }
+                return addressVestingCache.get(address);
+            }
+
+            /**
+             * Get the current address for vesting operations
+             * @returns {string|null} Current wallet or watch-only address
+             */
+            function getCurrentVestingAddress() {
+                if (watchOnlyMode && watchOnlyAddressValue) {
+                    return watchOnlyAddressValue;
+                } else if (wallet && wallet.addresses && wallet.addresses.length > 0) {
+                    return wallet.addresses[0].address;
+                }
+                return null;
+            }
 
             // Helper function to convert bytes to hex string
             function bytesToHex(bytes) {
@@ -5948,10 +6032,9 @@ Anyone with your master private key can access all your funds.`;
                 currentUtxoPage = 1;
                 offlineUtxoData = null;
                 // Clear vesting classification state
-                classifiedUtxos = { vested: [], unvested: [], all: [] };
-                vestingBalances = { vested: 0n, unvested: 0n, all: 0n };
+                addressVestingCache.clear();
                 VestingClassifier.clearCache();
-                
+
                 // Clear UI displays
                 if (walletBalance) walletBalance.textContent = '0.00000000 ALPHA';
                 if (walletUnconfirmed) walletUnconfirmed.textContent = '';
@@ -6548,8 +6631,7 @@ Anyone with your master private key can access all your funds.`;
                             lastScannedWalletData = null;
                             scannedWallets = [];
                             // Clear vesting classification state
-                            classifiedUtxos = { vested: [], unvested: [], all: [] };
-                            vestingBalances = { vested: 0n, unvested: 0n, all: 0n };
+                            addressVestingCache.clear();
                             VestingClassifier.clearCache();
 
                             // Load selected wallet
@@ -7168,7 +7250,7 @@ Anyone with your master private key can access all your funds.`;
                             if (response.id && electrumCallbacks[response.id]) {
                                 const callback = electrumCallbacks[response.id];
                                 delete electrumCallbacks[response.id];
-                                
+
                                 if (response.error) {
                                     console.error('Electrum error:', response.error);
                                     callback(null, response.error);
@@ -8208,10 +8290,33 @@ Anyone with your master private key can access all your funds.`;
                     return;
                 }
 
+                // Ensure we have current block height for accurate classification
+                if (currentBlockHeight === null || currentBlockHeight === undefined) {
+                    console.log('Waiting for block height before vesting classification...');
+                    // Retry after a short delay
+                    setTimeout(() => {
+                        if (currentBlockHeight !== null && currentBlockHeight !== undefined) {
+                            classifyAllUtxos();
+                        }
+                    }, 1000);
+                    return;
+                }
+
+                // Get current address for caching
+                const currentAddress = getCurrentVestingAddress();
+                if (!currentAddress) {
+                    console.log('No current address for vesting classification');
+                    updateVestingBalanceDisplay();
+                    return;
+                }
+
+                // Get or initialize cache for this address
+                const addressCache = getAddressVestingCache(currentAddress);
+
                 if (!currentUtxos || currentUtxos.length === 0) {
-                    // Reset classified UTXOs
-                    classifiedUtxos = { vested: [], unvested: [], all: [] };
-                    vestingBalances = { vested: 0n, unvested: 0n, all: 0n };
+                    // Reset classified UTXOs for this address
+                    addressCache.classifiedUtxos = { vested: [], unvested: [], all: [] };
+                    addressCache.vestingBalances = { vested: 0n, unvested: 0n, all: 0n };
                     updateVestingBalanceDisplay();
                     return;
                 }
@@ -8232,8 +8337,8 @@ Anyone with your master private key can access all your funds.`;
                         }
                     });
 
-                    // Update classified UTXOs
-                    classifiedUtxos = {
+                    // Update classified UTXOs for this address
+                    addressCache.classifiedUtxos = {
                         vested: result.vested,
                         unvested: result.unvested,
                         all: [...result.vested, ...result.unvested]
@@ -8242,7 +8347,7 @@ Anyone with your master private key can access all your funds.`;
                     // Calculate balances for each mode using BigInt
                     const consumedUtxos = getConsumedUtxos();
 
-                    vestingBalances.vested = result.vested.reduce((sum, utxo) => {
+                    addressCache.vestingBalances.vested = result.vested.reduce((sum, utxo) => {
                         const utxoKey = `${utxo.tx_hash || utxo.txid}:${utxo.tx_pos || utxo.vout}`;
                         if (!consumedUtxos.has(utxoKey)) {
                             return sum + BigInt(utxo.value);
@@ -8250,7 +8355,7 @@ Anyone with your master private key can access all your funds.`;
                         return sum;
                     }, 0n);
 
-                    vestingBalances.unvested = result.unvested.reduce((sum, utxo) => {
+                    addressCache.vestingBalances.unvested = result.unvested.reduce((sum, utxo) => {
                         const utxoKey = `${utxo.tx_hash || utxo.txid}:${utxo.tx_pos || utxo.vout}`;
                         if (!consumedUtxos.has(utxoKey)) {
                             return sum + BigInt(utxo.value);
@@ -8258,13 +8363,17 @@ Anyone with your master private key can access all your funds.`;
                         return sum;
                     }, 0n);
 
-                    vestingBalances.all = vestingBalances.vested + vestingBalances.unvested;
+                    addressCache.vestingBalances.all = addressCache.vestingBalances.vested + addressCache.vestingBalances.unvested;
 
                     // Update display
                     updateVestingBalanceDisplay();
 
                     if (result.errors.length > 0) {
-                        console.warn('Vesting classification errors:', result.errors);
+                        console.warn('Vesting classification errors:', result.errors.length, 'errors');
+                        // Log first few error details for debugging
+                        result.errors.slice(0, 5).forEach((err, i) => {
+                            console.warn(`  Error ${i+1}: ${err.error} for UTXO ${err.utxo?.tx_hash?.substring(0, 16)}...`);
+                        });
                     }
                 } catch (error) {
                     console.error('Error during vesting classification:', error);
@@ -8284,6 +8393,11 @@ Anyone with your master private key can access all your funds.`;
                 const unvestedBalanceEl = document.getElementById('unvestedBalance');
                 const vestedUnconfirmedEl = document.getElementById('vestedUnconfirmed');
                 const unvestedUnconfirmedEl = document.getElementById('unvestedUnconfirmed');
+
+                // Get balances from current address cache
+                const currentAddress = getCurrentVestingAddress();
+                const addressCache = currentAddress ? getAddressVestingCache(currentAddress) : null;
+                const vestingBalances = addressCache ? addressCache.vestingBalances : { vested: 0n, unvested: 0n, all: 0n };
 
                 if (vestedBalanceEl) {
                     vestedBalanceEl.textContent = SatoshiMath.satoshisToAlpha(vestingBalances.vested) + ' ALPHA';
@@ -8335,6 +8449,11 @@ Anyone with your master private key can access all your funds.`;
             function getFilteredUtxos() {
                 const consumedUtxos = getConsumedUtxos();
 
+                // Get per-address cache
+                const currentAddress = getCurrentVestingAddress();
+                const addressCache = currentAddress ? getAddressVestingCache(currentAddress) : null;
+                const classifiedUtxos = addressCache ? addressCache.classifiedUtxos : { vested: [], unvested: [], all: [] };
+
                 let utxoSource = [];
                 if (classifiedUtxos.all.length > 0) {
                     // Use classified UTXOs if available
@@ -8367,6 +8486,11 @@ Anyone with your master private key can access all your funds.`;
              * @returns {BigInt} Available balance in satoshis
              */
             function getAvailableBalanceForMode() {
+                // Get per-address cache
+                const currentAddress = getCurrentVestingAddress();
+                const addressCache = currentAddress ? getAddressVestingCache(currentAddress) : null;
+                const vestingBalances = addressCache ? addressCache.vestingBalances : { vested: 0n, unvested: 0n, all: 0n };
+
                 if (vestingMode === 'all') {
                     return vestingBalances.all;
                 } else if (vestingMode === 'vested') {
@@ -10415,6 +10539,11 @@ Anyone with your master private key can access all your funds.`;
                 // Use vesting-filtered UTXOs based on current mode
                 let availableUtxos = getFilteredUtxos();
 
+                // Get per-address cache for classification check
+                const currentAddress = getCurrentVestingAddress();
+                const addressCache = currentAddress ? getAddressVestingCache(currentAddress) : null;
+                const classifiedUtxos = addressCache ? addressCache.classifiedUtxos : { vested: [], unvested: [], all: [] };
+
                 // If classification not done yet, fall back to original logic
                 if (availableUtxos.length === 0 && classifiedUtxos.all.length === 0) {
                     const consumedUtxos = getConsumedUtxos();
@@ -10549,6 +10678,11 @@ Anyone with your master private key can access all your funds.`;
                     // Check if we have UTXOs with detailed logging
                     // Use vesting-filtered UTXOs based on current mode
                     const consumedUtxos = getConsumedUtxos();
+
+                    // Get per-address cache for classification check
+                    const currentAddress = getCurrentVestingAddress();
+                    const addressCache = currentAddress ? getAddressVestingCache(currentAddress) : null;
+                    const classifiedUtxos = addressCache ? addressCache.classifiedUtxos : { vested: [], unvested: [], all: [] };
 
                     debugSession.log('info', 'Checking UTXO availability', {
                         hasCurrentUtxos: !!(currentUtxos && currentUtxos.length > 0),
