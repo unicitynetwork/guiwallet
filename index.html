@@ -661,7 +661,7 @@
 </head>
 <body>
     <!-- Version Number -->
-    <div style="position: fixed; top: 10px; right: 10px; font-size: 10px; color: #999; z-index: 1000; font-family: monospace;">v0.4.5</div>
+    <div style="position: fixed; top: 10px; right: 10px; font-size: 10px; color: #999; z-index: 1000; font-family: monospace;">v0.4.7</div>
     
     <!-- Notification Container -->
     <div id="notificationContainer" class="notification-container"></div>
@@ -817,7 +817,7 @@
                     <circle cx="12" cy="12" r="2"></circle>
                     <path d="M6 12h.01M18 12h.01"></path>
                 </svg>
-                Unicity WEB GUI Wallet v0.4.5
+                Unicity WEB GUI Wallet v0.4.7
             </h1>
         </div>
         
@@ -5864,13 +5864,28 @@ Anyone with your master private key can access all your funds.`;
                 const content = document.createElement('div');
                 content.style.cssText = 'padding: 20px; overflow-y: auto; flex: 1;';
                 
+                // Check if master keys are available for switching
+                const canSwitchAddresses = lastScannedWalletData.masterKey && lastScannedWalletData.masterChainCode;
+
                 // Recreate the wallet list
                 lastScannedWalletData.wallets.forEach(walletInfo => {
                     const walletDiv = document.createElement('div');
-                    walletDiv.style.cssText = 'padding: 15px; margin-bottom: 10px; background: #f8f9fa; border-radius: 8px; cursor: pointer; transition: background 0.2s;';
-                    walletDiv.onmouseover = () => walletDiv.style.background = '#e9ecef';
-                    walletDiv.onmouseout = () => walletDiv.style.background = '#f8f9fa';
-                    
+                    walletDiv.style.cssText = `padding: 15px; margin-bottom: 10px; background: #f8f9fa; border-radius: 8px; cursor: ${canSwitchAddresses ? 'pointer' : 'default'}; transition: background 0.2s;${!canSwitchAddresses ? ' opacity: 0.7;' : ''}`;
+                    if (canSwitchAddresses) {
+                        walletDiv.onmouseover = () => walletDiv.style.background = '#e9ecef';
+                        walletDiv.onmouseout = () => walletDiv.style.background = '#f8f9fa';
+                    }
+
+                    // Determine action text based on availability
+                    let actionText;
+                    if (!canSwitchAddresses) {
+                        actionText = 'Re-import wallet.dat to switch';
+                    } else if (walletInfo.balance === -1) {
+                        actionText = 'Offline';
+                    } else {
+                        actionText = 'Click to load';
+                    }
+
                     walletDiv.innerHTML = `
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <div>
@@ -5885,14 +5900,20 @@ Anyone with your master private key can access all your funds.`;
                                 <div style="font-weight: bold; color: var(--primary-color);">
                                     ${walletInfo.balance === -1 ? 'Balance Unknown' : `${SatoshiMath.satoshisToAlpha(walletInfo.balance)} ALPHA`}
                                 </div>
-                                <div style="font-size: 11px; color: #666;">
-                                    ${walletInfo.balance === -1 ? 'Offline' : 'Click to load'}
+                                <div style="font-size: 11px; color: ${canSwitchAddresses ? '#666' : '#999'};">
+                                    ${actionText}
                                 </div>
                             </div>
                         </div>
                     `;
                     
                     walletDiv.onclick = () => {
+                        // Check if master key is available (not from cache-only data)
+                        if (!lastScannedWalletData.masterKey || !lastScannedWalletData.masterChainCode) {
+                            showInAppNotification('Wallet Not Available', 'Please re-import the wallet.dat file to switch addresses. Cached data does not include the master key.', 'warning');
+                            return;
+                        }
+
                         document.body.removeChild(modal);
                         // Reconstruct full wallet info from stored data
                         const fullWalletInfo = deriveAddressAtIndex(
@@ -5905,10 +5926,10 @@ Anyone with your master private key can access all your funds.`;
                         );
                         fullWalletInfo.balance = walletInfo.balance;
                         fullWalletInfo.utxoCount = walletInfo.utxoCount;
-                        
+
                         // Store the extracted wallet data globally before importing
                         extractedWalletData = lastScannedWalletData;
-                        
+
                         selectWalletForImport(fullWalletInfo);
                     };
                     
@@ -13419,7 +13440,7 @@ Anyone with your master private key can access all your funds.`;
                 sessions: transactionDebugLog,
                 readyToImport: failedTxs,
                 metadata: {
-                    walletVersion: 'v0.4.5',
+                    walletVersion: 'v0.4.7',
                     timestamp: new Date().toISOString(),
                     userAgent: navigator.userAgent,
                     totalSessions: transactionDebugLog.length,
