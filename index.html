@@ -910,6 +910,11 @@
                             <span class="vesting-mode-name">All:</span>
                         </label>
                         <span id="walletBalance" class="vesting-amount" style="font-weight: 600;">0 ALPHA</span>
+                        <span id="balanceVerificationSpinner" style="display: none; margin-left: 5px;">
+                            <span style="display: inline-block; width: 12px; height: 12px;
+                                  border: 2px solid #f3f3f3; border-top: 2px solid #2196F3;
+                                  border-radius: 50%; animation: spin 1s linear infinite;"></span>
+                        </span>
                         <span id="walletUnconfirmed" class="vesting-unconfirmed" style="color: #999;">(0)</span>
                     </div>
 
@@ -1712,6 +1717,12 @@ Anyone with your master private key can access all your funds.`;
             // Running balance totals (BigInt for precision) - updated during classification
             let runningVestedBalance = 0n;
             let runningUnvestedBalance = 0n;
+
+            // Direct balance from Fulcrum for verification
+            let fulcrumDirectBalance = 0n;
+            let balanceRetryCount = 0;
+            const MAX_BALANCE_RETRIES = 10;
+            const BALANCE_RETRY_INTERVAL = 2000;
 
             // HTML elements
             // const masterKeyElement = document.getElementById('masterKey'); // Removed with Security section
@@ -3653,6 +3664,13 @@ Anyone with your master private key can access all your funds.`;
 
                 console.log(`[TxoQueue] Processing ${utxos.length} UTXOs for ${forAddress}`);
 
+                // Fetch Fulcrum direct balance for verification
+                fetchFulcrumDirectBalance(forAddress);
+
+                // Show spinner while processing
+                const spinner = document.getElementById('balanceVerificationSpinner');
+                if (spinner) spinner.style.display = 'inline';
+
                 for (const utxo of utxos) {
                     const utxoKey = `${utxo.tx_hash}:${utxo.tx_pos}`;
 
@@ -3892,9 +3910,14 @@ Anyone with your master private key can access all your funds.`;
                     unvestedEl.textContent = SatoshiMath.satoshisToAlpha(runningUnvestedBalance) + ' ALPHA';
                 }
                 if (totalEl) {
-                    const total = runningVestedBalance + runningUnvestedBalance;
-                    totalEl.textContent = SatoshiMath.satoshisToAlpha(total) + ' ALPHA';
+                    // Use Fulcrum's direct balance as authoritative total
+                    // Fall back to calculated sum if Fulcrum balance not yet fetched
+                    const displayTotal = fulcrumDirectBalance > 0n ? fulcrumDirectBalance : (runningVestedBalance + runningUnvestedBalance);
+                    totalEl.textContent = SatoshiMath.satoshisToAlpha(displayTotal) + ' ALPHA';
                 }
+
+                // Check balance verification after updating display
+                checkBalanceVerification();
             }
 
             /**
@@ -3908,7 +3931,8 @@ Anyone with your master private key can access all your funds.`;
                 if (addressCache) {
                     addressCache.vestingBalances.vested = runningVestedBalance;
                     addressCache.vestingBalances.unvested = runningUnvestedBalance;
-                    addressCache.vestingBalances.all = runningVestedBalance + runningUnvestedBalance;
+                    // Use Fulcrum's direct balance as authoritative total
+                    addressCache.vestingBalances.all = fulcrumDirectBalance > 0n ? fulcrumDirectBalance : (runningVestedBalance + runningUnvestedBalance);
                 }
             }
 
@@ -3951,6 +3975,103 @@ Anyone with your master private key can access all your funds.`;
                     return wallet.addresses[0].address;
                 }
                 return null;
+            }
+
+            /**
+             * Fetch balance directly from Fulcrum for verification
+             * @param {string} address - The address to fetch balance for
+             */
+            function fetchFulcrumDirectBalance(address) {
+                if (!electrumConnected) {
+                    console.log('[BalanceVerify] Not connected to Fulcrum, skipping direct balance fetch');
+                    return;
+                }
+
+                const scriptHash = addressToScriptHash(address);
+                if (!scriptHash) {
+                    console.error('[BalanceVerify] Failed to convert address to script hash');
+                    return;
+                }
+
+                electrumRequest('blockchain.scripthash.get_balance', [scriptHash], (result, error) => {
+                    if (error) {
+                        console.error('[BalanceVerify] Error fetching Fulcrum balance:', error);
+                        return;
+                    }
+                    if (result && result.confirmed !== undefined) {
+                        fulcrumDirectBalance = BigInt(result.confirmed);
+                        console.log(`[BalanceVerify] Fulcrum direct balance: ${SatoshiMath.satoshisToAlpha(fulcrumDirectBalance)} ALPHA`);
+                        checkBalanceVerification();
+                    }
+                });
+            }
+
+            /**
+             * Check if counted balance matches Fulcrum balance
+             */
+            function checkBalanceVerification() {
+                const countedBalance = runningVestedBalance + runningUnvestedBalance;
+                const spinner = document.getElementById('balanceVerificationSpinner');
+
+                console.log(`[BalanceVerify] Counted: ${SatoshiMath.satoshisToAlpha(countedBalance)} ALPHA, Fulcrum: ${SatoshiMath.satoshisToAlpha(fulcrumDirectBalance)} ALPHA`);
+
+                if (countedBalance === fulcrumDirectBalance) {
+                    // Perfect match - hide spinner
+                    if (spinner) spinner.style.display = 'none';
+                    balanceRetryCount = 0;
+                    console.log('[BalanceVerify] Balance verified - perfect match');
+                } else if (countedBalance < fulcrumDirectBalance) {
+                    // Still processing - show spinner
+                    if (spinner) spinner.style.display = 'inline';
+                    console.log('[BalanceVerify] Still processing UTXOs...');
+                } else {
+                    // Overshoot - trigger retry
+                    console.warn('[BalanceVerify] Counted balance exceeds Fulcrum balance - triggering retry');
+                    triggerBalanceRetry();
+                }
+            }
+
+            /**
+             * Retry fetching balance and UTXOs from Fulcrum
+             */
+            function triggerBalanceRetry() {
+                if (balanceRetryCount >= MAX_BALANCE_RETRIES) {
+                    showBalanceIntegrityWarning();
+                    return;
+                }
+
+                balanceRetryCount++;
+                console.log(`[BalanceVerify] Retry ${balanceRetryCount}/${MAX_BALANCE_RETRIES} - rescanning UTXOs`);
+
+                setTimeout(() => {
+                    const currentAddress = getCurrentVestingAddress();
+                    if (currentAddress) {
+                        // Reset running balances
+                        runningVestedBalance = 0n;
+                        runningUnvestedBalance = 0n;
+
+                        // Re-fetch both balance and UTXOs
+                        fetchFulcrumDirectBalance(currentAddress);
+                        refreshBalance(); // This should re-fetch UTXOs
+                    }
+                }, BALANCE_RETRY_INTERVAL);
+            }
+
+            /**
+             * Show warning popup for balance integrity issue
+             */
+            function showBalanceIntegrityWarning() {
+                const countedBalance = runningVestedBalance + runningUnvestedBalance;
+                const spinner = document.getElementById('balanceVerificationSpinner');
+                if (spinner) spinner.style.display = 'none';
+
+                showInAppNotification(
+                    'Balance Integrity Warning',
+                    `Counted balance (${SatoshiMath.satoshisToAlpha(countedBalance)} ALPHA) ` +
+                    `exceeds Fulcrum balance (${SatoshiMath.satoshisToAlpha(fulcrumDirectBalance)} ALPHA). ` +
+                    `This may indicate a sync issue.`,
+                    'warning'
+                );
             }
 
             // Helper function to convert bytes to hex string
@@ -7784,14 +7905,24 @@ Anyone with your master private key can access all your funds.`;
                                     const scriptHash = response.params[0];
                                     const status = response.params[1];
                                     console.log('Address status changed:', scriptHash, status);
-                                    
+
+                                    // Show spinner while re-fetching
+                                    const spinner = document.getElementById('balanceVerificationSpinner');
+                                    if (spinner) spinner.style.display = 'inline';
+
+                                    // Re-fetch Fulcrum direct balance for verification
+                                    const currentAddress = getCurrentVestingAddress();
+                                    if (currentAddress) {
+                                        fetchFulcrumDirectBalance(currentAddress);
+                                    }
+
                                     // Refresh balance and transactions immediately
                                     if (watchOnlyMode && watchOnlyAddressValue) {
                                         refreshWatchOnlyBalance(watchOnlyAddressValue);
                                     } else {
                                         refreshBalance();
                                     }
-                                    
+
                                     // Don't show notification for address activity - too frequent
                                 }
                             }
@@ -8451,8 +8582,9 @@ Anyone with your master private key can access all your funds.`;
                                 }
                             });
 
-                            // Update display
-                            watchOnlyBalance.textContent = SatoshiMath.satoshisToAlpha(confirmed) + ' ALPHA';
+                            // Update display - use Fulcrum's direct balance when available
+                            const displayBalance = fulcrumDirectBalance > 0n ? fulcrumDirectBalance : confirmed;
+                            watchOnlyBalance.textContent = SatoshiMath.satoshisToAlpha(displayBalance) + ' ALPHA';
                             if (unconfirmed > 0n) {
                                 watchOnlyUnconfirmed.textContent = '(' + SatoshiMath.satoshisToAlpha(unconfirmed) + ')';
                             } else {
@@ -8618,8 +8750,10 @@ Anyone with your master private key can access all your funds.`;
                 }
 
                 // Update wallet info display if it exists
+                // Use Fulcrum's direct balance as authoritative total when available
                 if (walletBalance) {
-                    walletBalance.textContent = `${SatoshiMath.satoshisToAlpha(confirmedBalance)} ALPHA`;
+                    const displayBalance = fulcrumDirectBalance > 0n ? fulcrumDirectBalance : confirmedBalance;
+                    walletBalance.textContent = `${SatoshiMath.satoshisToAlpha(displayBalance)} ALPHA`;
                 }
                 if (walletUnconfirmed) {
                     if (unconfirmedBalance > 0n) {
