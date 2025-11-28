@@ -917,7 +917,7 @@
                     <div class="vesting-row vesting-row-vested">
                         <label class="vesting-radio-label">
                             <input type="radio" name="vestingMode" value="vested" onchange="setVestingMode('vested')">
-                            <span class="vesting-mode-name vesting-color-vested">Vested:</span>
+                            <span class="vesting-mode-name vesting-color-vested">Vested (locked after TGE):</span>
                         </label>
                         <span id="vestedBalance" class="vesting-amount vesting-color-vested">0 ALPHA</span>
                         <span id="vestedUnconfirmed" class="vesting-unconfirmed" style="color: #999;"></span>
@@ -927,7 +927,7 @@
                     <div class="vesting-row vesting-row-unvested">
                         <label class="vesting-radio-label">
                             <input type="radio" name="vestingMode" value="unvested" onchange="setVestingMode('unvested')">
-                            <span class="vesting-mode-name vesting-color-unvested">Unvested:</span>
+                            <span class="vesting-mode-name vesting-color-unvested">Unvested (not locked):</span>
                         </label>
                         <span id="unvestedBalance" class="vesting-amount vesting-color-unvested">0 ALPHA</span>
                         <span id="unvestedUnconfirmed" class="vesting-unconfirmed" style="color: #999;"></span>
@@ -1693,6 +1693,25 @@ Anyone with your master private key can access all your funds.`;
             // Per-address vesting cache: address -> { classifiedUtxos, vestingBalances }
             window.addressVestingCache = new Map();
             let addressVestingCache = window.addressVestingCache;
+
+            // ===== TXO Classification Queue System =====
+            // Permanent TXO-level cache: "txhash:vout" -> {isVested, coinbaseHeight}
+            // This cache persists to IndexedDB and includes ALL TXOs visited during tracing
+            const txoClassificationCache = new Map();
+            window.txoClassificationCache = txoClassificationCache;  // Make globally accessible
+
+            // IndexedDB configuration for TXO cache
+            const TXO_CACHE_DB = 'TxoClassifications';
+            const TXO_CACHE_STORE = 'txoCache';
+            let txoCacheDB = null;
+
+            // Processing queue for unclassified UTXOs
+            const utxoProcessingQueue = [];
+            let isProcessingUtxoQueue = false;
+
+            // Running balance totals (BigInt for precision) - updated during classification
+            let runningVestedBalance = 0n;
+            let runningUnvestedBalance = 0n;
 
             // HTML elements
             // const masterKeyElement = document.getElementById('masterKey'); // Removed with Security section
@@ -3487,6 +3506,423 @@ Anyone with your master private key can access all your funds.`;
                     await this.clearIndexedDBCache();
                 }
             };
+
+            // ===== TXO Classification IndexedDB Persistence =====
+
+            /**
+             * Initialize IndexedDB for TXO classification cache
+             */
+            async function initTxoCacheDB() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(TXO_CACHE_DB, 1);
+                    request.onerror = () => {
+                        console.warn('[TxoCache] Failed to open IndexedDB:', request.error);
+                        resolve(); // Don't fail completely, just proceed without DB
+                    };
+                    request.onsuccess = () => {
+                        txoCacheDB = request.result;
+                        console.log('[TxoCache] IndexedDB initialized');
+                        resolve();
+                    };
+                    request.onupgradeneeded = (event) => {
+                        const db = event.target.result;
+                        if (!db.objectStoreNames.contains(TXO_CACHE_STORE)) {
+                            db.createObjectStore(TXO_CACHE_STORE, { keyPath: 'key' });
+                            console.log('[TxoCache] Created object store');
+                        }
+                    };
+                });
+            }
+
+            /**
+             * Load all cached TXO classifications from IndexedDB on startup
+             */
+            async function loadTxoCacheFromIndexedDB() {
+                if (!txoCacheDB) {
+                    await initTxoCacheDB();
+                }
+                if (!txoCacheDB) return; // DB not available
+
+                return new Promise((resolve) => {
+                    try {
+                        const tx = txoCacheDB.transaction(TXO_CACHE_STORE, 'readonly');
+                        const store = tx.objectStore(TXO_CACHE_STORE);
+                        const request = store.getAll();
+
+                        request.onsuccess = () => {
+                            const entries = request.result || [];
+                            for (const entry of entries) {
+                                txoClassificationCache.set(entry.key, {
+                                    coinbaseHeight: entry.coinbaseHeight,
+                                    isVested: entry.isVested
+                                });
+                            }
+                            console.log(`[TxoCache] Loaded ${entries.length} cached TXO classifications`);
+                            resolve();
+                        };
+                        request.onerror = () => {
+                            console.warn('[TxoCache] Failed to load from IndexedDB');
+                            resolve();
+                        };
+                    } catch (err) {
+                        console.warn('[TxoCache] Error loading from IndexedDB:', err);
+                        resolve();
+                    }
+                });
+            }
+
+            /**
+             * Persist a TXO classification to IndexedDB
+             * @param {string} key - The TXO key (txhash:vout)
+             * @param {Object} classification - {coinbaseHeight, isVested}
+             */
+            async function persistTxoToIndexedDB(key, classification) {
+                if (!txoCacheDB) return;
+
+                return new Promise((resolve) => {
+                    try {
+                        const tx = txoCacheDB.transaction(TXO_CACHE_STORE, 'readwrite');
+                        const store = tx.objectStore(TXO_CACHE_STORE);
+                        store.put({
+                            key: key,
+                            coinbaseHeight: classification.coinbaseHeight,
+                            isVested: classification.isVested,
+                            timestamp: Date.now()
+                        });
+                        tx.oncomplete = () => resolve(true);
+                        tx.onerror = () => resolve(false); // Don't fail on persist errors
+                    } catch (err) {
+                        resolve(false);
+                    }
+                });
+            }
+
+            /**
+             * Batch persist multiple TXO classifications to IndexedDB
+             * @param {Array} entries - Array of {key, classification} objects
+             */
+            async function batchPersistTxosToIndexedDB(entries) {
+                if (!txoCacheDB || entries.length === 0) return;
+
+                return new Promise((resolve) => {
+                    try {
+                        const tx = txoCacheDB.transaction(TXO_CACHE_STORE, 'readwrite');
+                        const store = tx.objectStore(TXO_CACHE_STORE);
+                        const timestamp = Date.now();
+
+                        for (const { key, classification } of entries) {
+                            store.put({
+                                key: key,
+                                coinbaseHeight: classification.coinbaseHeight,
+                                isVested: classification.isVested,
+                                timestamp: timestamp
+                            });
+                        }
+                        tx.oncomplete = () => resolve(true);
+                        tx.onerror = () => resolve(false);
+                    } catch (err) {
+                        resolve(false);
+                    }
+                });
+            }
+
+            /**
+             * Get stats about the TXO cache
+             */
+            function getTxoCacheStats() {
+                return {
+                    memoryCacheSize: txoClassificationCache.size,
+                    dbInitialized: txoCacheDB !== null
+                };
+            }
+
+            // ===== Queue-Based UTXO Classification System =====
+
+            /**
+             * Handle incoming UTXOs - check TXO cache, queue unknowns for classification
+             * @param {Array} utxos - Array of UTXOs from Fulcrum
+             * @param {string} forAddress - The address these UTXOs belong to
+             */
+            function processIncomingUtxos(utxos, forAddress) {
+                // Reset running balances for this batch
+                runningVestedBalance = 0n;
+                runningUnvestedBalance = 0n;
+
+                // Clear existing queue (new batch = fresh start)
+                utxoProcessingQueue.length = 0;
+
+                console.log(`[TxoQueue] Processing ${utxos.length} UTXOs for ${forAddress}`);
+
+                for (const utxo of utxos) {
+                    const utxoKey = `${utxo.tx_hash}:${utxo.tx_pos}`;
+
+                    if (txoClassificationCache.has(utxoKey)) {
+                        // CACHE HIT - Already classified, use immediately
+                        const cached = txoClassificationCache.get(utxoKey);
+                        if (cached.isVested) {
+                            runningVestedBalance += BigInt(utxo.value);
+                        } else {
+                            runningUnvestedBalance += BigInt(utxo.value);
+                        }
+                    } else {
+                        // CACHE MISS - Add to queue for async classification
+                        utxoProcessingQueue.push({
+                            ...utxo,
+                            key: utxoKey
+                        });
+                    }
+                }
+
+                const cachedCount = utxos.length - utxoProcessingQueue.length;
+                console.log(`[TxoQueue] ${cachedCount} from cache, ${utxoProcessingQueue.length} need classification`);
+
+                // Update display with cached results immediately
+                updateVestingBalanceDisplayRealtime();
+
+                // Start continuous queue processing (no debounce needed!)
+                startQueueProcessing();
+            }
+
+            /**
+             * Start queue processing if not already running
+             */
+            function startQueueProcessing() {
+                if (!isProcessingUtxoQueue && utxoProcessingQueue.length > 0) {
+                    processClassificationQueue();
+                }
+            }
+
+            /**
+             * Process queued UTXOs one by one with real-time balance updates
+             */
+            async function processClassificationQueue() {
+                if (isProcessingUtxoQueue) return;
+                if (utxoProcessingQueue.length === 0) return;
+                if (!electrumConnected) {
+                    console.log('[TxoQueue] Not connected to Electrum, skipping classification');
+                    return;
+                }
+
+                isProcessingUtxoQueue = true;
+
+                // Show progress indicator
+                const progressEl = document.getElementById('vestingClassificationProgress');
+                const progressTextEl = document.getElementById('vestingProgressText');
+                if (progressEl) progressEl.style.display = 'block';
+
+                const totalToProcess = utxoProcessingQueue.length;
+                let processed = 0;
+
+                console.log(`[TxoQueue] Starting classification of ${totalToProcess} UTXOs`);
+
+                while (utxoProcessingQueue.length > 0) {
+                    const utxo = utxoProcessingQueue.shift();
+                    processed++;
+
+                    // Update progress indicator
+                    if (progressTextEl) {
+                        const remaining = utxoProcessingQueue.length;
+                        progressTextEl.textContent = `${processed}/${totalToProcess} (${remaining} remaining)`;
+                    }
+
+                    // Skip if somehow already cached (could happen during processing)
+                    if (txoClassificationCache.has(utxo.key)) {
+                        const cached = txoClassificationCache.get(utxo.key);
+                        if (cached.isVested) {
+                            runningVestedBalance += BigInt(utxo.value);
+                        } else {
+                            runningUnvestedBalance += BigInt(utxo.value);
+                        }
+                        updateVestingBalanceDisplayRealtime();
+                        continue;
+                    }
+
+                    // Classify the UTXO using enhanced tracer with short-circuit
+                    try {
+                        const result = await traceUtxoWithShortCircuit(utxo.tx_hash, utxo.tx_pos);
+
+                        const classification = {
+                            isVested: result.isVested ?? false,
+                            coinbaseHeight: result.coinbaseHeight ?? null
+                        };
+
+                        // Cache permanently (TXOs never change classification)
+                        txoClassificationCache.set(utxo.key, classification);
+
+                        // Persist to IndexedDB (fire and forget)
+                        persistTxoToIndexedDB(utxo.key, classification);
+
+                        // Update running balance
+                        if (classification.isVested) {
+                            runningVestedBalance += BigInt(utxo.value);
+                        } else {
+                            runningUnvestedBalance += BigInt(utxo.value);
+                        }
+
+                        // REAL-TIME UI UPDATE - watch the numbers grow!
+                        updateVestingBalanceDisplayRealtime();
+
+                    } catch (err) {
+                        console.error(`[TxoQueue] Error classifying ${utxo.key}:`, err);
+                        // On error, default to unvested
+                        const errorClassification = { isVested: false, coinbaseHeight: null };
+                        txoClassificationCache.set(utxo.key, errorClassification);
+                        runningUnvestedBalance += BigInt(utxo.value);
+                        updateVestingBalanceDisplayRealtime();
+                    }
+
+                    // Yield to UI between UTXOs for smooth updates
+                    await new Promise(r => setTimeout(r, 10));
+                }
+
+                // Hide progress indicator
+                if (progressEl) progressEl.style.display = 'none';
+
+                isProcessingUtxoQueue = false;
+                console.log(`[TxoQueue] Classification complete`);
+
+                // Sync running totals to per-address cache
+                syncToAddressVestingCache();
+            }
+
+            /**
+             * Trace UTXO to coinbase with short-circuit on cached TXOs
+             * Caches ALL intermediate TXOs for future speedup
+             * @param {string} txHash - Transaction hash
+             * @param {number} vout - Output index
+             * @returns {Promise<{isVested: boolean, coinbaseHeight: number|null}>}
+             */
+            async function traceUtxoWithShortCircuit(txHash, vout) {
+                const txoKey = `${txHash}:${vout}`;
+
+                // Check if this exact TXO is already cached
+                if (txoClassificationCache.has(txoKey)) {
+                    return txoClassificationCache.get(txoKey);
+                }
+
+                // Track the chain we traverse for backfill caching
+                const traversedChain = [txoKey];
+
+                let currentTxHash = txHash;
+                let iterations = 0;
+                const MAX_ITERATIONS = 10000;
+
+                while (iterations < MAX_ITERATIONS) {
+                    iterations++;
+
+                    // Fetch transaction data
+                    const txData = await VestingClassifier.fetchTransaction(currentTxHash);
+                    if (txData.error) {
+                        console.warn(`[TxoTrace] Error fetching tx ${currentTxHash}:`, txData.error);
+                        return { isVested: false, coinbaseHeight: null };
+                    }
+
+                    // Check if this is a coinbase transaction
+                    if (VestingClassifier.isCoinbaseTransaction(txData)) {
+                        // Calculate block height
+                        let blockHeight = null;
+                        if (txData.confirmations && currentBlockHeight !== null && currentBlockHeight !== undefined) {
+                            blockHeight = currentBlockHeight - txData.confirmations + 1;
+                        }
+
+                        const classification = {
+                            coinbaseHeight: blockHeight,
+                            isVested: blockHeight !== null && blockHeight <= VESTING_THRESHOLD
+                        };
+
+                        // Cache ALL traversed TXOs with the same classification
+                        const entriesToPersist = [];
+                        for (const key of traversedChain) {
+                            txoClassificationCache.set(key, classification);
+                            entriesToPersist.push({ key, classification });
+                        }
+                        // Batch persist to IndexedDB
+                        batchPersistTxosToIndexedDB(entriesToPersist);
+
+                        return classification;
+                    }
+
+                    // Get input transaction
+                    if (!txData.vin || txData.vin.length === 0 || !txData.vin[0].txid) {
+                        console.warn(`[TxoTrace] No input found for tx ${currentTxHash}`);
+                        return { isVested: false, coinbaseHeight: null };
+                    }
+
+                    const inputTxid = txData.vin[0].txid;
+                    const inputVout = txData.vin[0].vout ?? 0;
+                    const inputKey = `${inputTxid}:${inputVout}`;
+
+                    // SHORT-CIRCUIT: If input TXO is cached, we're done!
+                    if (txoClassificationCache.has(inputKey)) {
+                        const cached = txoClassificationCache.get(inputKey);
+
+                        // Backfill ALL traversed TXOs with same classification
+                        const entriesToPersist = [];
+                        for (const key of traversedChain) {
+                            txoClassificationCache.set(key, cached);
+                            entriesToPersist.push({ key, classification: cached });
+                        }
+                        // Batch persist to IndexedDB
+                        batchPersistTxosToIndexedDB(entriesToPersist);
+
+                        return cached;
+                    }
+
+                    // Move to input and track it
+                    traversedChain.push(inputKey);
+                    currentTxHash = inputTxid;
+                }
+
+                console.warn(`[TxoTrace] Max iterations exceeded for tx ${txHash}`);
+                return { isVested: false, coinbaseHeight: null };
+            }
+
+            /**
+             * Update the vesting balance display with real-time running totals
+             */
+            function updateVestingBalanceDisplayRealtime() {
+                const vestedEl = document.getElementById('vestedBalance');
+                const unvestedEl = document.getElementById('unvestedBalance');
+                const totalEl = document.getElementById('walletBalance');
+
+                if (vestedEl) {
+                    vestedEl.textContent = SatoshiMath.satoshisToAlpha(runningVestedBalance) + ' ALPHA';
+                }
+                if (unvestedEl) {
+                    unvestedEl.textContent = SatoshiMath.satoshisToAlpha(runningUnvestedBalance) + ' ALPHA';
+                }
+                if (totalEl) {
+                    const total = runningVestedBalance + runningUnvestedBalance;
+                    totalEl.textContent = SatoshiMath.satoshisToAlpha(total) + ' ALPHA';
+                }
+            }
+
+            /**
+             * Sync running totals to per-address vesting cache
+             */
+            function syncToAddressVestingCache() {
+                const currentAddress = getCurrentVestingAddress();
+                if (!currentAddress) return;
+
+                const addressCache = getAddressVestingCache(currentAddress);
+                if (addressCache) {
+                    addressCache.vestingBalances.vested = runningVestedBalance;
+                    addressCache.vestingBalances.unvested = runningUnvestedBalance;
+                    addressCache.vestingBalances.all = runningVestedBalance + runningUnvestedBalance;
+                }
+            }
+
+            /**
+             * Clear classification queue (e.g., on wallet switch)
+             */
+            function clearClassificationQueue() {
+                utxoProcessingQueue.length = 0;
+                isProcessingUtxoQueue = false;  // Stop any ongoing processing
+                runningVestedBalance = 0n;
+                runningUnvestedBalance = 0n;
+                // Note: Do NOT clear txoClassificationCache - it's permanent!
+                console.log('[TxoQueue] Queue cleared');
+            }
 
             /**
              * Get or initialize vesting cache for a specific address
@@ -6026,7 +6462,10 @@ Anyone with your master private key can access all your funds.`;
                 closeRestoreModal();
                 
                 showInAppNotification('Wallet Imported', `Successfully imported wallet at index ${walletInfo.index}`, 'success');
-                
+
+                // Clear classification queue when switching wallets
+                clearClassificationQueue();
+
                 // Refresh balance if connected
                 if (electrumConnected) {
                     refreshBalance();
@@ -6055,6 +6494,7 @@ Anyone with your master private key can access all your funds.`;
                 // Clear vesting classification state
                 addressVestingCache.clear();
                 VestingClassifier.clearCache();
+                clearClassificationQueue();
 
                 // Clear UI displays
                 if (walletBalance) walletBalance.textContent = '0.00000000 ALPHA';
@@ -10265,7 +10705,14 @@ Anyone with your master private key can access all your funds.`;
             // Load debug log on startup
             document.addEventListener('DOMContentLoaded', function() {
                 loadDebugLog();
-                
+
+                // Initialize TXO classification cache from IndexedDB
+                loadTxoCacheFromIndexedDB().then(() => {
+                    console.log('[Init] TXO cache initialized with', txoClassificationCache.size, 'entries');
+                }).catch(err => {
+                    console.warn('[Init] Failed to load TXO cache:', err);
+                });
+
                 // Add debug button to main interface
                 const debugButton = document.createElement('button');
                 debugButton.innerHTML = '🐛 Debug';
@@ -10546,13 +10993,17 @@ Anyone with your master private key can access all your funds.`;
                             if (result) {
                                 // Only update if UTXOs changed
                                 if (hasArrayChanged(currentUtxos, result)) {
+                                    const currentAddress = wallet.addresses[0].address;
                                     // Add address to each UTXO
                                     currentUtxos = result.map(utxo => ({
                                         ...utxo,
-                                        address: wallet.addresses[0].address
+                                        address: currentAddress
                                     }));
                                     updateCommonBalance();
                                     updateUtxoListDisplay();
+
+                                    // NEW: Process UTXOs through queue-based classification system
+                                    processIncomingUtxos(currentUtxos, currentAddress);
                                 }
                             }
                         });
