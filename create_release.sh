@@ -8,7 +8,6 @@ gh release create v0.2.0 \
   --repo unicitynetwork/guiwallet \
   --title "Unicity WEB GUI Wallet v0.2.0 - BIP32 HD Wallet Support" \
   --notes-file RELEASE_NOTES_v0.2.0.md \
-  --latest \
   index.html#unicity-wallet-v0.2.0.html
 
 echo "Release created successfully!"
