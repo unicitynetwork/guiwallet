@@ -421,5 +421,88 @@ console.log('\n=== Address scan keeps the wallet on its own branch ===');
   check('picking a scanned address keeps the index', picked.addresses[0].index, 3);
 }
 
+console.log('\n=== Text backup round-trip keeps the branch ===');
+{
+  const w = loadFromIndex(
+    [
+      ...DERIVATION_FNS,
+      ...BIP39_FNS,
+      'descriptorPathLine',
+      'parseDescriptorPathFromText',
+      'parseFirstAddressFromText',
+      'resolveDescriptorPathFromBackup',
+    ],
+    ['CHARSET', 'BIP39_WORDLIST', 'SPHERE_DESCRIPTOR_PATH']
+  );
+
+  const MASTER = 'e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35';
+  const CHAIN = '873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508';
+  const onSphere = w.deriveAddressAtIndex(MASTER, CHAIN, 0, true, false, "44'/0'/0'").address;
+  const onLegacy = w.deriveAddressAtIndex(MASTER, CHAIN, 0, true, false, "84'/1'/0'").address;
+
+  // What this app writes now must read back as the same path.
+  check(
+    'written line reads back',
+    w.parseDescriptorPathFromText('WALLET TYPE: BIP32' + w.descriptorPathLine("44'/0'/0'") + '\n\nYOUR ADDRESSES:'),
+    "44'/0'/0'"
+  );
+  check('no path means no line', w.descriptorPathLine(null), '');
+  check('absent line reads as null', w.parseDescriptorPathFromText('UNICITY WALLET DETAILS\nnothing here'), null);
+
+  // Sphere's own exportToTxt writes the same label.
+  check(
+    "Sphere's text export is understood",
+    w.parseDescriptorPathFromText("MASTER CHAIN CODE ...\n\nDESCRIPTOR PATH: 84'/1'/0'\n\nWALLET TYPE: BIP32"),
+    "84'/1'/0'"
+  );
+  check('a leading m/ is stripped', w.parseDescriptorPathFromText("DESCRIPTOR PATH: m/44'/0'/0'"), "44'/0'/0'");
+
+  check('address line without a path suffix', w.parseFirstAddressFromText('YOUR ADDRESSES:\nAddress 1: ' + onSphere), onSphere);
+  check(
+    'address line with a path suffix',
+    w.parseFirstAddressFromText("YOUR ADDRESSES:\nAddress 1: " + onSphere + " (Path: m/44'/0'/0'/0/0)"),
+    onSphere
+  );
+
+  // Backups already saved in the wild have no DESCRIPTOR PATH line, but they do record the
+  // address. Matching against it recovers the branch exactly.
+  const legacyBackup = (addr) =>
+    'UNICITY WALLET DETAILS\n===========================\n\n' +
+    'MASTER PRIVATE KEY (keep secret!):\n' + MASTER + '\n\n' +
+    'MASTER CHAIN CODE (for BIP32 HD wallet compatibility):\n' + CHAIN + '\n\n' +
+    'WALLET TYPE: BIP32 hierarchical deterministic wallet\n\n' +
+    'YOUR ADDRESSES:\nAddress 1: ' + addr + '\n';
+
+  check(
+    'old backup on the Sphere branch is recovered',
+    w.resolveDescriptorPathFromBackup(legacyBackup(onSphere), MASTER, CHAIN),
+    "44'/0'/0'"
+  );
+  check(
+    'old backup on the legacy branch is recovered',
+    w.resolveDescriptorPathFromBackup(legacyBackup(onLegacy), MASTER, CHAIN),
+    "84'/1'/0'"
+  );
+  check(
+    'an explicit line beats address matching',
+    w.resolveDescriptorPathFromBackup(
+      legacyBackup(onLegacy) + "\nDESCRIPTOR PATH: 44'/0'/0'\n",
+      MASTER,
+      CHAIN
+    ),
+    "44'/0'/0'"
+  );
+  check(
+    'nothing to go on stays null',
+    w.resolveDescriptorPathFromBackup('UNICITY WALLET DETAILS\nno addresses here', MASTER, CHAIN),
+    null
+  );
+  check(
+    'an unknown address stays null rather than guessing',
+    w.resolveDescriptorPathFromBackup(legacyBackup('alpha1qnotarealaddressatall'), MASTER, CHAIN),
+    null
+  );
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

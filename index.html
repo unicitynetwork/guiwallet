@@ -1263,7 +1263,7 @@ ${encryptedMasterKey}`;
 MASTER CHAIN CODE (for BIP32 HD wallet compatibility):
 ${wallet.masterChainCode}
 
-WALLET TYPE: BIP32 hierarchical deterministic wallet`;
+WALLET TYPE: BIP32 hierarchical deterministic wallet${descriptorPathLine(wallet.descriptorPath)}`;
                 } else {
                     encryptedContent += `
 
@@ -1303,12 +1303,12 @@ ${masterKeyWIF}
 MASTER CHAIN CODE (for BIP32 HD wallet compatibility):
 ${wallet.masterChainCode}
 
-WALLET TYPE: BIP32 hierarchical deterministic wallet
+WALLET TYPE: BIP32 hierarchical deterministic wallet${descriptorPathLine(wallet.descriptorPath)}
 
 ENCRYPTION STATUS: Not encrypted
 This key is in plaintext and not protected. Anyone with this file can access your wallet.`;
-                    
-                    addressesText = wallet.addresses.map((addr, index) => 
+
+                    addressesText = wallet.addresses.map((addr, index) =>
                         `Address ${index + 1}: ${addr.address}`
                     ).join('\n');
                 } else {
@@ -2395,6 +2395,52 @@ Anyone with your master private key can access all your funds.`;
                     descriptorPath: SPHERE_DESCRIPTOR_PATH,
                     expectedPublicKey: null
                 };
+            }
+
+            /** The `DESCRIPTOR PATH:` line for a text backup, or '' when there is no path to record. */
+            function descriptorPathLine(descriptorPath) {
+                return descriptorPath ? '\n\nDESCRIPTOR PATH: ' + descriptorPath : '';
+            }
+
+            /** Read the descriptor path out of a text backup - this app's, or Sphere's exportToTxt. */
+            function parseDescriptorPathFromText(text) {
+                const match = String(text || '').match(/DESCRIPTOR PATH:\s*([^\n]+)/);
+                if (!match) return null;
+                return match[1].trim().replace(/^m\//, '') || null;
+            }
+
+            /** Read the first address a text backup records, with or without a "(Path: ...)" suffix. */
+            function parseFirstAddressFromText(text) {
+                const match = String(text || '').match(/Address\s+1:\s*([a-z0-9]+)/i);
+                return match ? match[1] : null;
+            }
+
+            /**
+             * Work out which branch a text backup belongs to.
+             *
+             * Prefers the explicit DESCRIPTOR PATH line. Backups written before that line existed
+             * still record their first address, so the branch is recovered by deriving each
+             * candidate and matching - an exact check against the file, not a guess. Returns null
+             * when neither is available, leaving the caller's existing default in place.
+             */
+            function resolveDescriptorPathFromBackup(text, masterKey, masterChainCode) {
+                const explicit = parseDescriptorPathFromText(text);
+                if (explicit) return explicit;
+                if (!masterKey || !masterChainCode) return null;
+
+                const recorded = parseFirstAddressFromText(text);
+                if (!recorded) return null;
+
+                const candidates = [SPHERE_DESCRIPTOR_PATH, "84'/1'/0'"];
+                for (const candidate of candidates) {
+                    try {
+                        const derived = deriveAddressAtIndex(masterKey, masterChainCode, 0, true, false, candidate);
+                        if (derived.address === recorded) return candidate;
+                    } catch (e) {
+                        // try the next candidate
+                    }
+                }
+                return null;
             }
 
             /**
@@ -5495,7 +5541,16 @@ Anyone with your master private key can access all your funds.`;
                     if (!masterKey) {
                         throw new Error('No master key found in decrypted wallet data');
                     }
-                    
+
+                    // Carry the backup's branch into the scan; performWalletScan preserves
+                    // whatever descriptorPath extractedWalletData already holds.
+                    extractedWalletData = mergeScanWalletData(
+                        { descriptorPath: walletData.descriptorPath || null },
+                        masterKey,
+                        masterChainCode,
+                        isAlphaWallet
+                    );
+
                     // Continue with normal scanning
                     performWalletScan(masterKey, masterChainCode, isAlphaWallet);
                 } catch (error) {
@@ -5608,7 +5663,13 @@ Anyone with your master private key can access all your funds.`;
                                     isImportedAlphaWallet: isAlphaWallet,
                                     addresses: addresses,
                                     isEncrypted: false,
-                                    encryptedMasterKey: ''
+                                    encryptedMasterKey: '',
+                                    // Keep the branch the backup was written from.
+                                    descriptorPath: resolveDescriptorPathFromBackup(
+                                        fileContent,
+                                        decryptedMasterKey,
+                                        chainCodeMatch ? chainCodeMatch[1].trim() : null
+                                    )
                                 };
                             
                                 // Check if this is a WIF wallet (no chain code) or BIP32
@@ -5760,6 +5821,8 @@ Anyone with your master private key can access all your funds.`;
                             masterChainCode = chainCodeMatch[1].trim();
                             isAlphaWallet = true;
                         }
+                        // Scan the branch the backup was written from, not the m/84'/1'/0' fallback.
+                        descriptorPath = resolveDescriptorPathFromBackup(fileContent, masterKey, masterChainCode) || descriptorPath;
                     }
                     
                     if (!masterKey) {
@@ -7186,7 +7249,10 @@ Anyone with your master private key can access all your funds.`;
                         encryptedMasterKey: encryptedMasterKey,
                         childPrivateKey: null, // Will be set when generating first address or recovered
                         isImportedAlphaWallet: isImportedAlphaWallet,
-                        masterChainCode: masterChainCode
+                        masterChainCode: masterChainCode,
+                        // Without this the addresses below are re-derived on the m/84'/1'/0'
+                        // fallback, which is a different branch than the backup was written from.
+                        descriptorPath: resolveDescriptorPathFromBackup(fileContent, masterKey, masterChainCode)
                     };
                     
                     // Update global reference
