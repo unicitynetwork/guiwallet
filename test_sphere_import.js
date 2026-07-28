@@ -569,5 +569,29 @@ console.log('\n=== Old non-BIP32 (WIF/HMAC) backups are unaffected ===');
   );
 }
 
+console.log('\n=== Scope: top-level functions cannot reach DOMContentLoaded helpers ===');
+{
+  // index.html has two scopes in one <script>: functions indented 8 spaces are top level,
+  // functions indented 12 spaces live inside the DOMContentLoaded callback. A top-level
+  // function calling an inner one directly throws ReferenceError only when the user clicks,
+  // which looks like "the button does nothing". Crossing the boundary needs window.<name>,
+  // the pattern window.hexToWIF already uses.
+  const inner = [...INDEX.matchAll(/^ {12}function ([a-zA-Z_$][\w$]*)\s*\(/gm)].map((m) => m[1]);
+  const outer = [...INDEX.matchAll(/^ {8}function ([a-zA-Z_$][\w$]*)\s*\(/gm)].map((m) => m[1]);
+  check('inner scope was found', inner.length > 100, true);
+  check('outer scope was found', outer.length > 0, true);
+
+  const leaks = [];
+  for (const name of outer) {
+    const src = extractFunction(INDEX, name);
+    for (const helper of inner) {
+      if (new RegExp('(^|[^.\\w$])' + helper + '\\s*\\(').test(src)) {
+        leaks.push(name + ' -> ' + helper);
+      }
+    }
+  }
+  check('no top-level function calls an inner helper directly', leaks.join('; ') || 'none', 'none');
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

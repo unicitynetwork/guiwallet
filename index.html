@@ -1263,7 +1263,7 @@ ${encryptedMasterKey}`;
 MASTER CHAIN CODE (for BIP32 HD wallet compatibility):
 ${wallet.masterChainCode}
 
-WALLET TYPE: BIP32 hierarchical deterministic wallet${descriptorPathLine(wallet.descriptorPath)}`;
+WALLET TYPE: BIP32 hierarchical deterministic wallet${window.descriptorPathLine ? window.descriptorPathLine(wallet.descriptorPath) : ''}`;
                 } else {
                     encryptedContent += `
 
@@ -1303,7 +1303,7 @@ ${masterKeyWIF}
 MASTER CHAIN CODE (for BIP32 HD wallet compatibility):
 ${wallet.masterChainCode}
 
-WALLET TYPE: BIP32 hierarchical deterministic wallet${descriptorPathLine(wallet.descriptorPath)}
+WALLET TYPE: BIP32 hierarchical deterministic wallet${window.descriptorPathLine ? window.descriptorPathLine(wallet.descriptorPath) : ''}
 
 ENCRYPTION STATUS: Not encrypted
 This key is in plaintext and not protected. Anyone with this file can access your wallet.`;
@@ -2401,6 +2401,9 @@ Anyone with your master private key can access all your funds.`;
             function descriptorPathLine(descriptorPath) {
                 return descriptorPath ? '\n\nDESCRIPTOR PATH: ' + descriptorPath : '';
             }
+            // saveWallet() lives outside this DOMContentLoaded scope and cannot see the function
+            // directly - same reason window.hexToWIF exists.
+            window.descriptorPathLine = descriptorPathLine;
 
             /** Read the descriptor path out of a text backup - this app's, or Sphere's exportToTxt. */
             function parseDescriptorPathFromText(text) {
