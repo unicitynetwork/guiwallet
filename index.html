@@ -745,11 +745,17 @@
     <div id="restoreModal" class="qr-modal" style="display: none;">
         <div class="qr-content" style="max-width: 700px; max-height: 90vh; overflow-y: auto;">
             <h3 style="margin: 0 0 10px 0;">Load Wallet from File</h3>
-            <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">Upload a wallet backup file (.txt) or BIP32 wallet.dat file to load your wallet.</p>
+            <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">Upload a wallet backup file (.txt), a BIP32 wallet.dat file, or a Sphere JSON export &mdash; or paste a Sphere recovery phrase.</p>
             
             <div class="input-group" style="margin-bottom: 10px;">
                 <label for="restoreFileInput" style="font-size: 14px;">Backup File:</label>
-                <input type="file" id="restoreFileInput" accept=".txt,.dat" style="width: 100%; font-size: 14px;">
+                <input type="file" id="restoreFileInput" accept=".txt,.dat,.json" style="width: 100%; font-size: 14px;">
+            </div>
+
+            <div class="input-group" style="margin-bottom: 10px;">
+                <label for="restoreMnemonicInput" style="font-size: 14px;">Or paste a Sphere recovery phrase (12 or 24 words):</label>
+                <textarea id="restoreMnemonicInput" rows="2" placeholder="word word word ..." style="width: 100%; font-size: 14px; font-family: inherit; resize: vertical;"></textarea>
+                <div style="margin-top: 4px; color: #666; font-size: 11px;">Leave empty if you are loading a file.</div>
             </div>
             
             <div class="input-group" style="margin-bottom: 10px;">
@@ -4459,6 +4465,7 @@ Anyone with your master private key can access all your funds.`;
             const restoreModal = document.getElementById('restoreModal');
             const restoreFileInput = document.getElementById('restoreFileInput');
             const restorePasswordInput = document.getElementById('restorePasswordInput');
+            const restoreMnemonicInput = document.getElementById('restoreMnemonicInput');
             const restoreModalCancelBtn = document.getElementById('restoreModalCancelBtn');
             const restoreModalSubmitBtn = document.getElementById('restoreModalSubmitBtn');
             const restoreStatus = document.getElementById('restoreStatus');
@@ -4477,6 +4484,7 @@ Anyone with your master private key can access all your funds.`;
                 document.body.style.overflow = 'hidden';
                 restoreFileInput.value = '';
                 restorePasswordInput.value = '';
+                if (restoreMnemonicInput) restoreMnemonicInput.value = '';
                 restoreStatus.style.display = 'none';
                 walletScanOptions.style.display = 'none';
                 walletScanResults.style.display = 'none';
@@ -6926,9 +6934,10 @@ Anyone with your master private key can access all your funds.`;
             
             async function restoreWallet() {
                 const file = restoreFileInput.files[0];
-                if (!file) {
+                const typedMnemonic = restoreMnemonicInput ? restoreMnemonicInput.value.trim() : '';
+                if (!file && !typedMnemonic) {
                     restoreStatus.className = 'info-box error';
-                    restoreStatus.textContent = 'Please select a wallet backup file.';
+                    restoreStatus.textContent = 'Select a wallet backup file or paste a recovery phrase.';
                     restoreStatus.style.display = 'block';
                     return;
                 }
@@ -6980,6 +6989,36 @@ Anyone with your master private key can access all your funds.`;
                 }
                 
                 try {
+                    // Sphere import: recovery phrase, or Sphere's JSON export.
+                    if (typedMnemonic || (file && file.name.toLowerCase().endsWith('.json'))) {
+                        let parsed;
+                        if (typedMnemonic) {
+                            parsed = sphereWalletFromMnemonic(typedMnemonic);
+                        } else {
+                            parsed = parseSphereWalletJSON(await file.text(), restorePasswordInput.value || '');
+                        }
+
+                        if (wallet.masterPrivateKey) {
+                            if (!confirm('This will overwrite your existing wallet. Are you sure you want to proceed?')) {
+                                return;
+                            }
+                        }
+
+                        wallet = buildSphereImportedWallet(parsed);
+                        window.walletGlobal = wallet;
+
+                        updateButtonStates(true);
+                        generateNewAddress();   // reads wallet.descriptorPath, derives m/44'/0'/0'/0/0
+                        saveWalletData();       // persists descriptorPath with the wallet
+                        updateUIFromWallet();
+
+                        restoreStatus.className = 'info-box success';
+                        restoreStatus.textContent = 'Sphere wallet loaded. Address path: m/' + wallet.descriptorPath + '/0/0';
+                        restoreStatus.style.display = 'block';
+                        closeRestoreModal();
+                        return;
+                    }
+
                     // Check if this is a wallet.dat file (SQLite)
                     if (file.name.endsWith('.dat')) {
                         await restoreFromWalletDat(file);
