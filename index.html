@@ -2347,6 +2347,50 @@ Anyone with your master private key can access all your funds.`;
                 return hashBits.slice(0, checksumLength) === checksumBits;
             }
 
+            /** Sphere's BIP44 descriptor path. Sphere writes this into its JSON export verbatim. */
+            const SPHERE_DESCRIPTOR_PATH = "44'/0'/0'";
+
+            /** BIP39 phrase -> 64-byte seed (hex). Sphere always uses an empty passphrase. */
+            function bip39MnemonicToSeedHex(phrase, passphrase) {
+                const mnemonic = bip39NormalizeMnemonic(phrase);
+                const salt = ('mnemonic' + (passphrase || '')).normalize('NFKD');
+                return CryptoJS.PBKDF2(mnemonic, CryptoJS.enc.Utf8.parse(salt), {
+                    keySize: 512 / 32,
+                    iterations: 2048,
+                    hasher: CryptoJS.algo.SHA512
+                }).toString();
+            }
+
+            /** BIP32 master key + chain code from a seed. */
+            function masterKeyFromSeedHex(seedHex) {
+                const I = CryptoJS.HmacSHA512(
+                    CryptoJS.enc.Hex.parse(seedHex),
+                    CryptoJS.enc.Utf8.parse('Bitcoin seed')
+                ).toString();
+                return {
+                    masterPrivateKey: I.substring(0, 64),
+                    masterChainCode: I.substring(64)
+                };
+            }
+
+            /**
+             * Recovery phrase -> everything needed to import a Sphere wallet.
+             * A phrase carries no address to check against, so the descriptor path is pinned to
+             * Sphere's: any other path would show a different address than Sphere does.
+             */
+            function sphereWalletFromMnemonic(phrase) {
+                if (!bip39ValidateMnemonic(phrase)) {
+                    throw new Error('Invalid recovery phrase - check the words and their order');
+                }
+                const master = masterKeyFromSeedHex(bip39MnemonicToSeedHex(phrase));
+                return {
+                    masterPrivateKey: master.masterPrivateKey,
+                    masterChainCode: master.masterChainCode,
+                    descriptorPath: SPHERE_DESCRIPTOR_PATH,
+                    expectedPublicKey: null
+                };
+            }
+
             // Generate a new address from master key
             function generateNewAddress() {
                 if (!wallet.masterPrivateKey) {

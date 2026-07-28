@@ -175,5 +175,63 @@ console.log('\n=== BIP39 wordlist + validation ===');
   check('empty string rejected', w.bip39ValidateMnemonic(''), false);
 }
 
+const BIP39_FNS = [
+  'bip39NormalizeMnemonic',
+  'bip39ValidateMnemonic',
+  'bip39MnemonicToSeedHex',
+  'masterKeyFromSeedHex',
+  'sphereWalletFromMnemonic',
+];
+const VALID_12 =
+  'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+
+console.log('\n=== BIP39 seed + master key (canonical vectors) ===');
+{
+  const w = loadFromIndex(BIP39_FNS, ['BIP39_WORDLIST', 'SPHERE_DESCRIPTOR_PATH']);
+
+  // BIP39 canonical vector, empty passphrase (sphere-sdk tests/fixtures/test-vectors.ts)
+  check(
+    'seed matches BIP39 vector',
+    w.bip39MnemonicToSeedHex(VALID_12),
+    '5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc19a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4'
+  );
+
+  // BIP32 canonical vector (sphere-sdk tests/fixtures/test-vectors.ts BIP32_VECTORS[0])
+  const m = w.masterKeyFromSeedHex('000102030405060708090a0b0c0d0e0f');
+  check(
+    'master private key from seed',
+    m.masterPrivateKey,
+    'e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35'
+  );
+  check(
+    'master chain code from seed',
+    m.masterChainCode,
+    '873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508'
+  );
+
+  const parsed = w.sphereWalletFromMnemonic(VALID_12);
+  check('phrase import uses Sphere descriptor path', parsed.descriptorPath, "44'/0'/0'");
+  check('phrase import has no anchor pubkey', parsed.expectedPublicKey, null);
+  check('phrase import produces a 64-hex chain code', /^[0-9a-f]{64}$/.test(parsed.masterChainCode), true);
+  checkThrows(
+    'bad phrase is rejected',
+    () => w.sphereWalletFromMnemonic('not a real phrase at all'),
+    'Invalid recovery phrase'
+  );
+}
+
+console.log('\n=== End-to-end: phrase -> alpha1 address on Sphere path ===');
+{
+  const w = loadFromIndex([...DERIVATION_FNS, ...BIP39_FNS], [
+    'CHARSET',
+    'BIP39_WORDLIST',
+    'SPHERE_DESCRIPTOR_PATH',
+  ]);
+  const p = w.sphereWalletFromMnemonic(VALID_12);
+  const a = w.deriveAddressAtIndex(p.masterPrivateKey, p.masterChainCode, 0, true, false, p.descriptorPath);
+  check('derived path is the Sphere path', a.path, "m/44'/0'/0'/0/0");
+  check('address is bech32 alpha1', /^alpha1[02-9ac-hj-np-z]{38,}$/.test(a.address), true);
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
