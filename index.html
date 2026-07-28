@@ -6217,6 +6217,20 @@ Anyone with your master private key can access all your funds.`;
             }
             
             // Perform the actual scanning
+            /**
+             * Merge fresh scan inputs into extractedWalletData without losing descriptorPath.
+             * The path decides which branch the scan walks; dropping it silently sends the
+             * scan to the m/84'/1'/0' fallback instead of the wallet's own branch.
+             */
+            function mergeScanWalletData(existing, masterKey, masterChainCode, isAlphaWallet) {
+                return {
+                    masterKey: masterKey,
+                    masterChainCode: masterChainCode,
+                    isAlphaWallet: isAlphaWallet,
+                    descriptorPath: (existing && existing.descriptorPath) || null
+                };
+            }
+
             async function performWalletScan(masterKey, masterChainCode, isAlphaWallet) {
                 const scanCount = parseInt(scanCountInput.value) || 100;
                 const checkOnline = scanOnlineCheckbox.checked;
@@ -6224,11 +6238,7 @@ Anyone with your master private key can access all your funds.`;
                 
                 // Set extracted wallet data if parameters provided
                 if (masterKey) {
-                    extractedWalletData = {
-                        masterKey: masterKey,
-                        masterChainCode: masterChainCode,
-                        isAlphaWallet: isAlphaWallet
-                    };
+                    extractedWalletData = mergeScanWalletData(extractedWalletData, masterKey, masterChainCode, isAlphaWallet);
                 }
                 
                 scanningActive = true;
@@ -6904,7 +6914,9 @@ Anyone with your master private key can access all your funds.`;
                     encryptedMasterKey: '',
                     childPrivateKey: walletInfo.privateKey,
                     isImportedAlphaWallet: extractedWalletData.isAlphaWallet,
-                    masterChainCode: extractedWalletData.masterChainCode
+                    masterChainCode: extractedWalletData.masterChainCode,
+                    // Keep the branch the scan walked, so later addresses stay on it.
+                    descriptorPath: extractedWalletData.descriptorPath || null
                 };
                 
                 // Update global reference
@@ -7012,10 +7024,30 @@ Anyone with your master private key can access all your funds.`;
                         saveWalletData();       // persists descriptorPath with the wallet
                         updateUIFromWallet();
 
+                        // Sphere issues several addresses off one seed, so the funds may sit at
+                        // index 1, 2, ... The branch is already known, so only the index is
+                        // scanned - on the wallet's own descriptorPath, never the fallback.
+                        extractedWalletData = {
+                            masterKey: wallet.masterPrivateKey,
+                            masterChainCode: wallet.masterChainCode,
+                            descriptorPath: wallet.descriptorPath,
+                            isAlphaWallet: true
+                        };
+
                         restoreStatus.className = 'info-box success';
-                        restoreStatus.textContent = 'Sphere wallet loaded. Address path: m/' + wallet.descriptorPath + '/0/0';
+                        restoreStatus.innerHTML =
+                            '<div>Sphere wallet loaded at m/' + wallet.descriptorPath + '/0/0</div>' +
+                            '<div style="margin-top: 6px; font-size: 0.9em;">Scanning further addresses on the same path...</div>';
                         restoreStatus.style.display = 'block';
-                        closeRestoreModal();
+
+                        walletScanOptions.style.display = 'block';
+                        restoreModalSubmitBtn.style.display = 'none';
+                        scanWalletsBtn.style.display = 'inline-block';
+                        scanWalletsBtn.textContent = 'Rescan Wallets';
+
+                        // Called with no arguments on purpose: that keeps extractedWalletData,
+                        // including descriptorPath, instead of rebuilding it without the path.
+                        setTimeout(() => { performWalletScan(); }, 500);
                         return;
                     }
 
@@ -7631,6 +7663,20 @@ Anyone with your master private key can access all your funds.`;
             restoreFileInput.addEventListener('change', async function() {
                 if (this.files.length > 0) {
                     const file = this.files[0];
+
+                    // Sphere JSON export: loaded through the Load button, not the .dat/.txt
+                    // discovery flow. Without this it falls through to the automatic scan,
+                    // which feeds the file to the wallet.dat/text parser and fails.
+                    if (file.name.toLowerCase().endsWith('.json')) {
+                        walletScanOptions.style.display = 'none';
+                        walletScanResults.style.display = 'none';
+                        restoreModalSubmitBtn.style.display = 'inline-block';
+                        scanWalletsBtn.style.display = 'none';
+                        restoreStatus.className = 'info-box info';
+                        restoreStatus.textContent = 'Sphere wallet export detected. If it is encrypted, enter its password above, then click Load.';
+                        restoreStatus.style.display = 'block';
+                        return;
+                    }
 
                     // Check if it's an encrypted wallet
                     let isEncryptedWallet = false;

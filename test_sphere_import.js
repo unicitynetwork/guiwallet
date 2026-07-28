@@ -353,5 +353,73 @@ console.log('\n=== Wallet object: anchor check + descriptorPath persistence ==='
   check('address 1 stays on the same branch', a1.path, "m/44'/0'/0'/0/1");
 }
 
+console.log('\n=== Address scan keeps the wallet on its own branch ===');
+{
+  // performWalletScan() rebuilds extractedWalletData when given a master key.
+  // The merge must not drop descriptorPath, or the scan walks a different branch
+  // than the address the wallet was imported at.
+  const w = loadFromIndex(['mergeScanWalletData']);
+  const merged = w.mergeScanWalletData(
+    { masterKey: 'old', masterChainCode: 'old', isAlphaWallet: true, descriptorPath: "44'/0'/0'" },
+    'aa'.repeat(32),
+    'bb'.repeat(32),
+    true
+  );
+  check('scan keeps descriptorPath', merged.descriptorPath, "44'/0'/0'");
+  check('scan takes the new master key', merged.masterKey, 'aa'.repeat(32));
+  check(
+    'no previous data means no descriptorPath',
+    w.mergeScanWalletData(null, 'aa'.repeat(32), 'bb'.repeat(32), true).descriptorPath,
+    null
+  );
+
+  // selectWalletForImport() builds the wallet object after the user picks a scanned
+  // address. It touches DOM and module globals, so they get stubbed here.
+  const src = [
+    extractFunction(INDEX, 'selectWalletForImport'),
+    'return { selectWalletForImport, getWallet: () => wallet };',
+  ].join('\n\n');
+  // eslint-disable-next-line no-new-func
+  const sandbox = new Function(
+    'wallet',
+    'extractedWalletData',
+    'window',
+    'updateButtonStates',
+    'addAddressToUI',
+    'saveWalletData',
+    'closeRestoreModal',
+    'showInAppNotification',
+    'clearClassificationQueue',
+    'electrumConnected',
+    'refreshBalance',
+    'updateScannedWalletsDisplay',
+    src
+  )(
+    {},
+    { masterKey: 'aa'.repeat(32), masterChainCode: 'bb'.repeat(32), isAlphaWallet: true, descriptorPath: "44'/0'/0'" },
+    {},
+    () => {},
+    () => {},
+    () => {},
+    () => {},
+    () => {},
+    () => {},
+    false,
+    () => {},
+    () => {}
+  );
+  sandbox.selectWalletForImport({
+    index: 3,
+    address: 'alpha1qexample',
+    publicKey: '02'.repeat(17),
+    path: "m/44'/0'/0'/0/3",
+    privateKey: 'cc'.repeat(32),
+  });
+  const picked = sandbox.getWallet();
+  check('picking a scanned address persists descriptorPath', picked.descriptorPath, "44'/0'/0'");
+  check('picking a scanned address keeps the chain code', picked.masterChainCode, 'bb'.repeat(32));
+  check('picking a scanned address keeps the index', picked.addresses[0].index, 3);
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
