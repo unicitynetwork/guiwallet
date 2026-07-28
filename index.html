@@ -745,11 +745,17 @@
     <div id="restoreModal" class="qr-modal" style="display: none;">
         <div class="qr-content" style="max-width: 700px; max-height: 90vh; overflow-y: auto;">
             <h3 style="margin: 0 0 10px 0;">Load Wallet from File</h3>
-            <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">Upload a wallet backup file (.txt) or BIP32 wallet.dat file to load your wallet.</p>
+            <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">Upload a wallet backup file (.txt), a BIP32 wallet.dat file, or a Sphere JSON export &mdash; or paste a Sphere recovery phrase.</p>
             
             <div class="input-group" style="margin-bottom: 10px;">
                 <label for="restoreFileInput" style="font-size: 14px;">Backup File:</label>
-                <input type="file" id="restoreFileInput" accept=".txt,.dat" style="width: 100%; font-size: 14px;">
+                <input type="file" id="restoreFileInput" accept=".txt,.dat,.json" style="width: 100%; font-size: 14px;">
+            </div>
+
+            <div class="input-group" style="margin-bottom: 10px;">
+                <label for="restoreMnemonicInput" style="font-size: 14px;">Or paste a Sphere recovery phrase (12 or 24 words):</label>
+                <textarea id="restoreMnemonicInput" rows="2" placeholder="word word word ..." style="width: 100%; font-size: 14px; font-family: inherit; resize: vertical;"></textarea>
+                <div style="margin-top: 4px; color: #666; font-size: 11px;">Leave empty if you are loading a file.</div>
             </div>
             
             <div class="input-group" style="margin-bottom: 10px;">
@@ -1257,7 +1263,7 @@ ${encryptedMasterKey}`;
 MASTER CHAIN CODE (for BIP32 HD wallet compatibility):
 ${wallet.masterChainCode}
 
-WALLET TYPE: BIP32 hierarchical deterministic wallet`;
+WALLET TYPE: BIP32 hierarchical deterministic wallet${window.descriptorPathLine ? window.descriptorPathLine(wallet.descriptorPath) : ''}`;
                 } else {
                     encryptedContent += `
 
@@ -1297,12 +1303,12 @@ ${masterKeyWIF}
 MASTER CHAIN CODE (for BIP32 HD wallet compatibility):
 ${wallet.masterChainCode}
 
-WALLET TYPE: BIP32 hierarchical deterministic wallet
+WALLET TYPE: BIP32 hierarchical deterministic wallet${window.descriptorPathLine ? window.descriptorPathLine(wallet.descriptorPath) : ''}
 
 ENCRYPTION STATUS: Not encrypted
 This key is in plaintext and not protected. Anyone with this file can access your wallet.`;
-                    
-                    addressesText = wallet.addresses.map((addr, index) => 
+
+                    addressesText = wallet.addresses.map((addr, index) =>
                         `Address ${index + 1}: ${addr.address}`
                     ).join('\n');
                 } else {
@@ -2308,7 +2314,235 @@ Anyone with your master private key can access all your funds.`;
                 
                 return currentKey;
             }
-            
+
+            // ============================================
+            // BIP39 - mnemonic support for Sphere wallets
+            // ============================================
+
+            // Canonical BIP39 English wordlist (2048 words).
+            // sha256(join("\n") + "\n") = 2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda
+            const BIP39_WORDLIST = ["abandon","ability","able","about","above","absent","absorb","abstract","absurd","abuse","access","accident","account","accuse","achieve","acid","acoustic","acquire","across","act","action","actor","actress","actual","adapt","add","addict","address","adjust","admit","adult","advance","advice","aerobic","affair","afford","afraid","again","age","agent","agree","ahead","aim","air","airport","aisle","alarm","album","alcohol","alert","alien","all","alley","allow","almost","alone","alpha","already","also","alter","always","amateur","amazing","among","amount","amused","analyst","anchor","ancient","anger","angle","angry","animal","ankle","announce","annual","another","answer","antenna","antique","anxiety","any","apart","apology","appear","apple","approve","april","arch","arctic","area","arena","argue","arm","armed","armor","army","around","arrange","arrest","arrive","arrow","art","artefact","artist","artwork","ask","aspect","assault","asset","assist","assume","asthma","athlete","atom","attack","attend","attitude","attract","auction","audit","august","aunt","author","auto","autumn","average","avocado","avoid","awake","aware","away","awesome","awful","awkward","axis","baby","bachelor","bacon","badge","bag","balance","balcony","ball","bamboo","banana","banner","bar","barely","bargain","barrel","base","basic","basket","battle","beach","bean","beauty","because","become","beef","before","begin","behave","behind","believe","below","belt","bench","benefit","best","betray","better","between","beyond","bicycle","bid","bike","bind","biology","bird","birth","bitter","black","blade","blame","blanket","blast","bleak","bless","blind","blood","blossom","blouse","blue","blur","blush","board","boat","body","boil","bomb","bone","bonus","book","boost","border","boring","borrow","boss","bottom","bounce","box","boy","bracket","brain","brand","brass","brave","bread","breeze","brick","bridge","brief","bright","bring","brisk","broccoli","broken","bronze","broom","brother","brown","brush","bubble","buddy","budget","buffalo","build","bulb","bulk","bullet","bundle","bunker","burden","burger","burst","bus","business","busy","butter","buyer","buzz","cabbage","cabin","cable","cactus","cage","cake","call","calm","camera","camp","can","canal","cancel","candy","cannon","canoe","canvas","canyon","capable","capital","captain","car","carbon","card","cargo","carpet","carry","cart","case","cash","casino","castle","casual","cat","catalog","catch","category","cattle","caught","cause","caution","cave","ceiling","celery","cement","census","century","cereal","certain","chair","chalk","champion","change","chaos","chapter","charge","chase","chat","cheap","check","cheese","chef","cherry","chest","chicken","chief","child","chimney","choice","choose","chronic","chuckle","chunk","churn","cigar","cinnamon","circle","citizen","city","civil","claim","clap","clarify","claw","clay","clean","clerk","clever","click","client","cliff","climb","clinic","clip","clock","clog","close","cloth","cloud","clown","club","clump","cluster","clutch","coach","coast","coconut","code","coffee","coil","coin","collect","color","column","combine","come","comfort","comic","common","company","concert","conduct","confirm","congress","connect","consider","control","convince","cook","cool","copper","copy","coral","core","corn","correct","cost","cotton","couch","country","couple","course","cousin","cover","coyote","crack","cradle","craft","cram","crane","crash","crater","crawl","crazy","cream","credit","creek","crew","cricket","crime","crisp","critic","crop","cross","crouch","crowd","crucial","cruel","cruise","crumble","crunch","crush","cry","crystal","cube","culture","cup","cupboard","curious","current","curtain","curve","cushion","custom","cute","cycle","dad","damage","damp","dance","danger","daring","dash","daughter","dawn","day","deal","debate","debris","decade","december","decide","decline","decorate","decrease","deer","defense","define","defy","degree","delay","deliver","demand","demise","denial","dentist","deny","depart","depend","deposit","depth","deputy","derive","describe","desert","design","desk","despair","destroy","detail","detect","develop","device","devote","diagram","dial","diamond","diary","dice","diesel","diet","differ","digital","dignity","dilemma","dinner","dinosaur","direct","dirt","disagree","discover","disease","dish","dismiss","disorder","display","distance","divert","divide","divorce","dizzy","doctor","document","dog","doll","dolphin","domain","donate","donkey","donor","door","dose","double","dove","draft","dragon","drama","drastic","draw","dream","dress","drift","drill","drink","drip","drive","drop","drum","dry","duck","dumb","dune","during","dust","dutch","duty","dwarf","dynamic","eager","eagle","early","earn","earth","easily","east","easy","echo","ecology","economy","edge","edit","educate","effort","egg","eight","either","elbow","elder","electric","elegant","element","elephant","elevator","elite","else","embark","embody","embrace","emerge","emotion","employ","empower","empty","enable","enact","end","endless","endorse","enemy","energy","enforce","engage","engine","enhance","enjoy","enlist","enough","enrich","enroll","ensure","enter","entire","entry","envelope","episode","equal","equip","era","erase","erode","erosion","error","erupt","escape","essay","essence","estate","eternal","ethics","evidence","evil","evoke","evolve","exact","example","excess","exchange","excite","exclude","excuse","execute","exercise","exhaust","exhibit","exile","exist","exit","exotic","expand","expect","expire","explain","expose","express","extend","extra","eye","eyebrow","fabric","face","faculty","fade","faint","faith","fall","false","fame","family","famous","fan","fancy","fantasy","farm","fashion","fat","fatal","father","fatigue","fault","favorite","feature","february","federal","fee","feed","feel","female","fence","festival","fetch","fever","few","fiber","fiction","field","figure","file","film","filter","final","find","fine","finger","finish","fire","firm","first","fiscal","fish","fit","fitness","fix","flag","flame","flash","flat","flavor","flee","flight","flip","float","flock","floor","flower","fluid","flush","fly","foam","focus","fog","foil","fold","follow","food","foot","force","forest","forget","fork","fortune","forum","forward","fossil","foster","found","fox","fragile","frame","frequent","fresh","friend","fringe","frog","front","frost","frown","frozen","fruit","fuel","fun","funny","furnace","fury","future","gadget","gain","galaxy","gallery","game","gap","garage","garbage","garden","garlic","garment","gas","gasp","gate","gather","gauge","gaze","general","genius","genre","gentle","genuine","gesture","ghost","giant","gift","giggle","ginger","giraffe","girl","give","glad","glance","glare","glass","glide","glimpse","globe","gloom","glory","glove","glow","glue","goat","goddess","gold","good","goose","gorilla","gospel","gossip","govern","gown","grab","grace","grain","grant","grape","grass","gravity","great","green","grid","grief","grit","grocery","group","grow","grunt","guard","guess","guide","guilt","guitar","gun","gym","habit","hair","half","hammer","hamster","hand","happy","harbor","hard","harsh","harvest","hat","have","hawk","hazard","head","health","heart","heavy","hedgehog","height","hello","helmet","help","hen","hero","hidden","high","hill","hint","hip","hire","history","hobby","hockey","hold","hole","holiday","hollow","home","honey","hood","hope","horn","horror","horse","hospital","host","hotel","hour","hover","hub","huge","human","humble","humor","hundred","hungry","hunt","hurdle","hurry","hurt","husband","hybrid","ice","icon","idea","identify","idle","ignore","ill","illegal","illness","image","imitate","immense","immune","impact","impose","improve","impulse","inch","include","income","increase","index","indicate","indoor","industry","infant","inflict","inform","inhale","inherit","initial","inject","injury","inmate","inner","innocent","input","inquiry","insane","insect","inside","inspire","install","intact","interest","into","invest","invite","involve","iron","island","isolate","issue","item","ivory","jacket","jaguar","jar","jazz","jealous","jeans","jelly","jewel","job","join","joke","journey","joy","judge","juice","jump","jungle","junior","junk","just","kangaroo","keen","keep","ketchup","key","kick","kid","kidney","kind","kingdom","kiss","kit","kitchen","kite","kitten","kiwi","knee","knife","knock","know","lab","label","labor","ladder","lady","lake","lamp","language","laptop","large","later","latin","laugh","laundry","lava","law","lawn","lawsuit","layer","lazy","leader","leaf","learn","leave","lecture","left","leg","legal","legend","leisure","lemon","lend","length","lens","leopard","lesson","letter","level","liar","liberty","library","license","life","lift","light","like","limb","limit","link","lion","liquid","list","little","live","lizard","load","loan","lobster","local","lock","logic","lonely","long","loop","lottery","loud","lounge","love","loyal","lucky","luggage","lumber","lunar","lunch","luxury","lyrics","machine","mad","magic","magnet","maid","mail","main","major","make","mammal","man","manage","mandate","mango","mansion","manual","maple","marble","march","margin","marine","market","marriage","mask","mass","master","match","material","math","matrix","matter","maximum","maze","meadow","mean","measure","meat","mechanic","medal","media","melody","melt","member","memory","mention","menu","mercy","merge","merit","merry","mesh","message","metal","method","middle","midnight","milk","million","mimic","mind","minimum","minor","minute","miracle","mirror","misery","miss","mistake","mix","mixed","mixture","mobile","model","modify","mom","moment","monitor","monkey","monster","month","moon","moral","more","morning","mosquito","mother","motion","motor","mountain","mouse","move","movie","much","muffin","mule","multiply","muscle","museum","mushroom","music","must","mutual","myself","mystery","myth","naive","name","napkin","narrow","nasty","nation","nature","near","neck","need","negative","neglect","neither","nephew","nerve","nest","net","network","neutral","never","news","next","nice","night","noble","noise","nominee","noodle","normal","north","nose","notable","note","nothing","notice","novel","now","nuclear","number","nurse","nut","oak","obey","object","oblige","obscure","observe","obtain","obvious","occur","ocean","october","odor","off","offer","office","often","oil","okay","old","olive","olympic","omit","once","one","onion","online","only","open","opera","opinion","oppose","option","orange","orbit","orchard","order","ordinary","organ","orient","original","orphan","ostrich","other","outdoor","outer","output","outside","oval","oven","over","own","owner","oxygen","oyster","ozone","pact","paddle","page","pair","palace","palm","panda","panel","panic","panther","paper","parade","parent","park","parrot","party","pass","patch","path","patient","patrol","pattern","pause","pave","payment","peace","peanut","pear","peasant","pelican","pen","penalty","pencil","people","pepper","perfect","permit","person","pet","phone","photo","phrase","physical","piano","picnic","picture","piece","pig","pigeon","pill","pilot","pink","pioneer","pipe","pistol","pitch","pizza","place","planet","plastic","plate","play","please","pledge","pluck","plug","plunge","poem","poet","point","polar","pole","police","pond","pony","pool","popular","portion","position","possible","post","potato","pottery","poverty","powder","power","practice","praise","predict","prefer","prepare","present","pretty","prevent","price","pride","primary","print","priority","prison","private","prize","problem","process","produce","profit","program","project","promote","proof","property","prosper","protect","proud","provide","public","pudding","pull","pulp","pulse","pumpkin","punch","pupil","puppy","purchase","purity","purpose","purse","push","put","puzzle","pyramid","quality","quantum","quarter","question","quick","quit","quiz","quote","rabbit","raccoon","race","rack","radar","radio","rail","rain","raise","rally","ramp","ranch","random","range","rapid","rare","rate","rather","raven","raw","razor","ready","real","reason","rebel","rebuild","recall","receive","recipe","record","recycle","reduce","reflect","reform","refuse","region","regret","regular","reject","relax","release","relief","rely","remain","remember","remind","remove","render","renew","rent","reopen","repair","repeat","replace","report","require","rescue","resemble","resist","resource","response","result","retire","retreat","return","reunion","reveal","review","reward","rhythm","rib","ribbon","rice","rich","ride","ridge","rifle","right","rigid","ring","riot","ripple","risk","ritual","rival","river","road","roast","robot","robust","rocket","romance","roof","rookie","room","rose","rotate","rough","round","route","royal","rubber","rude","rug","rule","run","runway","rural","sad","saddle","sadness","safe","sail","salad","salmon","salon","salt","salute","same","sample","sand","satisfy","satoshi","sauce","sausage","save","say","scale","scan","scare","scatter","scene","scheme","school","science","scissors","scorpion","scout","scrap","screen","script","scrub","sea","search","season","seat","second","secret","section","security","seed","seek","segment","select","sell","seminar","senior","sense","sentence","series","service","session","settle","setup","seven","shadow","shaft","shallow","share","shed","shell","sheriff","shield","shift","shine","ship","shiver","shock","shoe","shoot","shop","short","shoulder","shove","shrimp","shrug","shuffle","shy","sibling","sick","side","siege","sight","sign","silent","silk","silly","silver","similar","simple","since","sing","siren","sister","situate","six","size","skate","sketch","ski","skill","skin","skirt","skull","slab","slam","sleep","slender","slice","slide","slight","slim","slogan","slot","slow","slush","small","smart","smile","smoke","smooth","snack","snake","snap","sniff","snow","soap","soccer","social","sock","soda","soft","solar","soldier","solid","solution","solve","someone","song","soon","sorry","sort","soul","sound","soup","source","south","space","spare","spatial","spawn","speak","special","speed","spell","spend","sphere","spice","spider","spike","spin","spirit","split","spoil","sponsor","spoon","sport","spot","spray","spread","spring","spy","square","squeeze","squirrel","stable","stadium","staff","stage","stairs","stamp","stand","start","state","stay","steak","steel","stem","step","stereo","stick","still","sting","stock","stomach","stone","stool","story","stove","strategy","street","strike","strong","struggle","student","stuff","stumble","style","subject","submit","subway","success","such","sudden","suffer","sugar","suggest","suit","summer","sun","sunny","sunset","super","supply","supreme","sure","surface","surge","surprise","surround","survey","suspect","sustain","swallow","swamp","swap","swarm","swear","sweet","swift","swim","swing","switch","sword","symbol","symptom","syrup","system","table","tackle","tag","tail","talent","talk","tank","tape","target","task","taste","tattoo","taxi","teach","team","tell","ten","tenant","tennis","tent","term","test","text","thank","that","theme","then","theory","there","they","thing","this","thought","three","thrive","throw","thumb","thunder","ticket","tide","tiger","tilt","timber","time","tiny","tip","tired","tissue","title","toast","tobacco","today","toddler","toe","together","toilet","token","tomato","tomorrow","tone","tongue","tonight","tool","tooth","top","topic","topple","torch","tornado","tortoise","toss","total","tourist","toward","tower","town","toy","track","trade","traffic","tragic","train","transfer","trap","trash","travel","tray","treat","tree","trend","trial","tribe","trick","trigger","trim","trip","trophy","trouble","truck","true","truly","trumpet","trust","truth","try","tube","tuition","tumble","tuna","tunnel","turkey","turn","turtle","twelve","twenty","twice","twin","twist","two","type","typical","ugly","umbrella","unable","unaware","uncle","uncover","under","undo","unfair","unfold","unhappy","uniform","unique","unit","universe","unknown","unlock","until","unusual","unveil","update","upgrade","uphold","upon","upper","upset","urban","urge","usage","use","used","useful","useless","usual","utility","vacant","vacuum","vague","valid","valley","valve","van","vanish","vapor","various","vast","vault","vehicle","velvet","vendor","venture","venue","verb","verify","version","very","vessel","veteran","viable","vibrant","vicious","victory","video","view","village","vintage","violin","virtual","virus","visa","visit","visual","vital","vivid","vocal","voice","void","volcano","volume","vote","voyage","wage","wagon","wait","walk","wall","walnut","want","warfare","warm","warrior","wash","wasp","waste","water","wave","way","wealth","weapon","wear","weasel","weather","web","wedding","weekend","weird","welcome","west","wet","whale","what","wheat","wheel","when","where","whip","whisper","wide","width","wife","wild","will","win","window","wine","wing","wink","winner","winter","wire","wisdom","wise","wish","witness","wolf","woman","wonder","wood","wool","word","work","world","worry","worth","wrap","wreck","wrestle","wrist","write","wrong","yard","year","yellow","you","young","youth","zebra","zero","zone","zoo"];
+
+            /** Normalise a phrase the way BIP39 requires: NFKD, lowercase, single-spaced. */
+            function bip39NormalizeMnemonic(phrase) {
+                return String(phrase || '').normalize('NFKD').trim().toLowerCase().split(/\s+/).filter(Boolean).join(' ');
+            }
+
+            /** Validate a BIP39 phrase: known words, allowed length, correct checksum. */
+            function bip39ValidateMnemonic(phrase) {
+                const words = bip39NormalizeMnemonic(phrase).split(' ').filter(Boolean);
+                if ([12, 15, 18, 21, 24].indexOf(words.length) === -1) return false;
+
+                let bits = '';
+                for (const word of words) {
+                    const index = BIP39_WORDLIST.indexOf(word);
+                    if (index === -1) return false;
+                    bits += index.toString(2).padStart(11, '0');
+                }
+
+                const checksumLength = (words.length * 11) / 33;
+                const entropyBits = bits.slice(0, bits.length - checksumLength);
+                const checksumBits = bits.slice(bits.length - checksumLength);
+
+                const entropyHex = (entropyBits.match(/.{8}/g) || [])
+                    .map(byte => parseInt(byte, 2).toString(16).padStart(2, '0'))
+                    .join('');
+                const hash = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(entropyHex)).toString();
+                const hashBits = parseInt(hash.slice(0, 2), 16).toString(2).padStart(8, '0');
+
+                return hashBits.slice(0, checksumLength) === checksumBits;
+            }
+
+            /** Sphere's BIP44 descriptor path. Sphere writes this into its JSON export verbatim. */
+            const SPHERE_DESCRIPTOR_PATH = "44'/0'/0'";
+
+            /** BIP39 phrase -> 64-byte seed (hex). Sphere always uses an empty passphrase. */
+            function bip39MnemonicToSeedHex(phrase, passphrase) {
+                const mnemonic = bip39NormalizeMnemonic(phrase);
+                const salt = ('mnemonic' + (passphrase || '')).normalize('NFKD');
+                return CryptoJS.PBKDF2(mnemonic, CryptoJS.enc.Utf8.parse(salt), {
+                    keySize: 512 / 32,
+                    iterations: 2048,
+                    hasher: CryptoJS.algo.SHA512
+                }).toString();
+            }
+
+            /** BIP32 master key + chain code from a seed. */
+            function masterKeyFromSeedHex(seedHex) {
+                const I = CryptoJS.HmacSHA512(
+                    CryptoJS.enc.Hex.parse(seedHex),
+                    CryptoJS.enc.Utf8.parse('Bitcoin seed')
+                ).toString();
+                return {
+                    masterPrivateKey: I.substring(0, 64),
+                    masterChainCode: I.substring(64)
+                };
+            }
+
+            /**
+             * Recovery phrase -> everything needed to import a Sphere wallet.
+             * A phrase carries no address to check against, so the descriptor path is pinned to
+             * Sphere's: any other path would show a different address than Sphere does.
+             */
+            function sphereWalletFromMnemonic(phrase) {
+                if (!bip39ValidateMnemonic(phrase)) {
+                    throw new Error('Invalid recovery phrase - check the words and their order');
+                }
+                const master = masterKeyFromSeedHex(bip39MnemonicToSeedHex(phrase));
+                return {
+                    masterPrivateKey: master.masterPrivateKey,
+                    masterChainCode: master.masterChainCode,
+                    descriptorPath: SPHERE_DESCRIPTOR_PATH,
+                    expectedPublicKey: null
+                };
+            }
+
+            /** The `DESCRIPTOR PATH:` line for a text backup, or '' when there is no path to record. */
+            function descriptorPathLine(descriptorPath) {
+                return descriptorPath ? '\n\nDESCRIPTOR PATH: ' + descriptorPath : '';
+            }
+            // saveWallet() lives outside this DOMContentLoaded scope and cannot see the function
+            // directly - same reason window.hexToWIF exists.
+            window.descriptorPathLine = descriptorPathLine;
+
+            /** Read the descriptor path out of a text backup - this app's, or Sphere's exportToTxt. */
+            function parseDescriptorPathFromText(text) {
+                const match = String(text || '').match(/DESCRIPTOR PATH:\s*([^\n]+)/);
+                if (!match) return null;
+                return match[1].trim().replace(/^m\//, '') || null;
+            }
+
+            /** Read the first address a text backup records, with or without a "(Path: ...)" suffix. */
+            function parseFirstAddressFromText(text) {
+                const match = String(text || '').match(/Address\s+1:\s*([a-z0-9]+)/i);
+                return match ? match[1] : null;
+            }
+
+            /**
+             * Work out which branch a text backup belongs to.
+             *
+             * Prefers the explicit DESCRIPTOR PATH line. Backups written before that line existed
+             * still record their first address, so the branch is recovered by deriving each
+             * candidate and matching - an exact check against the file, not a guess. Returns null
+             * when neither is available, leaving the caller's existing default in place.
+             */
+            function resolveDescriptorPathFromBackup(text, masterKey, masterChainCode) {
+                const explicit = parseDescriptorPathFromText(text);
+                if (explicit) return explicit;
+                if (!masterKey || !masterChainCode) return null;
+
+                const recorded = parseFirstAddressFromText(text);
+                if (!recorded) return null;
+
+                const candidates = [SPHERE_DESCRIPTOR_PATH, "84'/1'/0'"];
+                for (const candidate of candidates) {
+                    try {
+                        const derived = deriveAddressAtIndex(masterKey, masterChainCode, 0, true, false, candidate);
+                        if (derived.address === recorded) return candidate;
+                    } catch (e) {
+                        // try the next candidate
+                    }
+                }
+                return null;
+            }
+
+            /**
+             * Read Sphere's `sphere-wallet` JSON export.
+             * Encrypted exports use CryptoJS.AES.encrypt(value, password) - the password is the
+             * passphrase directly, NOT this wallet's own PBKDF2 .txt scheme.
+             */
+            function parseSphereWalletJSON(text, password) {
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    throw new Error('That file is not valid JSON');
+                }
+                if (!data || data.type !== 'sphere-wallet') {
+                    throw new Error('That file is not a Sphere wallet export');
+                }
+
+                const walletData = data.wallet || {};
+                let masterPrivateKey = walletData.masterPrivateKey || '';
+                let mnemonic = data.mnemonic || '';
+
+                if (data.encrypted) {
+                    if (!password) {
+                        throw new Error('This export is encrypted - enter its password');
+                    }
+                    const decrypt = function (value) {
+                        if (!value) return '';
+                        try {
+                            return CryptoJS.AES.decrypt(value, password).toString(CryptoJS.enc.Utf8);
+                        } catch (e) {
+                            return '';
+                        }
+                    };
+                    masterPrivateKey = decrypt(masterPrivateKey);
+                    mnemonic = decrypt(mnemonic);
+                    if (!/^[0-9a-fA-F]{64}$/.test(masterPrivateKey) && !mnemonic) {
+                        throw new Error('Could not decrypt - wrong password?');
+                    }
+                }
+
+                // A phrase in the export is authoritative: it reproduces both key and chain code.
+                if (mnemonic && bip39ValidateMnemonic(mnemonic)) {
+                    const fromPhrase = sphereWalletFromMnemonic(mnemonic);
+                    masterPrivateKey = fromPhrase.masterPrivateKey;
+                    walletData.chainCode = walletData.chainCode || fromPhrase.masterChainCode;
+                }
+
+                if (!/^[0-9a-fA-F]{64}$/.test(masterPrivateKey)) {
+                    throw new Error('This export has no usable master key');
+                }
+                if (!/^[0-9a-fA-F]{64}$/.test(walletData.chainCode || '')) {
+                    throw new Error('This export has no chain code - it cannot be imported as an HD wallet');
+                }
+
+                const firstAddress = (walletData.addresses && walletData.addresses[0]) || null;
+                return {
+                    masterPrivateKey: masterPrivateKey.toLowerCase(),
+                    masterChainCode: String(walletData.chainCode).toLowerCase(),
+                    descriptorPath: walletData.descriptorPath || SPHERE_DESCRIPTOR_PATH,
+                    expectedPublicKey: (firstAddress && (firstAddress.publicKey || firstAddress.address)) || null
+                };
+            }
+
+            /**
+             * Turn a parsed Sphere wallet into this app's wallet object.
+             *
+             * descriptorPath MUST be stored on the wallet: generateNewAddress() reads it, and
+             * without it every later address falls back to m/84'/1'/0' - a different branch from
+             * the one the first address came from.
+             */
+            function buildSphereImportedWallet(parsed) {
+                const first = deriveAddressAtIndex(
+                    parsed.masterPrivateKey,
+                    parsed.masterChainCode,
+                    0,
+                    true,
+                    false,
+                    parsed.descriptorPath
+                );
+
+                if (parsed.expectedPublicKey && first.publicKey !== parsed.expectedPublicKey) {
+                    throw new Error(
+                        'The key in this file does not match the address recorded in it - refusing to import'
+                    );
+                }
+
+                return {
+                    masterPrivateKey: parsed.masterPrivateKey,
+                    masterChainCode: parsed.masterChainCode,
+                    descriptorPath: parsed.descriptorPath,
+                    isImportedAlphaWallet: true,
+                    isEncrypted: false,
+                    encryptedMasterKey: '',
+                    childPrivateKey: null,
+                    addresses: []
+                };
+            }
+
             // Generate a new address from master key
             function generateNewAddress() {
                 if (!wallet.masterPrivateKey) {
@@ -4280,6 +4514,7 @@ Anyone with your master private key can access all your funds.`;
             const restoreModal = document.getElementById('restoreModal');
             const restoreFileInput = document.getElementById('restoreFileInput');
             const restorePasswordInput = document.getElementById('restorePasswordInput');
+            const restoreMnemonicInput = document.getElementById('restoreMnemonicInput');
             const restoreModalCancelBtn = document.getElementById('restoreModalCancelBtn');
             const restoreModalSubmitBtn = document.getElementById('restoreModalSubmitBtn');
             const restoreStatus = document.getElementById('restoreStatus');
@@ -4298,6 +4533,7 @@ Anyone with your master private key can access all your funds.`;
                 document.body.style.overflow = 'hidden';
                 restoreFileInput.value = '';
                 restorePasswordInput.value = '';
+                if (restoreMnemonicInput) restoreMnemonicInput.value = '';
                 restoreStatus.style.display = 'none';
                 walletScanOptions.style.display = 'none';
                 walletScanResults.style.display = 'none';
@@ -5308,7 +5544,16 @@ Anyone with your master private key can access all your funds.`;
                     if (!masterKey) {
                         throw new Error('No master key found in decrypted wallet data');
                     }
-                    
+
+                    // Carry the backup's branch into the scan; performWalletScan preserves
+                    // whatever descriptorPath extractedWalletData already holds.
+                    extractedWalletData = mergeScanWalletData(
+                        { descriptorPath: walletData.descriptorPath || null },
+                        masterKey,
+                        masterChainCode,
+                        isAlphaWallet
+                    );
+
                     // Continue with normal scanning
                     performWalletScan(masterKey, masterChainCode, isAlphaWallet);
                 } catch (error) {
@@ -5421,7 +5666,13 @@ Anyone with your master private key can access all your funds.`;
                                     isImportedAlphaWallet: isAlphaWallet,
                                     addresses: addresses,
                                     isEncrypted: false,
-                                    encryptedMasterKey: ''
+                                    encryptedMasterKey: '',
+                                    // Keep the branch the backup was written from.
+                                    descriptorPath: resolveDescriptorPathFromBackup(
+                                        fileContent,
+                                        decryptedMasterKey,
+                                        chainCodeMatch ? chainCodeMatch[1].trim() : null
+                                    )
                                 };
                             
                                 // Check if this is a WIF wallet (no chain code) or BIP32
@@ -5573,6 +5824,8 @@ Anyone with your master private key can access all your funds.`;
                             masterChainCode = chainCodeMatch[1].trim();
                             isAlphaWallet = true;
                         }
+                        // Scan the branch the backup was written from, not the m/84'/1'/0' fallback.
+                        descriptorPath = resolveDescriptorPathFromBackup(fileContent, masterKey, masterChainCode) || descriptorPath;
                     }
                     
                     if (!masterKey) {
@@ -6030,6 +6283,20 @@ Anyone with your master private key can access all your funds.`;
             }
             
             // Perform the actual scanning
+            /**
+             * Merge fresh scan inputs into extractedWalletData without losing descriptorPath.
+             * The path decides which branch the scan walks; dropping it silently sends the
+             * scan to the m/84'/1'/0' fallback instead of the wallet's own branch.
+             */
+            function mergeScanWalletData(existing, masterKey, masterChainCode, isAlphaWallet) {
+                return {
+                    masterKey: masterKey,
+                    masterChainCode: masterChainCode,
+                    isAlphaWallet: isAlphaWallet,
+                    descriptorPath: (existing && existing.descriptorPath) || null
+                };
+            }
+
             async function performWalletScan(masterKey, masterChainCode, isAlphaWallet) {
                 const scanCount = parseInt(scanCountInput.value) || 100;
                 const checkOnline = scanOnlineCheckbox.checked;
@@ -6037,11 +6304,7 @@ Anyone with your master private key can access all your funds.`;
                 
                 // Set extracted wallet data if parameters provided
                 if (masterKey) {
-                    extractedWalletData = {
-                        masterKey: masterKey,
-                        masterChainCode: masterChainCode,
-                        isAlphaWallet: isAlphaWallet
-                    };
+                    extractedWalletData = mergeScanWalletData(extractedWalletData, masterKey, masterChainCode, isAlphaWallet);
                 }
                 
                 scanningActive = true;
@@ -6717,7 +6980,9 @@ Anyone with your master private key can access all your funds.`;
                     encryptedMasterKey: '',
                     childPrivateKey: walletInfo.privateKey,
                     isImportedAlphaWallet: extractedWalletData.isAlphaWallet,
-                    masterChainCode: extractedWalletData.masterChainCode
+                    masterChainCode: extractedWalletData.masterChainCode,
+                    // Keep the branch the scan walked, so later addresses stay on it.
+                    descriptorPath: extractedWalletData.descriptorPath || null
                 };
                 
                 // Update global reference
@@ -6747,9 +7012,10 @@ Anyone with your master private key can access all your funds.`;
             
             async function restoreWallet() {
                 const file = restoreFileInput.files[0];
-                if (!file) {
+                const typedMnemonic = restoreMnemonicInput ? restoreMnemonicInput.value.trim() : '';
+                if (!file && !typedMnemonic) {
                     restoreStatus.className = 'info-box error';
-                    restoreStatus.textContent = 'Please select a wallet backup file.';
+                    restoreStatus.textContent = 'Select a wallet backup file or paste a recovery phrase.';
                     restoreStatus.style.display = 'block';
                     return;
                 }
@@ -6801,6 +7067,56 @@ Anyone with your master private key can access all your funds.`;
                 }
                 
                 try {
+                    // Sphere import: recovery phrase, or Sphere's JSON export.
+                    if (typedMnemonic || (file && file.name.toLowerCase().endsWith('.json'))) {
+                        let parsed;
+                        if (typedMnemonic) {
+                            parsed = sphereWalletFromMnemonic(typedMnemonic);
+                        } else {
+                            parsed = parseSphereWalletJSON(await file.text(), restorePasswordInput.value || '');
+                        }
+
+                        if (wallet.masterPrivateKey) {
+                            if (!confirm('This will overwrite your existing wallet. Are you sure you want to proceed?')) {
+                                return;
+                            }
+                        }
+
+                        wallet = buildSphereImportedWallet(parsed);
+                        window.walletGlobal = wallet;
+
+                        updateButtonStates(true);
+                        generateNewAddress();   // reads wallet.descriptorPath, derives m/44'/0'/0'/0/0
+                        saveWalletData();       // persists descriptorPath with the wallet
+                        updateUIFromWallet();
+
+                        // Sphere issues several addresses off one seed, so the funds may sit at
+                        // index 1, 2, ... The branch is already known, so only the index is
+                        // scanned - on the wallet's own descriptorPath, never the fallback.
+                        extractedWalletData = {
+                            masterKey: wallet.masterPrivateKey,
+                            masterChainCode: wallet.masterChainCode,
+                            descriptorPath: wallet.descriptorPath,
+                            isAlphaWallet: true
+                        };
+
+                        restoreStatus.className = 'info-box success';
+                        restoreStatus.innerHTML =
+                            '<div>Sphere wallet loaded at m/' + wallet.descriptorPath + '/0/0</div>' +
+                            '<div style="margin-top: 6px; font-size: 0.9em;">Scanning further addresses on the same path...</div>';
+                        restoreStatus.style.display = 'block';
+
+                        walletScanOptions.style.display = 'block';
+                        restoreModalSubmitBtn.style.display = 'none';
+                        scanWalletsBtn.style.display = 'inline-block';
+                        scanWalletsBtn.textContent = 'Rescan Wallets';
+
+                        // Called with no arguments on purpose: that keeps extractedWalletData,
+                        // including descriptorPath, instead of rebuilding it without the path.
+                        setTimeout(() => { performWalletScan(); }, 500);
+                        return;
+                    }
+
                     // Check if this is a wallet.dat file (SQLite)
                     if (file.name.endsWith('.dat')) {
                         await restoreFromWalletDat(file);
@@ -6936,7 +7252,10 @@ Anyone with your master private key can access all your funds.`;
                         encryptedMasterKey: encryptedMasterKey,
                         childPrivateKey: null, // Will be set when generating first address or recovered
                         isImportedAlphaWallet: isImportedAlphaWallet,
-                        masterChainCode: masterChainCode
+                        masterChainCode: masterChainCode,
+                        // Without this the addresses below are re-derived on the m/84'/1'/0'
+                        // fallback, which is a different branch than the backup was written from.
+                        descriptorPath: resolveDescriptorPathFromBackup(fileContent, masterKey, masterChainCode)
                     };
                     
                     // Update global reference
@@ -7413,6 +7732,20 @@ Anyone with your master private key can access all your funds.`;
             restoreFileInput.addEventListener('change', async function() {
                 if (this.files.length > 0) {
                     const file = this.files[0];
+
+                    // Sphere JSON export: loaded through the Load button, not the .dat/.txt
+                    // discovery flow. Without this it falls through to the automatic scan,
+                    // which feeds the file to the wallet.dat/text parser and fails.
+                    if (file.name.toLowerCase().endsWith('.json')) {
+                        walletScanOptions.style.display = 'none';
+                        walletScanResults.style.display = 'none';
+                        restoreModalSubmitBtn.style.display = 'inline-block';
+                        scanWalletsBtn.style.display = 'none';
+                        restoreStatus.className = 'info-box info';
+                        restoreStatus.textContent = 'Sphere wallet export detected. If it is encrypted, enter its password above, then click Load.';
+                        restoreStatus.style.display = 'block';
+                        return;
+                    }
 
                     // Check if it's an encrypted wallet
                     let isEncryptedWallet = false;
