@@ -135,5 +135,45 @@ console.log('=== Existing derivation is unchanged (sphere-sdk vectors) ===');
   });
 }
 
+console.log('\n=== BIP39 wordlist + validation ===');
+{
+  const w = loadFromIndex(['bip39NormalizeMnemonic', 'bip39ValidateMnemonic'], ['BIP39_WORDLIST']);
+  const src = extractConst(INDEX, 'BIP39_WORDLIST');
+  // eslint-disable-next-line no-new-func
+  const list = new Function(src + '; return BIP39_WORDLIST;')();
+
+  check('wordlist length', list.length, 2048);
+  check('first word', list[0], 'abandon');
+  check('last word', list[2047], 'zoo');
+  check(
+    'wordlist sha256 matches canonical english.txt',
+    CryptoJS.SHA256(list.join('\n') + '\n').toString(),
+    '2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda'
+  );
+
+  const VALID_12 =
+    'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+  const VALID_24 =
+    'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon ' +
+    'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art';
+  check('valid 12-word phrase', w.bip39ValidateMnemonic(VALID_12), true);
+  check('valid 24-word phrase', w.bip39ValidateMnemonic(VALID_24), true);
+  check(
+    'mixed case and padding accepted',
+    w.bip39ValidateMnemonic('  ABANDON  ' + VALID_12.split(' ').slice(1).join(' ') + ' '),
+    true
+  );
+  check(
+    'bad checksum rejected',
+    w.bip39ValidateMnemonic(
+      'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon'
+    ),
+    false
+  );
+  check('unknown word rejected', w.bip39ValidateMnemonic(VALID_12.replace('about', 'zzzznotaword')), false);
+  check('wrong word count rejected', w.bip39ValidateMnemonic('abandon abandon about'), false);
+  check('empty string rejected', w.bip39ValidateMnemonic(''), false);
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
