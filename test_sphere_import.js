@@ -233,5 +233,75 @@ console.log('\n=== End-to-end: phrase -> alpha1 address on Sphere path ===');
   check('address is bech32 alpha1', /^alpha1[02-9ac-hj-np-z]{38,}$/.test(a.address), true);
 }
 
+console.log('\n=== Sphere JSON export ===');
+{
+  const w = loadFromIndex([...DERIVATION_FNS, ...BIP39_FNS, 'parseSphereWalletJSON'], [
+    'CHARSET',
+    'BIP39_WORDLIST',
+    'SPHERE_DESCRIPTOR_PATH',
+  ]);
+
+  const MASTER = 'e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35';
+  const CHAIN = '873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508';
+  const PUBKEY = w.deriveAddressAtIndex(MASTER, CHAIN, 0, true, false, "44'/0'/0'").publicKey;
+
+  const plain = {
+    version: '1.0',
+    type: 'sphere-wallet',
+    wallet: {
+      masterPrivateKey: MASTER,
+      chainCode: CHAIN,
+      descriptorPath: "44'/0'/0'",
+      isBIP32: true,
+      addresses: [{ address: PUBKEY, publicKey: PUBKEY, path: "m/44'/0'/0'/0/0", index: 0 }],
+    },
+    encrypted: false,
+    derivationMode: 'bip32',
+  };
+
+  const p = w.parseSphereWalletJSON(JSON.stringify(plain));
+  check('reads master key', p.masterPrivateKey, MASTER);
+  check('reads chain code', p.masterChainCode, CHAIN);
+  check('reads descriptor path', p.descriptorPath, "44'/0'/0'");
+  check('reads anchor pubkey', p.expectedPublicKey, PUBKEY);
+
+  // Missing descriptorPath falls back to Sphere's path, not the 84'/1'/0' wallet default.
+  const noPath = JSON.parse(JSON.stringify(plain));
+  delete noPath.wallet.descriptorPath;
+  check(
+    'missing descriptorPath falls back to Sphere path',
+    w.parseSphereWalletJSON(JSON.stringify(noPath)).descriptorPath,
+    "44'/0'/0'"
+  );
+
+  // Encrypted export: Sphere uses CryptoJS.AES.encrypt(value, password) directly.
+  const enc = JSON.parse(JSON.stringify(plain));
+  enc.encrypted = true;
+  enc.wallet.masterPrivateKey = CryptoJS.AES.encrypt(MASTER, 'SphereTest123').toString();
+  check(
+    'decrypts with the right password',
+    w.parseSphereWalletJSON(JSON.stringify(enc), 'SphereTest123').masterPrivateKey,
+    MASTER
+  );
+  checkThrows(
+    'encrypted without password is rejected',
+    () => w.parseSphereWalletJSON(JSON.stringify(enc)),
+    'encrypted'
+  );
+  checkThrows('wrong password is rejected', () => w.parseSphereWalletJSON(JSON.stringify(enc), 'wrong'), 'password');
+
+  checkThrows('non-JSON is rejected', () => w.parseSphereWalletJSON('not json at all'), 'valid JSON');
+  checkThrows('foreign JSON is rejected', () => w.parseSphereWalletJSON('{"type":"something-else"}'), 'Sphere wallet');
+  checkThrows(
+    'missing chain code is rejected',
+    () => {
+      const bad = JSON.parse(JSON.stringify(plain));
+      delete bad.wallet.chainCode;
+      w.parseSphereWalletJSON(JSON.stringify(bad));
+    },
+    'chain code'
+  );
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

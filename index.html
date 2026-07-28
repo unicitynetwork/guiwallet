@@ -2391,6 +2391,68 @@ Anyone with your master private key can access all your funds.`;
                 };
             }
 
+            /**
+             * Read Sphere's `sphere-wallet` JSON export.
+             * Encrypted exports use CryptoJS.AES.encrypt(value, password) - the password is the
+             * passphrase directly, NOT this wallet's own PBKDF2 .txt scheme.
+             */
+            function parseSphereWalletJSON(text, password) {
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    throw new Error('That file is not valid JSON');
+                }
+                if (!data || data.type !== 'sphere-wallet') {
+                    throw new Error('That file is not a Sphere wallet export');
+                }
+
+                const walletData = data.wallet || {};
+                let masterPrivateKey = walletData.masterPrivateKey || '';
+                let mnemonic = data.mnemonic || '';
+
+                if (data.encrypted) {
+                    if (!password) {
+                        throw new Error('This export is encrypted - enter its password');
+                    }
+                    const decrypt = function (value) {
+                        if (!value) return '';
+                        try {
+                            return CryptoJS.AES.decrypt(value, password).toString(CryptoJS.enc.Utf8);
+                        } catch (e) {
+                            return '';
+                        }
+                    };
+                    masterPrivateKey = decrypt(masterPrivateKey);
+                    mnemonic = decrypt(mnemonic);
+                    if (!/^[0-9a-fA-F]{64}$/.test(masterPrivateKey) && !mnemonic) {
+                        throw new Error('Could not decrypt - wrong password?');
+                    }
+                }
+
+                // A phrase in the export is authoritative: it reproduces both key and chain code.
+                if (mnemonic && bip39ValidateMnemonic(mnemonic)) {
+                    const fromPhrase = sphereWalletFromMnemonic(mnemonic);
+                    masterPrivateKey = fromPhrase.masterPrivateKey;
+                    walletData.chainCode = walletData.chainCode || fromPhrase.masterChainCode;
+                }
+
+                if (!/^[0-9a-fA-F]{64}$/.test(masterPrivateKey)) {
+                    throw new Error('This export has no usable master key');
+                }
+                if (!/^[0-9a-fA-F]{64}$/.test(walletData.chainCode || '')) {
+                    throw new Error('This export has no chain code - it cannot be imported as an HD wallet');
+                }
+
+                const firstAddress = (walletData.addresses && walletData.addresses[0]) || null;
+                return {
+                    masterPrivateKey: masterPrivateKey.toLowerCase(),
+                    masterChainCode: String(walletData.chainCode).toLowerCase(),
+                    descriptorPath: walletData.descriptorPath || SPHERE_DESCRIPTOR_PATH,
+                    expectedPublicKey: (firstAddress && (firstAddress.publicKey || firstAddress.address)) || null
+                };
+            }
+
             // Generate a new address from master key
             function generateNewAddress() {
                 if (!wallet.masterPrivateKey) {
