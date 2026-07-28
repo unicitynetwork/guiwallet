@@ -504,5 +504,70 @@ console.log('\n=== Text backup round-trip keeps the branch ===');
   );
 }
 
+console.log('\n=== Old non-BIP32 (WIF/HMAC) backups are unaffected ===');
+{
+  const w = loadFromIndex(
+    [
+      ...DERIVATION_FNS,
+      ...BIP39_FNS,
+      'descriptorPathLine',
+      'parseDescriptorPathFromText',
+      'parseFirstAddressFromText',
+      'resolveDescriptorPathFromBackup',
+      'mergeScanWalletData',
+    ],
+    ['CHARSET', 'BIP39_WORDLIST', 'SPHERE_DESCRIPTOR_PATH']
+  );
+
+  // A wallet created by this app has no chain code: derivation is HMAC-SHA512(masterKey, path).
+  const wifAddr0 = w.deriveAddressAtIndex(SDK_WIF_WALLET.masterKey, null, 0, true, false, null);
+  check('WIF address 0 still matches the SDK vector', wifAddr0.address, SDK_WIF_WALLET.expected[0]);
+  check('WIF path is unchanged', wifAddr0.path, "m/44'/0'/0'");
+
+  // Exactly what saveWallet() writes for a standard wallet - the branch that was not touched.
+  const wifBackup =
+    'UNICITY WALLET DETAILS\n===========================\n\n' +
+    'MASTER PRIVATE KEY (keep secret!):\n' + SDK_WIF_WALLET.masterKey + '\n\n' +
+    'MASTER PRIVATE KEY IN WIF FORMAT (for importprivkey command):\nL1exampleWifKey\n\n' +
+    'WALLET TYPE: Standard wallet (HMAC-based)\n\n' +
+    'ENCRYPTION STATUS: Not encrypted\n\n' +
+    "YOUR ADDRESSES:\nAddress 1: " + SDK_WIF_WALLET.expected[0] + " (Path: m/44'/0'/0')\n";
+
+  check('a standard backup carries no descriptor path', w.parseDescriptorPathFromText(wifBackup), null);
+  check(
+    'no chain code means no path is invented',
+    w.resolveDescriptorPathFromBackup(wifBackup, SDK_WIF_WALLET.masterKey, null),
+    null
+  );
+  check('a standard wallet writes no path line', w.descriptorPathLine(undefined), '');
+
+  // With no chain code the wallet stays on the HMAC branch whatever the path says.
+  const forced = w.deriveAddressAtIndex(SDK_WIF_WALLET.masterKey, null, 0, true, false, "44'/0'/0'");
+  check('a path cannot drag a chain-code-less wallet onto BIP32', forced.address, SDK_WIF_WALLET.expected[0]);
+
+  // Scanning a standard wallet must not acquire a path either.
+  const merged = w.mergeScanWalletData(null, SDK_WIF_WALLET.masterKey, null, false);
+  check('scan of a standard wallet has no path', merged.descriptorPath, null);
+  check('scan of a standard wallet stays non-BIP32', merged.isAlphaWallet, false);
+
+  // An old BIP32 backup written before the path line still lands where it always did.
+  const legacyBip32 =
+    'MASTER PRIVATE KEY (keep secret!):\n' + SDK_BIP32_WALLET.masterKey + '\n\n' +
+    'MASTER CHAIN CODE (for BIP32 HD wallet compatibility):\n' + SDK_BIP32_WALLET.chainCode + '\n\n' +
+    'WALLET TYPE: BIP32 hierarchical deterministic wallet\n\n' +
+    'YOUR ADDRESSES:\nAddress 1: ' + SDK_BIP32_WALLET.expected[0] + '\n';
+  const legacyPath = w.resolveDescriptorPathFromBackup(
+    legacyBip32,
+    SDK_BIP32_WALLET.masterKey,
+    SDK_BIP32_WALLET.chainCode
+  );
+  check('pre-existing BIP32 backup resolves to its own branch', legacyPath, "84'/1'/0'");
+  check(
+    'pre-existing BIP32 backup yields the same address as before',
+    w.deriveAddressAtIndex(SDK_BIP32_WALLET.masterKey, SDK_BIP32_WALLET.chainCode, 0, true, false, legacyPath).address,
+    SDK_BIP32_WALLET.expected[0]
+  );
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
