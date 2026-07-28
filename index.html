@@ -2453,6 +2453,41 @@ Anyone with your master private key can access all your funds.`;
                 };
             }
 
+            /**
+             * Turn a parsed Sphere wallet into this app's wallet object.
+             *
+             * descriptorPath MUST be stored on the wallet: generateNewAddress() reads it, and
+             * without it every later address falls back to m/84'/1'/0' - a different branch from
+             * the one the first address came from.
+             */
+            function buildSphereImportedWallet(parsed) {
+                const first = deriveAddressAtIndex(
+                    parsed.masterPrivateKey,
+                    parsed.masterChainCode,
+                    0,
+                    true,
+                    false,
+                    parsed.descriptorPath
+                );
+
+                if (parsed.expectedPublicKey && first.publicKey !== parsed.expectedPublicKey) {
+                    throw new Error(
+                        'The key in this file does not match the address recorded in it - refusing to import'
+                    );
+                }
+
+                return {
+                    masterPrivateKey: parsed.masterPrivateKey,
+                    masterChainCode: parsed.masterChainCode,
+                    descriptorPath: parsed.descriptorPath,
+                    isImportedAlphaWallet: true,
+                    isEncrypted: false,
+                    encryptedMasterKey: '',
+                    childPrivateKey: null,
+                    addresses: []
+                };
+            }
+
             // Generate a new address from master key
             function generateNewAddress() {
                 if (!wallet.masterPrivateKey) {

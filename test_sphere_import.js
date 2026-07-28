@@ -303,5 +303,55 @@ console.log('\n=== Sphere JSON export ===');
   );
 }
 
+console.log('\n=== Wallet object: anchor check + descriptorPath persistence ===');
+{
+  const w = loadFromIndex(
+    [...DERIVATION_FNS, ...BIP39_FNS, 'parseSphereWalletJSON', 'buildSphereImportedWallet'],
+    ['CHARSET', 'BIP39_WORDLIST', 'SPHERE_DESCRIPTOR_PATH']
+  );
+
+  const MASTER = 'e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35';
+  const CHAIN = '873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508';
+  const good = w.deriveAddressAtIndex(MASTER, CHAIN, 0, true, false, "44'/0'/0'");
+
+  const built = w.buildSphereImportedWallet({
+    masterPrivateKey: MASTER,
+    masterChainCode: CHAIN,
+    descriptorPath: "44'/0'/0'",
+    expectedPublicKey: good.publicKey,
+  });
+  check('descriptorPath is persisted on the wallet', built.descriptorPath, "44'/0'/0'");
+  check('marked as an imported BIP32 wallet', built.isImportedAlphaWallet, true);
+  check('starts with no addresses (UI generates the first)', built.addresses.length, 0);
+  check('never marked encrypted at rest', built.isEncrypted, false);
+
+  checkThrows(
+    'mismatched anchor pubkey refuses the import',
+    () =>
+      w.buildSphereImportedWallet({
+        masterPrivateKey: MASTER,
+        masterChainCode: CHAIN,
+        descriptorPath: "84'/1'/0'", // wrong branch for this export
+        expectedPublicKey: good.publicKey,
+      }),
+    'does not match'
+  );
+
+  // No anchor (phrase import) must still work.
+  const noAnchor = w.buildSphereImportedWallet({
+    masterPrivateKey: MASTER,
+    masterChainCode: CHAIN,
+    descriptorPath: "44'/0'/0'",
+    expectedPublicKey: null,
+  });
+  check('phrase import without anchor succeeds', noAnchor.descriptorPath, "44'/0'/0'");
+
+  // The persistence bug this guards against: address #1 and address #2 on the same branch.
+  const a0 = w.deriveAddressAtIndex(built.masterPrivateKey, built.masterChainCode, 0, true, false, built.descriptorPath);
+  const a1 = w.deriveAddressAtIndex(built.masterPrivateKey, built.masterChainCode, 1, true, false, built.descriptorPath);
+  check('address 0 path', a0.path, "m/44'/0'/0'/0/0");
+  check('address 1 stays on the same branch', a1.path, "m/44'/0'/0'/0/1");
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
